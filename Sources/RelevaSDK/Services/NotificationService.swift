@@ -1,5 +1,8 @@
 import Foundation
 import UserNotifications
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Service for handling local notifications
 public class NotificationService: NSObject {
@@ -67,7 +70,7 @@ public class NotificationService: NSObject {
 
             DispatchQueue.main.async {
                 if granted {
-                    UIApplication.shared.registerForRemoteNotifications()
+                    self.safelyRegisterForRemoteNotifications()
                 }
                 completion?(granted)
             }
@@ -420,19 +423,20 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                     return
                 }
 
-                // Use DispatchQueue to avoid potential timing issues
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    if UIApplication.shared.canOpenURL(url) {
-                        print("RelevaSDK: Opening URL...")
-                        UIApplication.shared.open(url, options: [:]) { success in
-                            if success {
-                                print("RelevaSDK: ✓ URL opened successfully")
-                            } else {
-                                print("RelevaSDK: ✗ Failed to open URL")
-                            }
-                        }
-                    } else {
-                        print("RelevaSDK: ✗ Cannot open URL (not allowed)")
+                // Check if this is an internal deep link (custom scheme) or external URL
+                if let scheme = url.scheme, scheme != "http" && scheme != "https" {
+                    // Internal deep link - post notification for app to handle
+                    print("RelevaSDK: Detected internal deep link, posting to app")
+                    NotificationCenter.default.post(
+                        name: Notification.Name("RelevaNavigateToURL"),
+                        object: nil,
+                        userInfo: ["url": url]
+                    )
+                } else {
+                    // External URL - open in browser/external app
+                    print("RelevaSDK: Opening external URL")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.safelyOpenURL(url)
                     }
                 }
             } else {
@@ -463,5 +467,94 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         if config.enableDebugLogging {
             print("RelevaSDK: Navigate to screen: \(screen)")
         }
+    }
+
+    /// Safely register for remote notifications using runtime reflection
+    /// Works in main app, gracefully skips in app extensions
+    private func safelyRegisterForRemoteNotifications() {
+        #if canImport(UIKit)
+        // Use reflection to access UIApplication.shared - avoids compile-time errors in extensions
+        guard let applicationClass = NSClassFromString("UIApplication") as? NSObject.Type else {
+            if config.enableDebugLogging {
+                print("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
+            }
+            return
+        }
+
+        let sharedSelector = NSSelectorFromString("sharedApplication")
+        guard applicationClass.responds(to: sharedSelector),
+              let sharedApplication = applicationClass.perform(sharedSelector)?.takeUnretainedValue() as? NSObject else {
+            if config.enableDebugLogging {
+                print("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
+            }
+            return
+        }
+
+        let registerSelector = NSSelectorFromString("registerForRemoteNotifications")
+        _ = sharedApplication.perform(registerSelector)
+
+        if config.enableDebugLogging {
+            print("RelevaSDK: ✓ Registered for remote notifications")
+        }
+        #else
+        if config.enableDebugLogging {
+            print("RelevaSDK: ⚠️ Remote notifications not available on this platform")
+        }
+        #endif
+    }
+
+    /// Safely open URL using runtime reflection
+    /// Works in main app, gracefully skips in app extensions
+    private func safelyOpenURL(_ url: URL) {
+        #if canImport(UIKit)
+        // Use reflection to access UIApplication.shared - avoids compile-time errors in extensions
+        guard let applicationClass = NSClassFromString("UIApplication") as? NSObject.Type else {
+            print("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
+            return
+        }
+
+        let sharedSelector = NSSelectorFromString("sharedApplication")
+        guard applicationClass.responds(to: sharedSelector),
+              let sharedApplication = applicationClass.perform(sharedSelector)?.takeUnretainedValue() as? NSObject else {
+            print("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
+            return
+        }
+
+        let canOpenSelector = NSSelectorFromString("canOpenURL:")
+        let openSelector = NSSelectorFromString("openURL:options:completionHandler:")
+
+        // Check if we can open the URL
+        guard let canOpenMethod = sharedApplication.method(for: canOpenSelector) else {
+            print("RelevaSDK: ✗ Cannot access canOpenURL method")
+            return
+        }
+
+        typealias CanOpenURLFunction = @convention(c) (AnyObject, Selector, URL) -> Bool
+        let canOpenURL = unsafeBitCast(canOpenMethod, to: CanOpenURLFunction.self)
+
+        if canOpenURL(sharedApplication, canOpenSelector, url) {
+            print("RelevaSDK: Opening URL...")
+
+            // Open the URL
+            if let openMethod = sharedApplication.method(for: openSelector) {
+                typealias OpenURLFunction = @convention(c) (AnyObject, Selector, URL, [String: Any], ((Bool) -> Void)?) -> Void
+                let openURL = unsafeBitCast(openMethod, to: OpenURLFunction.self)
+
+                openURL(sharedApplication, openSelector, url, [:]) { success in
+                    if success {
+                        print("RelevaSDK: ✓ URL opened successfully")
+                    } else {
+                        print("RelevaSDK: ✗ Failed to open URL")
+                    }
+                }
+            } else {
+                print("RelevaSDK: ✗ Cannot access open method")
+            }
+        } else {
+            print("RelevaSDK: ✗ Cannot open URL (not allowed)")
+        }
+        #else
+        print("RelevaSDK: ⚠️ URL opening not available on this platform")
+        #endif
     }
 }

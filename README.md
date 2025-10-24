@@ -119,26 +119,83 @@ func userNotificationCenter(_ center: UNUserNotificationCenter,
 }
 ```
 
-### 3. Add Notification Service Extension (Optional but Recommended)
+### 3. Add Notification Service Extension for Rich Notifications
 
-For rich push notifications with images:
+**For rich push notifications with images and custom buttons**, add a Notification Service Extension:
 
-1. File → New → Target
-2. Select "Notification Service Extension"
-3. Name it (e.g., "NotificationExtension")
-4. Add the RelevaSDK to the extension target
+#### Step 1: Create the Extension Target
 
-In your extension's `NotificationService.swift`:
+1. In Xcode, select your project in the navigator
+2. File → New → Target...
+3. Select "Notification Service Extension"
+4. Name it (e.g., "NotificationExtension")
+5. Click "Finish" (Activate if prompted)
+
+#### Step 2: Add SDK to Extension's Podfile
+
+Update your `Podfile`:
+
+```ruby
+target 'YourApp' do
+  pod 'RelevaSDK', '~> 1.0.0'
+
+  # Add this for the extension
+  target 'NotificationExtension' do
+    pod 'RelevaSDK/NotificationExtension'
+  end
+end
+```
+
+Run:
+```bash
+pod install
+```
+
+#### Step 3: Inherit from SDK's Base Class
+
+In your extension's `NotificationService.swift`, replace the entire file with:
 
 ```swift
 import UserNotifications
 import RelevaSDK
 
-class NotificationService: UNNotificationServiceExtension {
-    // The SDK provides a complete implementation
-    // Just inherit from RelevaSDK's NotificationService
+class NotificationService: RelevaNotificationServiceExtension {
+    // That's it! No additional code needed.
+    // The SDK handles all rich notification processing automatically.
 }
 ```
+
+**Done!** Your app now supports:
+- ✅ Push notifications with images
+- ✅ Custom action buttons
+- ✅ Automatic click tracking
+- ✅ Deep link handling (both internal and external URLs)
+- ✅ Screen navigation within your app
+
+> **Note**: The SDK uses runtime reflection to safely handle UIApplication APIs. This means it works out-of-the-box in both your main app and the extension without any build configuration.
+
+### Navigation Types Supported
+
+The SDK supports two types of navigation from push notifications:
+
+**1. Screen Navigation** (`target: "screen"`):
+```json
+{
+  "target": "screen",
+  "navigate_to_screen": "/cart"
+}
+```
+Posts a `RelevaNavigateToScreen` notification that your app can observe.
+
+**2. URL Navigation** (`target: "url"`):
+```json
+{
+  "target": "url",
+  "navigate_to_url": "https://example.com"
+}
+```
+- **Internal deep links** (e.g., `myapp://...`): Posts `RelevaNavigateToURL` notification for your app to handle
+- **External URLs** (e.g., `https://...`): Opens in Safari or appropriate app
 
 ## Core Features
 
@@ -342,19 +399,48 @@ If you're migrating from the Flutter SDK:
 ### Common Issues
 
 **Push notifications not working:**
-- Verify push notification capability is enabled
+- Verify push notification capability is enabled in Xcode
 - Check that you're calling `registerForRemoteNotifications()`
-- Ensure Firebase is properly configured
-- Check device token is being registered
+- Ensure Firebase is properly configured with your APNs certificates
+- Check device token is being registered with `client.registerPushToken()`
+- Verify notification permissions are granted
+
+**Rich notifications (images/buttons) not showing:**
+- Confirm you've created the Notification Service Extension target
+- Verify extension inherits from `RelevaNotificationServiceExtension` (NOT `UNNotificationServiceExtension`)
+- Check the extension is included in your Podfile with Firebase/Messaging
+- Run `pod install` after adding the extension
+- **CRITICAL**: Notification payload must include `"mutable-content": 1` in the `aps` section
+- Test with app in background (extensions don't run when app is in foreground)
+- Verify `imageUrl` is a valid, publicly accessible HTTPS URL
+- Check Xcode Console for "RelevaSDK" logs to see processing details
+- Example payload:
+  ```json
+  {
+    "aps": {
+      "alert": { "title": "Test", "body": "Message" },
+      "mutable-content": 1
+    },
+    "click_action": "RELEVA_NOTIFICATION_CLICK",
+    "imageUrl": "https://example.com/image.jpg",
+    "button": "View"
+  }
+  ```
 
 **Tracking not working:**
 - Verify `enableTracking` is true in config
 - Check network connectivity
 - Enable debug logging to see requests
+- Confirm realm and access token are correct
 
 **Session expiring too often:**
 - Sessions expire after 24 hours by design
 - Check device time settings
+
+**Build errors about UIApplication in extensions:**
+- Update to SDK version 1.0.0+ which uses runtime reflection
+- No build flags or Podfile modifications should be needed
+- If you're still seeing errors, clean build folder (Cmd+Shift+K) and rebuild
 
 ### Debug Logging
 
@@ -365,6 +451,12 @@ let config = RelevaConfig.debug()
 // or
 let config = RelevaConfig(enableDebugLogging: true)
 ```
+
+This will show:
+- Network requests and responses
+- Notification processing
+- UIApplication availability (in extensions vs main app)
+- Token registration
 
 ## Support
 

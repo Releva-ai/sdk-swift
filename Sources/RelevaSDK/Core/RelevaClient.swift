@@ -198,6 +198,7 @@ public class RelevaClient {
         // Simple change detection - could be improved with proper equality
         self.wishlistChanged = (previousWishlist?.count != products.count)
 
+        let isFirstInitialization = !wishlistInitialized
         if !wishlistInitialized {
             wishlistInitialized = true
             storage.markWishlistInitialized()
@@ -207,6 +208,20 @@ public class RelevaClient {
 
         if config.enableDebugLogging {
             print("RelevaSDK: Wishlist updated with \(products.count) products (changed: \(wishlistChanged))")
+        }
+
+        // Automatically sync wishlist changes to backend (skip on first initialization)
+        if !isFirstInitialization && wishlistChanged && config.enableTracking {
+            trackScreenView(screenToken: nil) { result in
+                if self.config.enableDebugLogging {
+                    switch result {
+                    case .success:
+                        print("RelevaSDK: Wishlist changes synced to backend")
+                    case .failure(let error):
+                        print("RelevaSDK: Failed to sync wishlist changes - \(error)")
+                    }
+                }
+            }
         }
     }
 

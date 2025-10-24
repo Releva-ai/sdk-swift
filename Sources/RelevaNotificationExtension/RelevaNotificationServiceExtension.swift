@@ -2,12 +2,13 @@ import UserNotifications
 import FirebaseMessaging
 
 /// Notification Service Extension for rich push notifications
-public class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
+/// Inherit from this class in your Notification Service Extension to enable rich notifications
+open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
 
-    var contentHandler: ((UNNotificationContent) -> Void)?
-    var bestAttemptContent: UNMutableNotificationContent?
+    open var contentHandler: ((UNNotificationContent) -> Void)?
+    open var bestAttemptContent: UNMutableNotificationContent?
 
-    override public func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
+    open override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         self.contentHandler = contentHandler
         bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
 
@@ -59,7 +60,7 @@ public class RelevaNotificationServiceExtension: UNNotificationServiceExtension 
         }
     }
 
-    override public func serviceExtensionTimeWillExpire() {
+    open override func serviceExtensionTimeWillExpire() {
         // Called just before the extension will be terminated by the system.
         // Use this as an opportunity to deliver your "best attempt" at modified content.
         if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
