@@ -25,11 +25,19 @@ Native iOS SDK for integrating Releva's recommendation engine, push notification
 Add to your `Podfile`:
 
 ```ruby
-pod 'RelevaSDK', '~> 1.0.0'
+target 'YourApp' do
+  # Make sure you have cloned sdk-swift repository one directory outside of the Application - https://github.com/Releva-ai/sdk-swift
 
-# For Notification Service Extension
-target 'NotificationExtension' do
-  pod 'RelevaSDK/NotificationExtension', '~> 1.0.0'
+  pod 'Firebase/Core', '~> 11.0'
+
+  # Local Releva SDK
+  pod 'RelevaSDK', :path => '../sdk-swift'
+  
+  # For Notification Service Extension
+  target 'NotificationExtension' do
+    pod 'Firebase/Messaging', '~> 11.0'
+    pod 'RelevaSDK/NotificationExtension', :path => '../sdk-swift'
+  end
 end
 ```
 
@@ -140,11 +148,17 @@ Update your `Podfile`:
 
 ```ruby
 target 'YourApp' do
-  pod 'RelevaSDK', '~> 1.0.0'
+  # Make sure you have cloned sdk-swift repository one directory outside of the Application - https://github.com/Releva-ai/sdk-swift
 
-  # Add this for the extension if you haven't already
+  pod 'Firebase/Core', '~> 11.0'
+
+  # Local Releva SDK
+  pod 'RelevaSDK', :path => '../sdk-swift'
+  
+  # For Notification Service Extension
   target 'NotificationExtension' do
-    pod 'RelevaSDK/NotificationExtension'
+    pod 'Firebase/Messaging', '~> 11.0'
+    pod 'RelevaSDK/NotificationExtension', :path => '../sdk-swift'
   end
 end
 ```
