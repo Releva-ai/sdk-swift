@@ -158,6 +158,7 @@ public class RelevaClient {
         self.cart = cart
         self.cartChanged = (previousCart != cart)
 
+        let isFirstInitialization = !cartInitialized
         if !cartInitialized {
             cartInitialized = true
             storage.markCartInitialized()
@@ -167,6 +168,20 @@ public class RelevaClient {
 
         if config.enableDebugLogging {
             print("RelevaSDK: Cart updated with \(cart.products.count) products (changed: \(cartChanged))")
+        }
+
+        // Automatically sync cart changes to backend (skip on first initialization)
+        if !isFirstInitialization && cartChanged && config.enableTracking {
+            trackScreenView(screenToken: nil) { result in
+                if self.config.enableDebugLogging {
+                    switch result {
+                    case .success:
+                        print("RelevaSDK: Cart changes synced to backend")
+                    case .failure(let error):
+                        print("RelevaSDK: Failed to sync cart changes - \(error)")
+                    }
+                }
+            }
         }
     }
 

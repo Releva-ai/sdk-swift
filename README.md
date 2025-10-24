@@ -7,10 +7,10 @@ Native iOS SDK for integrating Releva's recommendation engine, push notification
 - 📊 **User Tracking & Analytics** - Track screen views, product views, searches, and custom events
 - 🛒 **Cart & Wishlist Management** - Sync and track user shopping behavior
 - 🔔 **Push Notifications** - Rich push notifications with images and custom actions
-- 🎯 **Product Recommendations** - Get personalized product recommendations
 - 🔍 **Advanced Filtering** - Complex product filtering with multiple conditions
 - 💾 **Offline Support** - Events are queued and sent when connection is available
 - 🔐 **Session Management** - Automatic 24-hour session handling
+- 🎯 **Product Recommendations** - Get personalized product recommendations
 
 ## Requirements
 
@@ -20,22 +20,7 @@ Native iOS SDK for integrating Releva's recommendation engine, push notification
 
 ## Installation
 
-### Swift Package Manager
-
-Add the following to your `Package.swift` file:
-
-```swift
-dependencies: [
-    .package(url: "https://github.com/releva-ai/releva-ios-sdk.git", from: "1.0.0")
-]
-```
-
-Or in Xcode:
-1. File → Add Package Dependencies
-2. Enter: `https://github.com/releva-ai/releva-ios-sdk.git`
-3. Select version: 1.0.0 or later
-
-### CocoaPods
+### Using CocoaPods
 
 Add to your `Podfile`:
 
@@ -53,6 +38,22 @@ Then run:
 pod install
 ```
 
+### Using Swift Package Manager
+
+Add the following to your `Package.swift` file:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/releva-ai/releva-ios-sdk.git", from: "1.0.0")
+]
+```
+
+Or in Xcode:
+1. File → Add Package Dependencies
+2. Enter: `https://github.com/releva-ai/releva-ios-sdk.git`
+3. Select version: 1.0.0 or later
+
+
 ## Quick Start
 
 ### 1. Initialize the SDK
@@ -63,13 +64,15 @@ import RelevaSDK
 // In your AppDelegate or App initialization
 let config = RelevaConfig.full() // or .pushOnly(), .trackingOnly()
 let client = RelevaClient(
-    realm: "your-realm",
+    realm: "",
+    // You can get the access token from Releva's admin panel -> Settings
     accessToken: "your-access-token",
     config: config
 )
 
 // Set user identification
 client.setDeviceId(UIDevice.current.identifierForVendor?.uuidString ?? "")
+// This should be the id for the user that you use internally to identify this user
 client.setProfileId("user-123")
 ```
 
@@ -139,7 +142,7 @@ Update your `Podfile`:
 target 'YourApp' do
   pod 'RelevaSDK', '~> 1.0.0'
 
-  # Add this for the extension
+  # Add this for the extension if you haven't already
   target 'NotificationExtension' do
     pod 'RelevaSDK/NotificationExtension'
   end
@@ -204,6 +207,7 @@ Posts a `RelevaNavigateToScreen` notification that your app can observe.
 ```swift
 // Track screen view
 client.trackScreenView(
+    // Token should be changed with the one you have for home page inside Releva's admin panel (UUID)
     screenToken: "home",
     productIds: ["product-1", "product-2"],
     categories: ["electronics", "phones"]
@@ -212,7 +216,7 @@ client.trackScreenView(
 // Track product view
 let product = ViewedProduct(id: "product-123")
     .withStringField(key: "brand", values: ["Apple"])
-    .withNumericField(key: "price", values: [999.99])
+    .withNumericField(key: "speakersCount", values: [2])
 
 client.trackProductView(
     product: product,
@@ -262,7 +266,7 @@ client.setWishlist(wishlistProducts)
 ### Custom Events
 
 ```swift
-let event = CustomEvent(action: "add_to_cart")
+let event = CustomEvent(action: "selectedColor")
     .withProduct(id: "product-123", quantity: 1)
     .withTag("promo")
     .withCustomFields(customFields)
@@ -356,7 +360,7 @@ The SDK supports modern Swift async/await patterns:
 // Using async/await
 Task {
     do {
-        // Track screen view, "home" should be changed with the token used for home page
+        // Track screen view, "home" should be changed with the token used for home page in Releva's admin panel
         let response = try await client.trackScreenView(screenToken: "home")
 
         // Register push token
@@ -370,29 +374,6 @@ Task {
     }
 }
 ```
-
-## Migration from Flutter SDK
-
-If you're migrating from the Flutter SDK:
-
-1. **Banner functionality is excluded** - The iOS SDK does not include banner/in-app messaging features
-2. **Navigation** - Screen navigation tracking requires manual implementation (no NavigatorObserver)
-3. **Storage** - Uses UserDefaults instead of Hive
-4. **Push Notifications** - Native implementation using UNUserNotificationCenter
-
-### Key Differences
-
-| Flutter SDK | iOS SDK |
-|------------|---------|
-| `RelevaClient(realm, accessToken)` | Same API |
-| `setDeviceId(id)` | Same API |
-| `setProfileId(id)` | Same API |
-| `setCart(cart)` | Same API |
-| `trackScreenView()` | Same API |
-| Banner support | Not included |
-| NavigatorObserver | Manual tracking |
-| Hive storage | UserDefaults |
-| firebase_messaging | Native + Firebase |
 
 ## Troubleshooting
 
