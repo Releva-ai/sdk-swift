@@ -75,8 +75,7 @@ public class NetworkService {
             return "https://\(realm).releva.ai"
         }
 
-        // Default development endpoint (should be updated for production)
-        return "https://d5dcd6d62a60.ngrok-free.app"
+        return "https://releva.ai"
     }
 
     // MARK: - Request Building
