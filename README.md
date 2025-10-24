@@ -46,7 +46,7 @@ Then run:
 pod install
 ```
 
-### Using Swift Package Manager
+### Using Swift Package Manager (Not working currently)
 
 Add the following to your `Package.swift` file:
 
@@ -148,7 +148,7 @@ Update your `Podfile`:
 
 ```ruby
 target 'YourApp' do
-  # Make sure you have cloned sdk-swift repository one directory outside of the Application - https://github.com/Releva-ai/sdk-swift
+  # Make sure you have cloned sdk-swift repository one directory outside of the main directory with Podfile - https://github.com/Releva-ai/sdk-swift
 
   pod 'Firebase/Core', '~> 11.0'
 
@@ -233,15 +233,17 @@ let product = ViewedProduct(id: "product-123")
     .withNumericField(key: "speakersCount", values: [2])
 
 client.trackProductView(
-    product: product,
+    // Token should be changed with the one you have for product page inside Releva's admin panel (UUID)
     screenToken: "product_detail"
+    product: product,
 )
 
 // Track search
 client.trackSearchView(
+    // Token should be changed with the one you have for search page inside Releva's admin panel (UUID)
+    screenToken: "search_results"
     query: "iPhone",
     resultProductIds: ["product-1", "product-2", "product-3"],
-    screenToken: "search_results"
 )
 ```
 
@@ -306,6 +308,7 @@ let complexFilter = NestedFilter.and(
 
 // Apply filter to screen view
 client.trackScreenView(
+    // Token should be changed with the one you have for category page inside Releva's admin panel (UUID)
     screenToken: "category_listing",
     filter: complexFilter
 )
@@ -405,22 +408,9 @@ Task {
 - Verify extension inherits from `RelevaNotificationServiceExtension` (NOT `UNNotificationServiceExtension`)
 - Check the extension is included in your Podfile with Firebase/Messaging
 - Run `pod install` after adding the extension
-- **CRITICAL**: Notification payload must include `"mutable-content": 1` in the `aps` section
 - Test with app in background (extensions don't run when app is in foreground)
 - Verify `imageUrl` is a valid, publicly accessible HTTPS URL
 - Check Xcode Console for "RelevaSDK" logs to see processing details
-- Example payload:
-  ```json
-  {
-    "aps": {
-      "alert": { "title": "Test", "body": "Message" },
-      "mutable-content": 1
-    },
-    "click_action": "RELEVA_NOTIFICATION_CLICK",
-    "imageUrl": "https://example.com/image.jpg",
-    "button": "View"
-  }
-  ```
 
 **Tracking not working:**
 - Verify `enableTracking` is true in config
