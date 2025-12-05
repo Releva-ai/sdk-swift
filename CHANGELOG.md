@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2025-12-05
+
+### Added
+- Added `skipMergeWithPreviousProfileId` parameter to `setProfileId()` method for proper logout handling
+  - When `true`, clears merge profile IDs (prevents merging logged-in user profile with anonymous profile)
+  - When `false` (default), continues normal merge behavior
+  - Maintains backward compatibility with existing code
+
+### Fixed
+- Fixed `ProductRecommendation.mergeContext` type handling to support mixed value types from API
+  - Now properly handles cases where API returns integers, booleans, or other types in mergeContext
+  - Automatically converts all values to strings while preserving data
+- Fixed profile merge edge cases to ensure merge IDs are properly persisted
+
+### Changed
+- Enhanced debug logging for profile ID changes to show merge behavior
+
+
 ## [1.0.0] - 2025-10-22
 
 ### Added

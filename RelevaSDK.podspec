@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'RelevaSDK'
-  s.version          = '1.0.0'
+  s.version          = '1.0.1'
   s.summary          = 'Releva SDK for iOS - Push notifications and tracking'
   s.description      = <<-DESC
     Releva SDK provides easy integration with Releva's recommendation engine,

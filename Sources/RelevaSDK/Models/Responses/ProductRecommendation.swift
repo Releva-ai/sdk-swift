@@ -133,7 +133,39 @@ public struct ProductRecommendation: Codable, Equatable {
         imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
         listPrice = try container.decodeIfPresent(Double.self, forKey: .listPrice)
         locale = try container.decodeIfPresent(String.self, forKey: .locale)
-        mergeContext = try container.decodeIfPresent([String: String].self, forKey: .mergeContext)
+
+        // Handle mergeContext with mixed types - convert all values to strings
+        if container.contains(.mergeContext) {
+            // Try decoding as [String: String] first (most common case)
+            if let stringDict = try? container.decode([String: String].self, forKey: .mergeContext) {
+                mergeContext = stringDict
+            } else {
+                // Fallback: decode with dynamic types and convert all values to strings
+                do {
+                    let nestedContainer = try container.nestedContainer(keyedBy: DynamicKey.self, forKey: .mergeContext)
+                    var result: [String: String] = [:]
+
+                    for key in nestedContainer.allKeys {
+                        // Try to decode as different types and convert to string
+                        if let stringValue = try? nestedContainer.decode(String.self, forKey: key) {
+                            result[key.stringValue] = stringValue
+                        } else if let intValue = try? nestedContainer.decode(Int.self, forKey: key) {
+                            result[key.stringValue] = String(intValue)
+                        } else if let doubleValue = try? nestedContainer.decode(Double.self, forKey: key) {
+                            result[key.stringValue] = String(doubleValue)
+                        } else if let boolValue = try? nestedContainer.decode(Bool.self, forKey: key) {
+                            result[key.stringValue] = String(boolValue)
+                        }
+                    }
+
+                    mergeContext = result.isEmpty ? nil : result
+                } catch {
+                    mergeContext = nil
+                }
+            }
+        } else {
+            mergeContext = nil
+        }
 
         name = try container.decode(String.self, forKey: .name)
         price = try container.decode(Double.self, forKey: .price)
@@ -235,5 +267,22 @@ extension Array where Element == ProductRecommendation {
     /// Get products within a price range
     public func inPriceRange(min: Double, max: Double) -> [ProductRecommendation] {
         return filter { $0.bestPrice >= min && $0.bestPrice <= max }
+    }
+}
+
+// MARK: - Helper Coding Keys
+
+private struct DynamicKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = String(intValue)
+        self.intValue = intValue
     }
 }

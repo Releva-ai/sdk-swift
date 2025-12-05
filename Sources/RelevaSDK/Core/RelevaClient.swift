@@ -124,24 +124,41 @@ public class RelevaClient {
     }
 
     /// Set profile ID
-    /// - Parameter profileId: User profile identifier
-    public func setProfileId(_ profileId: String) {
+    /// - Parameters:
+    ///   - profileId: User profile identifier
+    ///   - skipMergeWithPreviousProfileId: If true, clears merge profile IDs (used for logout). Defaults to false.
+    public func setProfileId(_ profileId: String, _ skipMergeWithPreviousProfileId: Bool = false) {
         let previousId = self.profileId
 
-        // Add previous profile to merge list if different
-        if let prevId = previousId, prevId != profileId {
-            mergeProfileIds.append(prevId)
-            storage.addMergeProfileId(prevId)
+        if skipMergeWithPreviousProfileId {
+            // Clear merge profile IDs when explicitly skipping merge (e.g., on logout)
+            mergeProfileIds = []
+            storage.clearMergeProfileIds()
+
+            if config.enableDebugLogging {
+                print("RelevaSDK: Profile ID changed to '\(profileId)' (skip merge = true)")
+            }
+        } else if let prevId = previousId, prevId != profileId {
+            // Normal behavior: merge previous profile with new one
+            if !mergeProfileIds.contains(prevId) {
+                mergeProfileIds.append(prevId)
+                storage.addMergeProfileId(prevId)
+
+                if config.enableDebugLogging {
+                    print("RelevaSDK: Profile ID changed from '\(prevId)' to '\(profileId)' (merge enabled)")
+                    print("RelevaSDK: Merge profile IDs stored: \(mergeProfileIds)")
+                }
+            } else if config.enableDebugLogging {
+                print("RelevaSDK: Profile ID changed to '\(profileId)' (previous profile already in merge list)")
+            }
+        } else if config.enableDebugLogging {
+            print("RelevaSDK: Profile ID set to '\(profileId)' (first time, no merge needed)")
         }
 
         self.profileId = profileId
         self.profileChanged = (previousId != nil && previousId != profileId)
 
         storage.saveProfileId(profileId)
-
-        if config.enableDebugLogging {
-            print("RelevaSDK: Profile ID set to '\(profileId)' (changed: \(profileChanged))")
-        }
     }
 
     /// Get current profile ID

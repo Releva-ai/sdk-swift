@@ -84,6 +84,51 @@ client.setDeviceId(UIDevice.current.identifierForVendor?.uuidString ?? "")
 client.setProfileId("user-123")
 ```
 
+## Profile Management and User Logout
+
+### Important: Handling User Logout
+
+When a user logs out of your application, it's **critical** to prevent merging the logged-in user's profile with the anonymous profile created for the logged-out state. To do this, use the `skipMergeWithPreviousProfileId` parameter when setting the new anonymous profile ID:
+
+```swift
+// When user logs out, generate a new anonymous profile ID
+let newAnonymousProfileId = UUID().uuidString
+
+// Set the new profile ID with skipMergeWithPreviousProfileId set to true
+// The second parameter can be passed as true or false without a label
+client.setProfileId(newAnonymousProfileId, true)
+
+// Re-register push token with the new anonymous profile
+// This is necessary because we skipped the merge, so the token needs to be explicitly registered
+Task {
+    do {
+        let fcmToken = try await Messaging.messaging().token()
+        _ = try await client.registerPushToken(fcmToken, deviceType: .ios)
+    } catch {
+        print("Failed to re-register push token: \(error)")
+    }
+}
+```
+
+**Why is this important?**
+
+By default, when you change a profile ID, the SDK will merge the previous profile with the new one to maintain user behavior continuity. However, when a user logs out, you want to start fresh with a completely separate anonymous profile. Passing `true` as the second parameter ensures:
+
+- The logged-in user's profile data remains separate
+- The new anonymous profile starts with a clean slate
+- No cross-contamination of user behavior data
+
+**Default Behavior (when logging in or switching users):**
+```swift
+// Normal profile change - previous profile will be merged
+client.setProfileId(loggedInUserId)
+```
+
+This default behavior is ideal for:
+- User login (merging anonymous behavior with logged-in profile)
+- Account linking
+- Profile migrations
+
 ### 2. Configure Push Notifications
 
 #### Enable Push Capabilities
@@ -111,9 +156,19 @@ UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge
 
 // In AppDelegate
 func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-    let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
-    client.registerPushToken(token)
-    client.enablePushEngagementTracking()
+    // Set APNS token in Firebase Messaging (required if method swizzling is disabled)
+    Messaging.messaging().apnsToken = deviceToken
+
+    // Retrieve FCM token and register with Releva
+    Task {
+        do {
+            let fcmToken = try await Messaging.messaging().token()
+            _ = try await client.registerPushToken(fcmToken, deviceType: .ios)
+            client.enablePushEngagementTracking()
+        } catch {
+            print("Failed to register push token: \(error)")
+        }
+    }
 }
 
 // Handle notification taps
