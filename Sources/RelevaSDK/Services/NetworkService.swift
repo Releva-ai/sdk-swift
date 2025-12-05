@@ -75,7 +75,7 @@ public class NetworkService {
             return "https://\(realm).releva.ai"
         }
 
-        return "https://996e0fdc2a55.ngrok-free.app"
+        return "https://releva.ai"
     }
 
     // MARK: - Request Building
