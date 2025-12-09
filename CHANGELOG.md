@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2025-12-09
+
+### Changed
+- Downgraded Firebase/Messaging dependency from ~> 11.0 to ~> 10.0 for better compatibility
+
 ## [1.0.1] - 2025-12-05
 
 ### Added
