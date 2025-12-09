@@ -28,14 +28,14 @@ Add to your `Podfile`:
 target 'YourApp' do
   # Make sure you have cloned sdk-swift repository one directory outside of the Application - https://github.com/Releva-ai/sdk-swift
 
-  pod 'Firebase/Core', '~> 11.0'
+  pod 'Firebase/Core', '~> 10.0'
 
   # Local Releva SDK
   pod 'RelevaSDK', :path => '../sdk-swift'
   
   # For Notification Service Extension
   target 'NotificationExtension' do
-    pod 'Firebase/Messaging', '~> 11.0'
+    pod 'Firebase/Messaging', '~> 10.0'
     pod 'RelevaSDK/NotificationExtension', :path => '../sdk-swift'
   end
 end
@@ -205,14 +205,14 @@ Update your `Podfile`:
 target 'YourApp' do
   # Make sure you have cloned sdk-swift repository one directory outside of the main directory with Podfile - https://github.com/Releva-ai/sdk-swift
 
-  pod 'Firebase/Core', '~> 11.0'
+  pod 'Firebase/Core', '~> 10.0'
 
   # Local Releva SDK
   pod 'RelevaSDK', :path => '../sdk-swift'
   
   # For Notification Service Extension
   target 'NotificationExtension' do
-    pod 'Firebase/Messaging', '~> 11.0'
+    pod 'Firebase/Messaging', '~> 10.0'
     pod 'RelevaSDK/NotificationExtension', :path => '../sdk-swift'
   end
 end
