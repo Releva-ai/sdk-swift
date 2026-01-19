@@ -454,7 +454,7 @@ public class RelevaClient {
 
     /// Register push notification token
     /// - Parameters:
-    ///   - token: APNs or FCM token
+    ///   - token: FCM token
     ///   - deviceType: Device type (defaults to current)
     ///   - completion: Completion handler
     public func registerPushToken(

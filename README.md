@@ -156,8 +156,17 @@ UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge
 
 // In AppDelegate
 func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-    // Set APNS token in Firebase Messaging (required if method swizzling is disabled)
-    Messaging.messaging().apnsToken = deviceToken
+    // Set the APNs token for Firebase Messaging.
+    //
+    // This is only required if your Firebase app is NOT configured with an APNs Authentication Key.
+    //
+    // If you have not set up the APNs Authentication Key, you can:
+    // 1. Generate an APNs key in the Apple Developer Portal
+    // 2. Upload it in the Firebase Console: Project Settings → Cloud Messaging
+    //
+    // Once the APNs Authentication Key is configured, this line is no longer needed.
+    // Only use this line if you have not configured that in Firebase Console
+    // Messaging.messaging().apnsToken = deviceToken
 
     // Retrieve FCM token and register with Releva
     Task {
