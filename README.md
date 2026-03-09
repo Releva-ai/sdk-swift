@@ -32,7 +32,7 @@ target 'YourApp' do
 
   # Local Releva SDK
   pod 'RelevaSDK', :path => '../sdk-swift'
-  
+
   # For Notification Service Extension
   target 'NotificationExtension' do
     pod 'Firebase/Messaging', '~> 10.0'
@@ -42,6 +42,7 @@ end
 ```
 
 Then run:
+
 ```bash
 pod install
 ```
@@ -57,10 +58,10 @@ dependencies: [
 ```
 
 Or in Xcode:
+
 1. File → Add Package Dependencies
 2. Enter: `https://github.com/releva-ai/releva-ios-sdk.git`
 3. Select version: 1.0.0 or later
-
 
 ## Quick Start
 
@@ -119,17 +120,101 @@ By default, when you change a profile ID, the SDK will merge the previous profil
 - No cross-contamination of user behavior data
 
 **Default Behavior (when logging in or switching users):**
+
 ```swift
 // Normal profile change - previous profile will be merged
 client.setProfileId(loggedInUserId)
 ```
 
 This default behavior is ideal for:
+
 - User login (merging anonymous behavior with logged-in profile)
 - Account linking
 - Profile migrations
 
 ### 2. Configure Push Notifications
+
+### 3. App Inbox
+
+If you enabled `enableInbox` in your `RelevaConfig` (it's `true` by default
+for the `full` and `messagingOnly` presets) you can initialise and interact
+with the SDK's built‑in App Inbox service.
+
+#### Initialization
+
+Call `initializeInbox()` after you have set the profile ID. The method returns
+the shared `InboxService` instance which you can observe using SwiftUI or a
+delegate.
+
+````swift
+let inbox = client.initializeInbox()
+// SwiftUI example:
+// inbox.state is an @Published property; use `@ObservedObject` in a view
+// For convenience we also ship `InboxListView`/`InboxMessageRow` components
+// (see `Sources/RelevaSDK/Views/InboxViews.swift`).  You can embed them like
+// this:
+//
+// ```swift
+// NavigationView {
+//     InboxListView()
+// }
+// ```
+
+// If the user logs in or out and the profile ID changes:
+client.updateInboxUserId()
+
+// When logging out you may also clear cached messages:
+client.clearInboxData()
+````
+
+#### Observing State
+
+`InboxService.shared.state` has the following fields:
+
+- `messages`: `[InboxMessage]` (newest first)
+- `unreadCount`: `Int`
+- `nextCursor`: `String?` for pagination
+- `isLoading`, `hasMore`, `lastFetchTime`, `lastError`
+
+Use `state.isStale` to know when the cache should be refreshed (the SDK
+performs this check automatically when the app returns to foreground and when
+"inbox_sync" silent pushes are received).
+
+You can also implement `InboxServiceDelegate` if you don't use Combine.
+
+#### User Actions
+
+```swift
+// mark a single message read
+Task { await InboxService.shared.markAsRead("message-id") }
+
+// mark all as read
+Task { await InboxService.shared.markAllAsRead() }
+
+// delete a message
+Task { await InboxService.shared.deleteMessage("message-id") }
+
+// track taps (the SDK calls this for you when a message action is invoked)
+Task { await InboxService.shared.trackAction(messageId: "message-id") }
+```
+
+#### Silent Push Support
+
+When the backend delivers new inbox messages it sends a silent FCM push
+with payload:
+
+```json
+{ "data": { "magellan_notification_type": "inbox_sync" } }
+```
+
+Forward all incoming `userInfo` dictionaries to `RelevaClient.shared?.handleRemoteNotification(_:)`
+(see "Remote Notification Helpers" section above). The SDK will refresh the
+inbox immediately if the app is active, or mark the local cache stale so a
+future foreground resume triggers a network fetch.
+
+---
+
+### 4. Configure Push Notifications
 
 #### Enable Push Capabilities
 
@@ -218,7 +303,7 @@ target 'YourApp' do
 
   # Local Releva SDK
   pod 'RelevaSDK', :path => '../sdk-swift'
-  
+
   # For Notification Service Extension
   target 'NotificationExtension' do
     pod 'Firebase/Messaging', '~> 10.0'
@@ -228,6 +313,7 @@ end
 ```
 
 Run:
+
 ```bash
 pod install
 ```
@@ -247,6 +333,7 @@ class NotificationService: RelevaNotificationServiceExtension {
 ```
 
 **Done!** Your app now supports:
+
 - ✅ Push notifications with images
 - ✅ Custom action buttons
 - ✅ Automatic click tracking
@@ -260,21 +347,25 @@ class NotificationService: RelevaNotificationServiceExtension {
 The SDK supports two types of navigation from push notifications:
 
 **1. Screen Navigation** (`target: "screen"`):
+
 ```json
 {
   "target": "screen",
   "navigate_to_screen": "/cart"
 }
 ```
+
 Posts a `RelevaNavigateToScreen` notification that your app can observe.
 
 **2. URL Navigation** (`target: "url"`):
+
 ```json
 {
   "target": "url",
   "navigate_to_url": "https://example.com"
 }
 ```
+
 - **Internal deep links** (e.g., `myapp://...`): Posts `RelevaNavigateToURL` notification for your app to handle
 - **External URLs** (e.g., `https://...`): Opens in Safari or appropriate app
 
@@ -461,6 +552,7 @@ Task {
 ### Common Issues
 
 **Push notifications not working:**
+
 - Verify push notification capability is enabled in Xcode
 - Check that you're calling `registerForRemoteNotifications()`
 - Ensure Firebase is properly configured with your APNs certificates
@@ -468,6 +560,7 @@ Task {
 - Verify notification permissions are granted
 
 **Rich notifications (images/buttons) not showing:**
+
 - Confirm you've created the Notification Service Extension target
 - Verify extension inherits from `RelevaNotificationServiceExtension` (NOT `UNNotificationServiceExtension`)
 - Check the extension is included in your Podfile with Firebase/Messaging
@@ -477,16 +570,19 @@ Task {
 - Check Xcode Console for "RelevaSDK" logs to see processing details
 
 **Tracking not working:**
+
 - Verify `enableTracking` is true in config
 - Check network connectivity
 - Enable debug logging to see requests
 - Confirm realm and access token are correct
 
 **Session expiring too often:**
+
 - Sessions expire after 24 hours by design
 - Check device time settings
 
 **Build errors about UIApplication in extensions:**
+
 - Update to SDK version 1.0.0+ which uses runtime reflection
 - No build flags or Podfile modifications should be needed
 - If you're still seeing errors, clean build folder (Cmd+Shift+K) and rebuild
@@ -502,6 +598,7 @@ let config = RelevaConfig(enableDebugLogging: true)
 ```
 
 This will show:
+
 - Network requests and responses
 - Notification processing
 - UIApplication availability (in extensions vs main app)
@@ -510,6 +607,7 @@ This will show:
 ## Support
 
 For issues, questions, or feature requests:
+
 - GitHub Issues: https://github.com/releva-ai/releva-ios-sdk/issues
 - Documentation: https://docs.releva.ai/ios-sdk
 - Email: support@releva.ai

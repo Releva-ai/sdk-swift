@@ -504,6 +504,59 @@ public class RelevaClient {
         defaults.removeObject(forKey: StorageService.StorageKey.inboxLastFetch.rawValue)
     }
 
+    // MARK: - Remote Notification Helpers
+
+    /// Helper for apps to forward notification payloads received via
+    /// `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` or
+    /// other callbacks.  The SDK inspects the data for special control signals
+    /// such as `magellan_notification_type = "inbox_sync"` and takes the
+    /// appropriate action (refresh inbox if app is active, or mark the cache
+    /// stale when running in background).
+    ///
+    /// ```swift
+    /// func application(_ application: UIApplication,
+    ///                  didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    ///                  fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+    ///     RelevaClient.shared?.handleRemoteNotification(userInfo)
+    ///     completionHandler(.newData)
+    /// }
+    /// ```
+    public func handleRemoteNotification(_ userInfo: [AnyHashable: Any]) {
+        guard config.enableInbox else { return }
+
+        // Flatten `data` wrapper if present (Firebase Android style)
+        var dataDict: [String: Any] = [:]
+        if let inner = userInfo["data"] as? [String: Any] {
+            dataDict = inner
+        } else {
+            for (key, value) in userInfo {
+                if let k = key as? String {
+                    dataDict[k] = value
+                }
+            }
+        }
+
+        guard let type = dataDict["magellan_notification_type"] as? String,
+              type == "inbox_sync" else {
+            return
+        }
+
+        #if canImport(UIKit)
+        let state = UIApplication.shared.applicationState
+        if state == .active {
+            // app is in foreground - perform immediate refresh
+            InboxService.shared.handleSyncSignal()
+        } else {
+            // background/terminated - mark cache stale so next foreground
+            // resume will fetch fresh data
+            InboxService.markCacheStale()
+        }
+        #else
+        // non‑UIKit platforms just mark stale
+        InboxService.markCacheStale()
+        #endif
+    }
+
     // MARK: - Push Notifications
 
     /// Register push notification token

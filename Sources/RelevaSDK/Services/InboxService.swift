@@ -34,6 +34,11 @@ public final class InboxService: ObservableObject {
 
     private var isInitialized = false
 
+    #if DEBUG
+    /// Exposed for unit tests so we can verify initialization state.
+    internal var _isInitialized: Bool { isInitialized }
+    #endif
+
     /// Background task identifier for deferred work
     private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
 
@@ -381,4 +386,22 @@ public final class InboxService: ObservableObject {
             print("RelevaSDK Inbox: Restored \(messages.count) cached messages")
         }
     }
+
+    #if DEBUG
+    /// Reset the singleton to a clean state.  Used by unit tests.
+    internal func resetForTesting() {
+        accessToken = ""
+        realm = ""
+        userId = ""
+        networkService = nil
+        config = .full()
+        isInitialized = false
+        state = .empty
+
+        if let observer = lifecycleObserver {
+            NotificationCenter.default.removeObserver(observer)
+            lifecycleObserver = nil
+        }
+    }
+    #endif
 }
