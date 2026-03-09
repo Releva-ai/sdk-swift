@@ -17,6 +17,9 @@ public struct RelevaConfig {
     /// Enable analytics data collection
     public let enableAnalytics: Bool
 
+    /// Enable App Inbox feature
+    public let enableInbox: Bool
+
     /// Enable debug logging
     public let enableDebugLogging: Bool
 
@@ -35,6 +38,9 @@ public struct RelevaConfig {
     /// Batch interval for engagement events in seconds
     public let engagementBatchInterval: TimeInterval
 
+    /// Enable App Inbox feature
+    public let enableInbox: Bool
+
     // MARK: - Initializers
 
     /// Initialize with custom configuration
@@ -43,6 +49,7 @@ public struct RelevaConfig {
         enableScreenTracking: Bool = true,
         enablePushNotifications: Bool = true,
         enableAnalytics: Bool = true,
+        enableInbox: Bool = true,
         enableDebugLogging: Bool = false,
         customEndpoint: String? = nil,
         requestTimeoutInterval: TimeInterval = 30.0,
@@ -54,6 +61,7 @@ public struct RelevaConfig {
         self.enableScreenTracking = enableScreenTracking
         self.enablePushNotifications = enablePushNotifications
         self.enableAnalytics = enableAnalytics
+        self.enableInbox = enableInbox
         self.enableDebugLogging = enableDebugLogging
         self.customEndpoint = customEndpoint
         self.requestTimeoutInterval = requestTimeoutInterval
@@ -70,7 +78,8 @@ public struct RelevaConfig {
             enableTracking: true,
             enableScreenTracking: true,
             enablePushNotifications: true,
-            enableAnalytics: true
+            enableAnalytics: true,
+            enableInbox: true
         )
     }
 
@@ -80,7 +89,8 @@ public struct RelevaConfig {
             enableTracking: true,
             enableScreenTracking: true,
             enablePushNotifications: false,
-            enableAnalytics: true
+            enableAnalytics: true,
+            enableInbox: false
         )
     }
 
@@ -90,7 +100,8 @@ public struct RelevaConfig {
             enableTracking: false,
             enableScreenTracking: false,
             enablePushNotifications: true,
-            enableAnalytics: false
+            enableAnalytics: false,
+            enableInbox: false
         )
     }
 
@@ -100,7 +111,8 @@ public struct RelevaConfig {
             enableTracking: true,
             enableScreenTracking: false,
             enablePushNotifications: true,
-            enableAnalytics: false
+            enableAnalytics: false,
+            enableInbox: false
         )
     }
 
@@ -111,6 +123,7 @@ public struct RelevaConfig {
             enableScreenTracking: true,
             enablePushNotifications: true,
             enableAnalytics: true,
+            enableInbox: true,
             enableDebugLogging: true
         )
     }

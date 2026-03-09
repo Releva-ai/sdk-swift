@@ -450,6 +450,60 @@ public class RelevaClient {
         }
     }
 
+    // MARK: - App Inbox
+
+    /// Initialize App Inbox. Call after `setProfileId()`.
+    /// - Returns: The shared `InboxService` instance for observation.
+    @discardableResult
+    public func initializeInbox() -> InboxService {
+        guard config.enableInbox else {
+            if config.enableDebugLogging {
+                print("RelevaSDK: App Inbox is disabled in config (enableInbox=false)")
+            }
+            return InboxService.shared
+        }
+
+        let inboxService = InboxService.shared
+        let currentProfileId = self.profileId ?? ""
+        let net = self.networkService
+        let token = self.accessToken
+        let r = self.realm
+        let cfg = self.config
+
+        Task { @MainActor in
+            inboxService.initialize(
+                accessToken: token,
+                realm: r,
+                userId: currentProfileId,
+                networkService: net,
+                config: cfg
+            )
+        }
+
+        if config.enableDebugLogging {
+            print("RelevaSDK: App Inbox initialized (userId=\(currentProfileId))")
+        }
+
+        return inboxService
+    }
+
+    /// Update inbox userId — call after login/logout when profile ID changes
+    public func updateInboxUserId() {
+        guard let profileId = profileId else { return }
+        Task { @MainActor in
+            InboxService.shared.updateUserId(profileId)
+        }
+    }
+
+    /// Clear inbox cache (call on logout)
+    public func clearInboxData() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: StorageService.StorageKey.inboxMessages.rawValue)
+        defaults.removeObject(forKey: StorageService.StorageKey.inboxUnreadCount.rawValue)
+        defaults.removeObject(forKey: StorageService.StorageKey.inboxNextCursor.rawValue)
+        defaults.removeObject(forKey: StorageService.StorageKey.inboxLastFetch.rawValue)
+    }
+
     // MARK: - Push Notifications
 
     /// Register push notification token

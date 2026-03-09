@@ -432,3 +432,239 @@ extension NetworkService {
 struct SDKVersion {
     static let current = "1.0.0"
 }
+
+// MARK: - Inbox API
+
+extension NetworkService {
+
+    /// Base inbox URL: https://<host>/api/v0/inbox/<accessToken>
+    private func inboxBaseUrl(accessToken: String, realm: String) -> String {
+        let host: String
+        if let custom = config.customEndpoint {
+            host = custom
+        } else if !realm.isEmpty {
+            host = "https://\(realm).releva.ai"
+        } else {
+            host = "https://releva.ai"
+        }
+        return "\(host)/api/v0/inbox/\(accessToken)"
+    }
+
+    // MARK: Fetch messages (paginated)
+
+    public func inboxFetchMessages(
+        userId: String,
+        cursor: String?,
+        limit: Int = 20,
+        accessToken: String,
+        realm: String
+    ) async -> Result<InboxMessagesResponse, RelevaError> {
+        var components = URLComponents(string: inboxBaseUrl(accessToken: accessToken, realm: realm) + "/messages")
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "limit", value: "\(limit)")
+        ]
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        components?.queryItems = queryItems
+
+        guard let url = components?.url else {
+            return .failure(.invalidConfiguration("Invalid inbox URL"))
+        }
+
+        return await withCheckedContinuation { continuation in
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = config.requestTimeoutInterval
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("RelevaSDK-iOS/\(SDKVersion.current)", forHTTPHeaderField: "User-Agent")
+
+            session.dataTask(with: request) { data, response, error in
+                if let error = error {
+                    continuation.resume(returning: .failure(.networkError(error.localizedDescription)))
+                    return
+                }
+                guard let data = data, let http = response as? HTTPURLResponse else {
+                    continuation.resume(returning: .failure(.invalidResponse("No data")))
+                    return
+                }
+                guard (200...299).contains(http.statusCode) else {
+                    continuation.resume(returning: .failure(.serverError(http.statusCode, nil)))
+                    return
+                }
+                do {
+                    let decoder = JSONDecoder()
+                    decoder.dateDecodingStrategy = .millisecondsSince1970
+                    let decoded = try decoder.decode(InboxMessagesResponse.self, from: data)
+                    continuation.resume(returning: .success(decoded))
+                } catch {
+                    continuation.resume(returning: .failure(.invalidResponse("Decode error: \(error)")))
+                }
+            }.resume()
+        }
+    }
+
+    // MARK: Fetch unread count
+
+    public func inboxFetchUnreadCount(
+        userId: String,
+        accessToken: String,
+        realm: String
+    ) async -> Result<Int, RelevaError> {
+        guard var components = URLComponents(string: inboxBaseUrl(accessToken: accessToken, realm: realm) + "/unread-count") else {
+            return .failure(.invalidConfiguration("Invalid inbox URL"))
+        }
+        components.queryItems = [URLQueryItem(name: "userId", value: userId)]
+
+        guard let url = components.url else {
+            return .failure(.invalidConfiguration("Invalid inbox URL"))
+        }
+
+        return await withCheckedContinuation { continuation in
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = config.requestTimeoutInterval
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("RelevaSDK-iOS/\(SDKVersion.current)", forHTTPHeaderField: "User-Agent")
+
+            session.dataTask(with: request) { data, response, error in
+                if let error = error {
+                    continuation.resume(returning: .failure(.networkError(error.localizedDescription)))
+                    return
+                }
+                guard let data = data, let http = response as? HTTPURLResponse,
+                      (200...299).contains(http.statusCode) else {
+                    continuation.resume(returning: .failure(.invalidResponse("Bad response")))
+                    return
+                }
+                if let decoded = try? JSONDecoder().decode(InboxUnreadCountResponse.self, from: data) {
+                    continuation.resume(returning: .success(decoded.count))
+                } else {
+                    continuation.resume(returning: .failure(.invalidResponse("Decode error")))
+                }
+            }.resume()
+        }
+    }
+
+    // MARK: Mark single message as read
+
+    public func inboxMarkAsRead(
+        messageId: String,
+        userId: String,
+        accessToken: String,
+        realm: String
+    ) async -> Result<Void, RelevaError> {
+        return await inboxPost(
+            path: "/messages/\(messageId)/read",
+            body: ["userId": userId],
+            accessToken: accessToken,
+            realm: realm
+        )
+    }
+
+    // MARK: Mark all as read
+
+    public func inboxMarkAllAsRead(
+        userId: String,
+        accessToken: String,
+        realm: String
+    ) async -> Result<Void, RelevaError> {
+        return await inboxPost(
+            path: "/messages/read-all",
+            body: ["userId": userId],
+            accessToken: accessToken,
+            realm: realm
+        )
+    }
+
+    // MARK: Delete message
+
+    public func inboxDeleteMessage(
+        messageId: String,
+        userId: String,
+        accessToken: String,
+        realm: String
+    ) async -> Result<Void, RelevaError> {
+        guard let url = URL(string: inboxBaseUrl(accessToken: accessToken, realm: realm) + "/messages/\(messageId)") else {
+            return .failure(.invalidConfiguration("Invalid inbox URL"))
+        }
+
+        return await withCheckedContinuation { continuation in
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            request.timeoutInterval = config.requestTimeoutInterval
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("RelevaSDK-iOS/\(SDKVersion.current)", forHTTPHeaderField: "User-Agent")
+
+            if let body = try? JSONSerialization.data(withJSONObject: ["userId": userId]) {
+                request.httpBody = body
+            }
+
+            session.dataTask(with: request) { _, response, error in
+                if let error = error {
+                    continuation.resume(returning: .failure(.networkError(error.localizedDescription)))
+                    return
+                }
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    continuation.resume(returning: .failure(.serverError(0, "Delete failed")))
+                    return
+                }
+                continuation.resume(returning: .success(()))
+            }.resume()
+        }
+    }
+
+    // MARK: Track action (click)
+
+    public func inboxTrackAction(
+        messageId: String,
+        userId: String,
+        accessToken: String,
+        realm: String
+    ) async -> Result<Void, RelevaError> {
+        return await inboxPost(
+            path: "/messages/\(messageId)/action",
+            body: ["userId": userId, "devicePlatform": "ios"],
+            accessToken: accessToken,
+            realm: realm
+        )
+    }
+
+    // MARK: Private helper
+
+    private func inboxPost(
+        path: String,
+        body: [String: Any],
+        accessToken: String,
+        realm: String
+    ) async -> Result<Void, RelevaError> {
+        guard let url = URL(string: inboxBaseUrl(accessToken: accessToken, realm: realm) + path) else {
+            return .failure(.invalidConfiguration("Invalid inbox URL"))
+        }
+
+        return await withCheckedContinuation { continuation in
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = config.requestTimeoutInterval
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("RelevaSDK-iOS/\(SDKVersion.current)", forHTTPHeaderField: "User-Agent")
+
+            if let bodyData = try? JSONSerialization.data(withJSONObject: body) {
+                request.httpBody = bodyData
+            }
+
+            session.dataTask(with: request) { _, response, error in
+                if let error = error {
+                    continuation.resume(returning: .failure(.networkError(error.localizedDescription)))
+                    return
+                }
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    continuation.resume(returning: .failure(.serverError(0, "POST failed at \(path)")))
+                    return
+                }
+                continuation.resume(returning: .success(()))
+            }.resume()
+        }
+    }
+}

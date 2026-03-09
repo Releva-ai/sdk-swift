@@ -31,6 +31,12 @@ public class StorageService {
 
         // Profile merge
         case mergeProfileIds = "rlv_merge_profile_ids"
+
+        // App Inbox
+        case inboxMessages = "rlv_inbox_messages"
+        case inboxUnreadCount = "rlv_inbox_unread_count"
+        case inboxNextCursor = "rlv_inbox_next_cursor"
+        case inboxLastFetch = "rlv_inbox_last_fetch"
     }
 
     // MARK: - Properties
