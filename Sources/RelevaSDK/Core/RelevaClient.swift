@@ -68,6 +68,9 @@ public class RelevaClient {
     /// Notification service
     private var notificationService: NotificationService?
 
+    /// Banner manager service
+    private var bannerManager: BannerManagerService?
+
     // MARK: - Initializers
 
     /// Initialize Releva client
@@ -183,6 +186,11 @@ public class RelevaClient {
 
         storage.saveCart(cart)
 
+        // Trigger cart change banners
+        if cartChanged {
+            bannerManager?.onCartChanged()
+        }
+
         if config.enableDebugLogging {
             print("RelevaSDK: Cart updated with \(cart.products.count) products (changed: \(cartChanged))")
         }
@@ -237,6 +245,11 @@ public class RelevaClient {
         }
 
         storage.saveWishlist(products)
+
+        // Trigger wishlist change banners
+        if wishlistChanged {
+            bannerManager?.onWishlistChanged()
+        }
 
         if config.enableDebugLogging {
             print("RelevaSDK: Wishlist updated with \(products.count) products (changed: \(wishlistChanged))")
@@ -295,8 +308,12 @@ public class RelevaClient {
         // Send request
         networkService.sendPushRequest(requestDict, context: context) { result in
             // Reset change flags after successful request
-            if case .success = result {
+            if case .success(let response) = result {
                 self.resetChangeFlags()
+                // Initialize banners from response
+                if !response.banners.isEmpty {
+                    self.bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
+                }
             }
             completion(result)
         }
@@ -574,6 +591,10 @@ public class RelevaClient {
         }
 
         notificationService?.initialize()
+
+        if bannerManager == nil {
+            bannerManager = BannerManagerService()
+        }
 
         if config.enableDebugLogging {
             print("RelevaSDK: Push engagement tracking enabled")
