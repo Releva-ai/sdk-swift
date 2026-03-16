@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.4] - 2026-03-16
+
+### Added
+- Banner/in-app messaging support with full Unlayer design rendering
+  - Popup banners (centered dialog with overlay, full-screen support)
+  - Bar banners (top/bottom overlay with close button)
+  - Flyout banners (side panel from left/right)
+  - Static banners (inline with content: afterbegin, beforeend, afterend, replace strategies)
+- `BannerDisplayController` for reactive banner event streaming via Combine
+- `BannerManagerService` for banner trigger logic (immediately, delay, scroll, cart/wishlist changes)
+- `DesignRenderer` for converting Unlayer JSON designs to native SwiftUI views
+  - Supports: image, text, heading, button, divider content types
+  - Color parsing (hex, rgba), dimension parsing, edge insets
+- `BannerDisplayView` SwiftUI view modifier for easy integration
+- `bannerImpression()` and `bannerAction()` tracking methods on `RelevaClient`
+- Banner response parsing in `RelevaResponse` (supports `[String: Any]` design JSON)
+- `.bannerDisplay()` view modifier for SwiftUI integration
+
 ## [1.0.2] - 2025-12-09
 
 ### Changed

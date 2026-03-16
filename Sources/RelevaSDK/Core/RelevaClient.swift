@@ -450,6 +450,64 @@ public class RelevaClient {
         }
     }
 
+    // MARK: - Banner Tracking
+
+    /// Track banner impression
+    /// - Parameter banner: The banner that was displayed
+    public func bannerImpression(_ banner: BannerResponse) {
+        let payload: [String: Any] = [
+            "profileId": profileId ?? "",
+            "deviceId": deviceId ?? "",
+            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "banners": [
+                [
+                    "token": banner.token,
+                    "bannerId": String(banner.bannerId),
+                    "segmentId": String(banner.segmentId)
+                ]
+            ]
+        ]
+
+        networkService.sendBannerImpression(payload) { result in
+            if self.config.enableDebugLogging {
+                switch result {
+                case .success:
+                    print("RelevaSDK: Banner impression tracked for \(banner.token)")
+                case .failure(let error):
+                    print("RelevaSDK: Failed to track banner impression: \(error)")
+                }
+            }
+        }
+    }
+
+    /// Track banner action (click, close, etc.)
+    /// - Parameters:
+    ///   - banner: The banner that was acted upon
+    ///   - action: Action type (e.g., "bannerClick", "bannerClose")
+    public func bannerAction(_ banner: BannerResponse, action: String) {
+        let payload: [String: Any] = [
+            "deviceId": deviceId ?? "",
+            "profileId": profileId ?? "",
+            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "action": action,
+            "attributions": [
+                "bannerBlockId": banner.token,
+                "bannerId": String(banner.bannerId)
+            ]
+        ]
+
+        networkService.sendBannerAction(payload) { result in
+            if self.config.enableDebugLogging {
+                switch result {
+                case .success:
+                    print("RelevaSDK: Banner action '\(action)' tracked for \(banner.token)")
+                case .failure(let error):
+                    print("RelevaSDK: Failed to track banner action: \(error)")
+                }
+            }
+        }
+    }
+
     // MARK: - Push Notifications
 
     /// Register push notification token
