@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-03-16
+
+### Fixed
+- Fix push notification click tracking not registering on the backend
+  - Callback URL was being prepended with the SDK base URL, producing an invalid URL
+  - Changed from POST with JSON body to a simple GET request, matching what the backend expects
+  - Callback URLs are now fired directly using URLSession without auth headers
+
 ## [1.0.2] - 2025-12-09
 
 ### Changed
