@@ -26,13 +26,13 @@ Pod::Spec.new do |s|
   s.frameworks = 'Foundation', 'UIKit', 'UserNotifications'
 
   # Dependencies
-  s.dependency 'Firebase/Messaging', '~> 10.0'
+  s.dependency 'Firebase/Messaging', '~> 11.15'
 
   # Subspec for Notification Service Extension
   s.subspec 'NotificationExtension' do |ext|
     ext.source_files = 'Sources/RelevaNotificationExtension/**/*.swift'
     ext.frameworks = 'UserNotifications'
-    ext.dependency 'Firebase/Messaging', '~> 10.0'
+    ext.dependency 'Firebase/Messaging', '~> 11.15'
   end
 
   # Resource bundles (if needed for future features)
