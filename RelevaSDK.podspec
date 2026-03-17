@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'RelevaSDK'
-  s.version          = '1.0.3'
+  s.version          = '1.0.4'
   s.summary          = 'Releva SDK for iOS - Push notifications and tracking'
   s.description      = <<-DESC
     Releva SDK provides easy integration with Releva's recommendation engine,
@@ -26,13 +26,13 @@ Pod::Spec.new do |s|
   s.frameworks = 'Foundation', 'UIKit', 'UserNotifications'
 
   # Dependencies
-  s.dependency 'Firebase/Messaging', '~> 10.0'
+  s.dependency 'Firebase/Messaging', '~> 11.15'
 
   # Subspec for Notification Service Extension
   s.subspec 'NotificationExtension' do |ext|
     ext.source_files = 'Sources/RelevaNotificationExtension/**/*.swift'
     ext.frameworks = 'UserNotifications'
-    ext.dependency 'Firebase/Messaging', '~> 10.0'
+    ext.dependency 'Firebase/Messaging', '~> 11.15'
   end
 
   # Resource bundles (if needed for future features)

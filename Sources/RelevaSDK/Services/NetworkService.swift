@@ -143,7 +143,7 @@ public class NetworkService {
             switch result {
             case .success(let data):
                 do {
-                    let response = try JSONDecoder().decode(RelevaResponse.self, from: data)
+                    let response = try RelevaResponse.from(jsonData: data)
                     completion(.success(response))
                 } catch {
                     if self.config.enableDebugLogging {
@@ -251,6 +251,48 @@ public class NetworkService {
 
         group.notify(queue: .main) {
             completion(allSucceeded ? .success(true) : .failure(.networkError("Failed to send some events")))
+        }
+    }
+
+    // MARK: - Banner Tracking
+
+    /// Send banner impression
+    public func sendBannerImpression(
+        _ payload: [String: Any],
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        performRequest(
+            endpoint: "/api/v0/impressions",
+            method: .post,
+            body: payload,
+            retryAttempts: 2
+        ) { (result: NetworkResult<Data>) in
+            switch result {
+            case .success:
+                completion(.success(true))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    /// Send banner action (click, close, etc.)
+    public func sendBannerAction(
+        _ payload: [String: Any],
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        performRequest(
+            endpoint: "/api/v0/push/events",
+            method: .post,
+            body: payload,
+            retryAttempts: 2
+        ) { (result: NetworkResult<Data>) in
+            switch result {
+            case .success:
+                completion(.success(true))
+            case .failure(let error):
+                completion(.failure(error))
+            }
         }
     }
 
@@ -450,5 +492,5 @@ extension NetworkService {
 // MARK: - SDK Version
 
 struct SDKVersion {
-    static let current = "1.0.3"
+    static let current = "1.0.4"
 }

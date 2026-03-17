@@ -68,6 +68,9 @@ public class RelevaClient {
     /// Notification service
     private var notificationService: NotificationService?
 
+    /// Banner manager service
+    private var bannerManager: BannerManagerService?
+
     // MARK: - Initializers
 
     /// Initialize Releva client
@@ -183,6 +186,11 @@ public class RelevaClient {
 
         storage.saveCart(cart)
 
+        // Trigger cart change banners
+        if cartChanged {
+            bannerManager?.onCartChanged()
+        }
+
         if config.enableDebugLogging {
             print("RelevaSDK: Cart updated with \(cart.products.count) products (changed: \(cartChanged))")
         }
@@ -237,6 +245,11 @@ public class RelevaClient {
         }
 
         storage.saveWishlist(products)
+
+        // Trigger wishlist change banners
+        if wishlistChanged {
+            bannerManager?.onWishlistChanged()
+        }
 
         if config.enableDebugLogging {
             print("RelevaSDK: Wishlist updated with \(products.count) products (changed: \(wishlistChanged))")
@@ -295,8 +308,12 @@ public class RelevaClient {
         // Send request
         networkService.sendPushRequest(requestDict, context: context) { result in
             // Reset change flags after successful request
-            if case .success = result {
+            if case .success(let response) = result {
                 self.resetChangeFlags()
+                // Initialize banners from response
+                if !response.banners.isEmpty {
+                    self.bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
+                }
             }
             completion(result)
         }
@@ -450,6 +467,64 @@ public class RelevaClient {
         }
     }
 
+    // MARK: - Banner Tracking
+
+    /// Track banner impression
+    /// - Parameter banner: The banner that was displayed
+    public func bannerImpression(_ banner: BannerResponse) {
+        let payload: [String: Any] = [
+            "profileId": profileId ?? "",
+            "deviceId": deviceId ?? "",
+            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "banners": [
+                [
+                    "token": banner.token,
+                    "bannerId": String(banner.bannerId),
+                    "segmentId": String(banner.segmentId)
+                ]
+            ]
+        ]
+
+        networkService.sendBannerImpression(payload) { result in
+            if self.config.enableDebugLogging {
+                switch result {
+                case .success:
+                    print("RelevaSDK: Banner impression tracked for \(banner.token)")
+                case .failure(let error):
+                    print("RelevaSDK: Failed to track banner impression: \(error)")
+                }
+            }
+        }
+    }
+
+    /// Track banner action (click, close, etc.)
+    /// - Parameters:
+    ///   - banner: The banner that was acted upon
+    ///   - action: Action type (e.g., "bannerClick", "bannerClose")
+    public func bannerAction(_ banner: BannerResponse, action: String) {
+        let payload: [String: Any] = [
+            "deviceId": deviceId ?? "",
+            "profileId": profileId ?? "",
+            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "action": action,
+            "attributions": [
+                "bannerBlockId": banner.token,
+                "bannerId": String(banner.bannerId)
+            ]
+        ]
+
+        networkService.sendBannerAction(payload) { result in
+            if self.config.enableDebugLogging {
+                switch result {
+                case .success:
+                    print("RelevaSDK: Banner action '\(action)' tracked for \(banner.token)")
+                case .failure(let error):
+                    print("RelevaSDK: Failed to track banner action: \(error)")
+                }
+            }
+        }
+    }
+
     // MARK: - Push Notifications
 
     /// Register push notification token
@@ -516,6 +591,10 @@ public class RelevaClient {
         }
 
         notificationService?.initialize()
+
+        if bannerManager == nil {
+            bannerManager = BannerManagerService()
+        }
 
         if config.enableDebugLogging {
             print("RelevaSDK: Push engagement tracking enabled")
