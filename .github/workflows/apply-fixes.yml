@@ -1,0 +1,65 @@
+name: Apply PR Fixes
+
+on:
+  issue_comment: # <-- own trigger, separate from pull_request
+    types: [created]
+
+jobs:
+  apply-fixes:
+    # Only run on PR comments (not issue comments) containing /fix
+    if: >
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '/fix')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Configure git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git
+
+      - name: Apply fixes suggested by Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.issue.number }}
+
+            Read all the review comments on this PR and apply the suggested fixes directly to the codebase.
+
+            Steps:
+            1. Use `gh pr view` and `gh pr diff` to understand the current state of the PR.
+            2. Use `gh pr comments` to read all review feedback.
+            3. Apply the fixes directly by editing files using the Edit/Write tools.
+            4. After applying fixes, run any relevant tests or linters to verify nothing broke.
+            5. Commit the changes with a descriptive message like "Apply review suggestions".
+            6. Post a top-level PR comment summarizing what was changed and what (if anything) was skipped and why.
+
+            IMPORTANT - Formatting rules for every comment you post, including the initial progress tracking comment:
+            - NEVER use # followed by a number anywhere — not as a prefix (#1, #2) and not as a suffix (description #1, description #2). GitHub auto-links any #number as a PR/issue reference regardless of where it appears.
+            - To number a list, use only the "1." "2." "3." format, never "1)" or "#1" or "item #1".
+            - Use plain bullet points "-" when ordering doesn't matter.
+            - When referencing a file and line, write it as e.g. "`index.mjs` line 69".
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr reviews:*),Edit,Write,Bash(git commit:*),Bash(npm test:*),Bash(npm run lint:*)"
+
+      - name: Push changes
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git
+          BRANCH=$(gh pr view ${{ github.event.issue.number }} --json headRefName -q .headRefName)
+          git push origin HEAD:$BRANCH
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
