@@ -197,7 +197,8 @@ public class NetworkService {
         }
     }
 
-    /// Send engagement events
+    /// Send engagement events by firing each callback URL with a simple GET request.
+    /// The backend registers the click when the callback URL is fetched — no JSON body needed.
     /// - Parameters:
     ///   - events: Array of engagement events
     ///   - completion: Completion handler
@@ -205,28 +206,47 @@ public class NetworkService {
         _ events: [EngagementEvent],
         completion: @escaping CompletionHandler<Bool>
     ) {
-        // Group events by callback URL
-        let groupedEvents = EngagementEvent.groupByCallbackUrl(events)
+        // Deduplicate callback URLs (multiple events may share the same URL)
+        let uniqueCallbackUrls = Set(events.compactMap { $0.callbackUrl })
 
         let group = DispatchGroup()
         var allSucceeded = true
 
-        for (callbackUrl, urlEvents) in groupedEvents {
+        for callbackUrl in uniqueCallbackUrls {
+            guard let url = URL(string: callbackUrl) else {
+                if config.enableDebugLogging {
+                    print("RelevaSDK: Invalid callback URL, skipping: \(callbackUrl)")
+                }
+                continue
+            }
+
             group.enter()
 
-            let payload = urlEvents.map { $0.toDict() }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = requestTimeout
 
-            performRequest(
-                endpoint: callbackUrl,
-                method: .post,
-                body: payload,
-                retryAttempts: 2
-            ) { (result: NetworkResult<Data>) in
-                if case .failure = result {
+            if config.enableDebugLogging {
+                print("RelevaSDK: Firing callback URL: \(callbackUrl)")
+            }
+
+            let task = session.dataTask(with: request) { [weak self] _, response, error in
+                if let error = error {
+                    if self?.config.enableDebugLogging == true {
+                        print("RelevaSDK: Callback URL failed: \(error.localizedDescription)")
+                    }
                     allSucceeded = false
+                } else if let httpResponse = response as? HTTPURLResponse {
+                    if self?.config.enableDebugLogging == true {
+                        print("RelevaSDK: Callback URL response: \(httpResponse.statusCode)")
+                    }
+                    if httpResponse.statusCode >= 400 {
+                        allSucceeded = false
+                    }
                 }
                 group.leave()
             }
+            task.resume()
         }
 
         group.notify(queue: .main) {
@@ -430,5 +450,5 @@ extension NetworkService {
 // MARK: - SDK Version
 
 struct SDKVersion {
-    static let current = "1.0.0"
+    static let current = "1.0.3"
 }
