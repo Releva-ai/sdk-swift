@@ -1,20 +1,59 @@
 # Releva SDK for iOS
 
-Native iOS SDK for integrating Releva's recommendation engine, push notifications, and user tracking capabilities into your iOS applications.
+Native iOS SDK for integrating Releva's AI-powered e-commerce personalization platform into your iOS applications.
 
 ## Features
 
-- 📊 **User Tracking & Analytics** - Track screen views, product views, searches, and custom events
-- 🛒 **Cart & Wishlist Management** - Sync and track user shopping behavior
-- 🔔 **Push Notifications** - Rich push notifications with images and custom actions
-- 🎨 **In-App Banners** - Popup, bar, flyout, and static banners with Unlayer design rendering
-- 📖 **Stories** - Instagram/Facebook-style full-screen story viewer with auto-advance
-- 📊 **NPS Surveys** - Server-driven NPS surveys with customizable appearance
-- 📬 **App Inbox** - Persistent messages with pagination, caching, and optimistic updates
-- 🔍 **Advanced Filtering** - Complex product filtering with multiple conditions
-- 💾 **Offline Support** - Events are queued and sent when connection is available
-- 🔐 **Session Management** - Automatic 24-hour session handling
-- 🎯 **Product Recommendations** - Get personalized product recommendations
+### E-commerce Personalization
+- **Product Recommendations** - AI-powered product suggestions with real-time personalization
+- **Dynamic Content** - Personalized banners, stories, and content blocks based on user behavior
+- **Advanced Filtering** - Complex product filtering with nested AND/OR logic, price ranges, custom fields
+- **Smart Search** - Search tracking with result optimization and recommendation integration
+
+### Mobile Tracking & Analytics
+- **E-commerce Events** - Product views, cart changes, checkout tracking, search analytics
+- **Custom Events** - Flexible event system for business-specific tracking needs
+- **Session Management** - Automatic 24-hour session handling
+
+### Push Notifications
+- **Firebase Integration** - Complete FCM push notification system
+- **Rich Notifications** - Images, action buttons, and deep linking support
+- **Navigation** - Automatic screen and URL navigation from notification taps
+- **Engagement Analytics** - Delivered, opened, clicked tracking
+- **Notification Service Extension** - Background processing for rich media
+
+### In-App Banners
+- **Multiple Display Types** - Popup modals, bar overlays (top/bottom), flyout side panels, and static inline banners
+- **Server-Driven Triggers** - immediately, delaySeconds, scrollPercentage, cartChanged, wishlistChanged
+- **Unlayer Rendering** - Native SwiftUI rendering of Unlayer design JSON (images, text, headings, buttons, dividers)
+- **Automatic Tracking** - Impression, click, and dismiss events
+
+### Stories
+- **Full-Screen Viewer** - Instagram/Facebook-style multi-slide story viewer
+- **Auto-Advance** - Configurable duration per slide with animated progress bars
+- **Navigation** - Tap left/right halves, swipe, or use close button
+- **End Behaviors** - dismiss, loop, or stayOnLast
+- **Queue System** - Multiple stories queued and shown sequentially
+- **Automatic Tracking** - Impression, slide view, slide click, complete, close events
+
+### NPS Surveys
+- **Server-Driven UI** - Colors, button styles, labels, and dark mode all controlled from the dashboard
+- **Trigger System** - appOpen, sessionCount, customEvent, screenView triggers
+- **3-Step Flow** - Score selection (0-10) → follow-up comment → thank you (auto-dismiss)
+- **Session Suppression** - Survey shown once per session, with cancel event support
+
+### App Inbox
+- **Persistent Messages** - In-app message centre where messages survive until read, deleted, or expired
+- **Rich Content** - Messages rendered with Unlayer design JSON, fully personalized per user
+- **Real-Time Sync** - Silent push notifications trigger automatic inbox refresh
+- **Optimistic Updates** - Mark read, mark all read, and delete with instant UI feedback and rollback
+- **Cursor Pagination** - Efficient infinite scroll with server-side cursor pagination
+- **Local Caching** - Messages cached locally with 5-minute stale detection
+
+### Flexible Configuration
+- **Modular Setup** - Enable only needed features (tracking, push, analytics)
+- **Endpoint Override** - Runtime API endpoint override for local development
+- **Offline Support** - Events queued and sent when connection is available
 
 ## Requirements
 
@@ -36,7 +75,7 @@ target 'YourApp' do
 
   # Local Releva SDK
   pod 'RelevaSDK', :path => '../sdk-swift'
-  
+
   # For Notification Service Extension
   target 'NotificationExtension' do
     pod 'Firebase/Messaging', '~> 10.0'
@@ -222,7 +261,7 @@ target 'YourApp' do
 
   # Local Releva SDK
   pod 'RelevaSDK', :path => '../sdk-swift'
-  
+
   # For Notification Service Extension
   target 'NotificationExtension' do
     pod 'Firebase/Messaging', '~> 10.0'
@@ -251,11 +290,11 @@ class NotificationService: RelevaNotificationServiceExtension {
 ```
 
 **Done!** Your app now supports:
-- ✅ Push notifications with images
-- ✅ Custom action buttons
-- ✅ Automatic click tracking
-- ✅ Deep link handling (both internal and external URLs)
-- ✅ Screen navigation within your app
+- Push notifications with images
+- Custom action buttons
+- Automatic click tracking
+- Deep link handling (both internal and external URLs)
+- Screen navigation within your app
 
 > **Note**: The SDK uses runtime reflection to safely handle UIApplication APIs. This means it works out-of-the-box in both your main app and the extension without any build configuration.
 
@@ -267,10 +306,11 @@ The SDK supports two types of navigation from push notifications:
 ```json
 {
   "target": "screen",
-  "navigate_to_screen": "/cart"
+  "navigate_to_screen": "/cart",
+  "navigate_to_parameters": "{\"inboxMessageId\": 123}"
 }
 ```
-Posts a `RelevaNavigateToScreen` notification that your app can observe.
+Posts a `RelevaNavigateToScreen` notification that your app can observe. Parameters are parsed from JSON and included as `parsedParameters` in the notification userInfo.
 
 **2. URL Navigation** (`target: "url"`):
 ```json
@@ -302,16 +342,16 @@ let product = ViewedProduct(id: "product-123")
 
 client.trackProductView(
     // Token should be changed with the one you have for product page inside Releva's admin panel (UUID)
-    screenToken: "product_detail"
-    product: product,
+    screenToken: "product_detail",
+    product: product
 )
 
 // Track search
 client.trackSearchView(
     // Token should be changed with the one you have for search page inside Releva's admin panel (UUID)
-    screenToken: "search_results"
+    screenToken: "search_results",
     query: "iPhone",
-    resultProductIds: ["product-1", "product-2", "product-3"],
+    resultProductIds: ["product-1", "product-2", "product-3"]
 )
 ```
 
@@ -409,13 +449,136 @@ client.push(request) { result in
 }
 ```
 
-## NPS Surveys
+## Banners
 
-The SDK supports server-driven NPS (Net Promoter Score) surveys. Surveys are triggered by the server and displayed automatically.
+Banners are dynamic content overlays (popup modals, bars, flyouts, or static inline content) that can be displayed based on user behavior and configured triggers. The SDK automatically handles banner display, positioning, and tracking.
+
+### Using the Banner Display Modifier
+
+Add the `.bannerDisplay()` modifier to the view where banners should appear:
+
+```swift
+HomeView()
+    .bannerDisplay(client: relevaClient, targetSelector: "#home-content") { url in
+        // Handle link taps from banner content
+        handleDeepLink(url)
+    }
+```
+
+### Banner Lifecycle
+
+**Banners reset on each `trackScreenView()` call.** When you navigate back to a screen and call `trackScreenView()`, banners are re-evaluated and will show again based on their trigger conditions. This matches the web SDK behavior.
+
+### Banner Triggers
+
+Banners are configured with triggers in the Releva dashboard:
+
+- **immediately** — Shows as soon as the screen loads
+- **delaySeconds** — Shows after a specified delay
+- **scrollPercentage** — Shows when user scrolls to a certain percentage (requires scroll percentage provider)
+- **cartChanged** — Shows when cart is modified
+- **wishlistChanged** — Shows when wishlist is modified
+- **leaveIntent** — Not supported on mobile (web-only feature)
+
+### Banner Types
+
+| Type | Description |
+|------|-------------|
+| **Popup** | Centered modal dialog with overlay backdrop and close button. Supports full-screen mode. |
+| **Bar** | Fixed position bar at top or bottom with close button and shadow. |
+| **Flyout** | Side panel sliding in from left or right with scrollable content. |
+| **Static** | Inline content injected before or after the wrapped view (afterbegin, beforeend, afterend, replace). |
+
+All banner styling, positioning, and content are configured in the Releva dashboard using the Unlayer editor.
+
+### Automatic Tracking
+
+The SDK automatically tracks:
+- **Banner impressions** — when a banner is displayed
+- **Banner clicks** — when user taps a link or button within a banner
+- **Banner dismissals** — when user closes a banner
+
+## Stories
+
+Stories are full-screen, multi-slide content experiences similar to Instagram or Facebook stories. They support auto-advance timers, progress indicators, tap/swipe navigation, and configurable end behavior. Like banners, stories are configured in the Releva dashboard and delivered as part of the push response.
 
 ### Setup
 
-Wrap your root view with the `.npsDisplay()` modifier:
+Add the `.storyDisplay()` modifier to the view where stories should appear:
+
+```swift
+HomeView()
+    .storyDisplay(client: relevaClient) { url in
+        // Handle link taps from story slides
+        handleDeepLink(url)
+    }
+```
+
+Stories are triggered automatically when the server returns them in a push response. The SDK evaluates triggers and opens the story viewer when conditions are met.
+
+### How Stories Are Triggered
+
+Stories share the same trigger system as banners. When you call `trackScreenView()` (or any push method), the server response may include stories:
+
+- **immediately** — Story opens as soon as the response is processed
+- **delaySeconds** — Story opens after the configured delay
+- **scrollPercentage** — Story opens when the user scrolls past the threshold
+- **cartChanged** / **wishlistChanged** — Story opens when cart or wishlist is modified
+
+### Story Viewer Behavior
+
+The story viewer is a full-screen overlay that displays slides sequentially:
+
+- **Progress indicators** at the top show the current position and auto-advance timer
+- **Tap left half** of the screen to go to the previous slide
+- **Tap right half** to go to the next slide
+- **Swipe left/right** to navigate between slides
+- **Close button** (X) next to the progress bars dismisses the story
+- Each slide's **background color** is read from the Unlayer design JSON
+- **Action buttons** at the bottom when a slide has a configured action
+
+When multiple stories are triggered simultaneously, they are queued and shown one at a time.
+
+### End Behavior
+
+Each story has a configurable end behavior (set in the Releva dashboard):
+
+- **dismiss** (default) — Story closes automatically after the last slide
+- **loop** — Story restarts from the first slide
+- **stayOnLast** — Story stays on the last slide until the user closes it
+
+### Link Handling
+
+Story slides can contain interactive elements (buttons, links) created in the Unlayer editor. When a user taps one of these elements, the `onLinkTap` callback is called with the URL:
+
+```swift
+.storyDisplay(client: client) { url in
+    // Navigate to a screen, open a browser, or handle deep links
+    if let parsed = URL(string: url) {
+        UIApplication.shared.open(parsed)
+    }
+}
+```
+
+### Automatic Tracking
+
+The SDK automatically tracks all story engagement events:
+
+- **storyImpression** — when the story viewer opens
+- **storySlideView** — when each slide is displayed
+- **storySlideClick** — when the user taps a link or button within a slide
+- **storyComplete** — when the last slide is reached
+- **storyClose** — when the user dismisses the story
+
+## NPS Surveys
+
+The SDK supports native NPS (Net Promoter Score) surveys delivered as overlays. The server decides which profiles are eligible; the SDK handles trigger evaluation, rendering, and submission.
+
+### Setup
+
+**1. Add `.npsDisplay()` to your root view**
+
+Wrap your root view so surveys can appear on any screen:
 
 ```swift
 ContentView()
@@ -424,102 +587,185 @@ ContentView()
     })
 ```
 
-### Custom Event Triggers
+**2. Set the app version (recommended)**
 
-Fire named events to trigger NPS surveys configured with `customEvent` triggers:
-
-```swift
-client.trackEvent("checkout_complete")
-```
-
-### App Version (for server-side filtering)
+Call this once after initialising the client so the server can filter by app version:
 
 ```swift
 client.setAppVersion("1.2.3")
 ```
 
-## Stories
+### How It Works
 
-Full-screen, Instagram/Facebook-style stories with auto-advance, progress bars, and slide navigation.
+On every `push()` call the SDK automatically includes device context (platform, SDK version, app version) in the request body. When the server returns an `nps` field in the response, the SDK stores the config and evaluates trigger conditions:
 
-### Setup
+| Trigger type | When it fires |
+|---|---|
+| `appOpen` | First push call of a new session |
+| `sessionCount` | Treated as already satisfied (server pre-checks `minSessions`) |
+| `screenView` | Server-side evaluation |
+| `customEvent` | When `client.trackEvent(eventName)` matches the configured `eventName` |
 
-Wrap your content view with the `.storyDisplay()` modifier:
+After a trigger fires, the SDK waits `triggerDelaySeconds` before presenting the overlay. Once shown (or cancelled), it is suppressed for the rest of the session.
+
+### Firing Custom Events
 
 ```swift
-HomeView()
-    .storyDisplay(client: client) { url in
-        // Handle link taps from story slides
-        handleDeepLink(url)
-    }
+// Trigger NPS after checkout
+client.trackEvent("checkout_complete")
+
+// Cancel pending NPS if user enters a sensitive flow
+client.trackEvent("checkout_started")
 ```
 
-Stories are triggered automatically based on server configuration (immediately, after delay, on scroll, on cart/wishlist change). Multiple stories are queued and shown sequentially.
+### Overlay Appearance
+
+The survey appearance is fully server-driven: colors, button style (`pill`/`rounded`/`square`), position (`bottomSheet`/`modal`), labels, and dark-mode variants are all read from the `nps.appearance` config returned by the server. No hardcoded strings or colors are used.
+
+### NPS API Reference
+
+| Method | Description |
+|---|---|
+| `setAppVersion(_ version: String)` | Set the running app version for NPS context |
+| `trackEvent(_ eventName: String)` | Fire a named event (triggers / cancel events) |
+| `submitNpsResponse(token:score:comment:)` | Submit a survey response (called by `NpsDisplayModifier`) |
 
 ## App Inbox
 
-Persistent in-app messages with cursor pagination, optimistic updates, and local caching.
+App Inbox is a persistent, in-app message centre. Unlike push notifications, inbox messages survive until the user reads or deletes them (or they expire). Messages are delivered server-side with content already personalized — the SDK receives ready-to-render data.
 
-### Initialize
+### Initialize the Inbox
 
-Call after `setProfileId()`:
+Call `initializeInbox()` after setting the profile ID:
 
 ```swift
+client.setProfileId("user-123")
 client.initializeInbox()
 ```
 
 ### Access Inbox State
 
-The inbox service is an `ObservableObject` that you can observe in SwiftUI:
+The `InboxService` is an `ObservableObject`. Use Combine or SwiftUI observation for reactive UI updates:
 
 ```swift
 @ObservedObject var inboxService = InboxService.shared
 
-// In your view
-Text("Unread: \(inboxService.state.unreadCount)")
-List(inboxService.state.messages) { message in
-    Text(message.title)
-}
+// Current state
+inboxService.state.messages      // [InboxMessage]
+inboxService.state.unreadCount   // Int
+inboxService.state.isLoading     // Bool
+inboxService.state.hasMore       // Bool (more pages available)
+inboxService.state.isStale       // Bool (cache older than 5 min)
 ```
 
-### Inbox Operations
+### Refresh and Pagination
 
 ```swift
 let inbox = client.inbox
 
-inbox.refresh()                          // Fetch first page + unread count
-inbox.loadMore()                         // Load next page (cursor pagination)
-inbox.markAsRead("message-id")           // Optimistic update with rollback
-inbox.markAllAsRead()                    // Mark all as read
-inbox.deleteMessage("message-id")        // Optimistic delete with rollback
-inbox.refreshIfStale()                   // Only refresh if cache > 5 min old
+// Pull-to-refresh: fetch first page + unread count in parallel
+inbox.refresh()
+
+// Infinite scroll: load next page (cursor-based)
+inbox.loadMore()
+
+// Refresh only if cache is stale (> 5 minutes)
+inbox.refreshIfStale()
 ```
 
-### Render Inbox Messages
+### Mark as Read and Delete
 
-Use `InboxMessageView` to render message content with the Unlayer design renderer:
+All mutations use optimistic updates — the UI updates instantly, and reverts on API error:
 
 ```swift
-InboxMessageView(message: message) { url in
-    // Handle link taps
-    handleDeepLink(url)
+// Mark a single message as read
+inbox.markAsRead(message.id)
+
+// Mark all messages as read
+inbox.markAllAsRead()
+
+// Delete a message
+inbox.deleteMessage(message.id)
+```
+
+### Track Message Actions
+
+Call `trackAction()` when a user taps an interactive element inside a message (e.g. a button or link). This records an analytics event but does not mark the message as read:
+
+```swift
+inbox.trackAction(message.id)
+```
+
+### Render Message Content
+
+Use `InboxMessageView` to render the message body. It wraps the SDK's `DesignRenderer` and automatically tracks actions on link taps:
+
+```swift
+import RelevaSDK
+
+InboxMessageView(message: inboxMessage) { url in
+    // Handle URL (e.g. open in browser or deep link)
+    if let parsed = URL(string: url) {
+        UIApplication.shared.open(parsed)
+    }
 }
 ```
 
-### Silent Push Sync
+### Inbox Sync
 
-The SDK automatically handles `inbox_sync` silent push notifications to refresh the inbox. No additional configuration needed.
+When a push notification has an associated inbox message, the backend includes an `inbox_sync` flag in the push payload. The SDK automatically handles this — it refreshes the inbox alongside displaying the notification. No additional setup is required beyond `enablePushEngagementTracking()`.
+
+The inbox also refreshes automatically when the app returns to the foreground (via `UIApplication.willEnterForegroundNotification`), as a reliable fallback for when silent push doesn't arrive.
+
+### InboxMessage Data Model
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `String` (UUID) | Unique ID of this delivery. Use in all read/delete/action calls. |
+| `title` | `String` | Resolved message title. |
+| `design` | `[String: Any]` | Unlayer design JSON, ready to render via `InboxMessageView`. |
+| `read` | `Bool` | Whether the user has read this message. |
+| `createdAt` | `Date` | When the message was delivered. Messages are sorted newest-first. |
+| `inboxMessageId` | `Int` | ID of the source message template. Use for push notification routing. |
+
+## Expected Push Notification Payload
+
+Releva sends push notifications with the following payload structure. On iOS, Firebase places custom data at the root level alongside `aps`:
+
+```json
+{
+  "click_action": "RELEVA_NOTIFICATION_CLICK",
+  "title": "Special Offer!",
+  "body": "Get 20% off your next purchase",
+  "imageUrl": "https://example.com/image.jpg",
+  "button": "Shop Now",
+  "target": "screen",
+  "navigate_to_screen": "/product/123",
+  "navigate_to_parameters": "{\"inboxMessageId\": 456}",
+  "inbox_sync": "true",
+  "callbackUrl": "https://api.releva.ai/track/..."
+}
+```
+
+The SDK automatically:
+- Displays rich notifications with images and action buttons
+- Navigates to the specified screen or URL when tapped
+- Tracks engagement metrics (delivered, opened, clicked)
+- Triggers inbox refresh when `inbox_sync` is present
 
 ## Endpoint Override
 
 For local development (e.g., using ngrok), you can override the API endpoint at runtime:
 
 ```swift
+// Point all API requests to a local/ngrok endpoint
 client.setEndpointOverride("https://abc123.ngrok-free.app")
 
-// Clear the override
+// Clear the override (revert to realm-based URL)
 client.setEndpointOverride(nil)
 ```
+
+The override takes precedence over both the realm-based URL and the `customEndpoint` in `RelevaConfig`.
 
 ## Configuration Options
 
@@ -549,6 +795,40 @@ let config = RelevaConfig(
 )
 ```
 
+## API Reference
+
+### RelevaClient
+
+| Method | Description |
+|---|---|
+| `init(realm:accessToken:config:)` | Initialize the SDK |
+| `setDeviceId(_:)` | Set unique device identifier |
+| `setProfileId(_:_:)` | Set user profile ID (second param: skipMerge) |
+| `setEndpointOverride(_:)` | Override API endpoint at runtime |
+| `setAppVersion(_:)` | Set app version for NPS context |
+| `setCart(_:)` | Set shopping cart |
+| `setWishlist(_:)` | Set wishlist |
+| `clearCartStorage()` | Clear cart without API call |
+| `clearWishlistStorage()` | Clear wishlist without API call |
+| `push(_:completion:)` | Send a push request |
+| `trackScreenView(screenToken:productIds:categories:filter:completion:)` | Track screen view |
+| `trackProductView(product:screenToken:completion:)` | Track product view |
+| `trackSearchView(query:resultProductIds:screenToken:filter:completion:)` | Track search |
+| `trackCheckoutSuccess(orderedCart:screenToken:userEmail:...:completion:)` | Track checkout |
+| `trackCustomEvent(_:screenToken:completion:)` | Track custom event |
+| `registerPushToken(_:deviceType:completion:)` | Register FCM token |
+| `enablePushEngagementTracking()` | Enable push engagement tracking |
+| `trackEngagement(userInfo:type:)` | Track push engagement |
+| `isRelevaMessage(userInfo:)` | Check if notification is from Releva |
+| `bannerImpression(_:)` | Track banner impression |
+| `bannerAction(_:action:)` | Track banner action |
+| `storyImpression(_:)` | Track story impression |
+| `storyAction(_:action:slideId:)` | Track story action |
+| `trackEvent(_:)` | Fire NPS custom event trigger |
+| `submitNpsResponse(token:score:comment:completion:)` | Submit NPS response |
+| `initializeInbox()` | Initialize inbox service |
+| `inbox` | Access InboxService singleton |
+
 ## Async/Await Support
 
 The SDK supports modern Swift async/await patterns:
@@ -557,15 +837,9 @@ The SDK supports modern Swift async/await patterns:
 // Using async/await
 Task {
     do {
-        // Track screen view, "home" should be changed with the token used for home page in Releva's admin panel
         let response = try await client.trackScreenView(screenToken: "home")
-
-        // Register push token
         let success = try await client.registerPushToken(token)
-
-        // Send custom request
         let result = try await client.push(request)
-
     } catch {
         print("Error: \(error)")
     }
@@ -598,6 +872,18 @@ Task {
 - Enable debug logging to see requests
 - Confirm realm and access token are correct
 
+**Inbox not loading:**
+- Ensure `initializeInbox()` is called after `setProfileId()`
+- Check that the profile ID matches a user with inbox messages
+- Verify the access token has inbox permissions
+- Enable debug logging to see inbox API requests
+
+**NPS survey not appearing:**
+- Verify the survey is configured and active in the Releva dashboard
+- Check that triggers match (e.g., `trackEvent()` with correct event name)
+- The survey is suppressed for the rest of the session after being shown once
+- Enable debug logging to see NPS trigger evaluation
+
 **Session expiring too often:**
 - Sessions expire after 24 hours by design
 - Check device time settings
@@ -620,7 +906,8 @@ let config = RelevaConfig(enableDebugLogging: true)
 This will show:
 - Network requests and responses
 - Notification processing
-- UIApplication availability (in extensions vs main app)
+- Banner, story, and NPS trigger evaluation
+- Inbox API calls and cache state
 - Token registration
 
 ## Support
