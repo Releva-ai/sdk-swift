@@ -7,6 +7,10 @@ Native iOS SDK for integrating Releva's recommendation engine, push notification
 - 📊 **User Tracking & Analytics** - Track screen views, product views, searches, and custom events
 - 🛒 **Cart & Wishlist Management** - Sync and track user shopping behavior
 - 🔔 **Push Notifications** - Rich push notifications with images and custom actions
+- 🎨 **In-App Banners** - Popup, bar, flyout, and static banners with Unlayer design rendering
+- 📖 **Stories** - Instagram/Facebook-style full-screen story viewer with auto-advance
+- 📊 **NPS Surveys** - Server-driven NPS surveys with customizable appearance
+- 📬 **App Inbox** - Persistent messages with pagination, caching, and optimistic updates
 - 🔍 **Advanced Filtering** - Complex product filtering with multiple conditions
 - 💾 **Offline Support** - Events are queued and sent when connection is available
 - 🔐 **Session Management** - Automatic 24-hour session handling
@@ -403,6 +407,118 @@ client.push(request) { result in
         print("Error: \(error)")
     }
 }
+```
+
+## NPS Surveys
+
+The SDK supports server-driven NPS (Net Promoter Score) surveys. Surveys are triggered by the server and displayed automatically.
+
+### Setup
+
+Wrap your root view with the `.npsDisplay()` modifier:
+
+```swift
+ContentView()
+    .npsDisplay(onSubmit: { token, score, comment in
+        client.submitNpsResponse(token: token, score: score, comment: comment)
+    })
+```
+
+### Custom Event Triggers
+
+Fire named events to trigger NPS surveys configured with `customEvent` triggers:
+
+```swift
+client.trackEvent("checkout_complete")
+```
+
+### App Version (for server-side filtering)
+
+```swift
+client.setAppVersion("1.2.3")
+```
+
+## Stories
+
+Full-screen, Instagram/Facebook-style stories with auto-advance, progress bars, and slide navigation.
+
+### Setup
+
+Wrap your content view with the `.storyDisplay()` modifier:
+
+```swift
+HomeView()
+    .storyDisplay(client: client) { url in
+        // Handle link taps from story slides
+        handleDeepLink(url)
+    }
+```
+
+Stories are triggered automatically based on server configuration (immediately, after delay, on scroll, on cart/wishlist change). Multiple stories are queued and shown sequentially.
+
+## App Inbox
+
+Persistent in-app messages with cursor pagination, optimistic updates, and local caching.
+
+### Initialize
+
+Call after `setProfileId()`:
+
+```swift
+client.initializeInbox()
+```
+
+### Access Inbox State
+
+The inbox service is an `ObservableObject` that you can observe in SwiftUI:
+
+```swift
+@ObservedObject var inboxService = InboxService.shared
+
+// In your view
+Text("Unread: \(inboxService.state.unreadCount)")
+List(inboxService.state.messages) { message in
+    Text(message.title)
+}
+```
+
+### Inbox Operations
+
+```swift
+let inbox = client.inbox
+
+inbox.refresh()                          // Fetch first page + unread count
+inbox.loadMore()                         // Load next page (cursor pagination)
+inbox.markAsRead("message-id")           // Optimistic update with rollback
+inbox.markAllAsRead()                    // Mark all as read
+inbox.deleteMessage("message-id")        // Optimistic delete with rollback
+inbox.refreshIfStale()                   // Only refresh if cache > 5 min old
+```
+
+### Render Inbox Messages
+
+Use `InboxMessageView` to render message content with the Unlayer design renderer:
+
+```swift
+InboxMessageView(message: message) { url in
+    // Handle link taps
+    handleDeepLink(url)
+}
+```
+
+### Silent Push Sync
+
+The SDK automatically handles `inbox_sync` silent push notifications to refresh the inbox. No additional configuration needed.
+
+## Endpoint Override
+
+For local development (e.g., using ngrok), you can override the API endpoint at runtime:
+
+```swift
+client.setEndpointOverride("https://abc123.ngrok-free.app")
+
+// Clear the override
+client.setEndpointOverride(nil)
 ```
 
 ## Configuration Options

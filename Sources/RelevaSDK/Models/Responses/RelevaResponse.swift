@@ -11,23 +11,29 @@ public struct RelevaResponse: Codable, Equatable {
     /// List of banner responses
     public let banners: [BannerResponse]
 
+    /// List of story responses
+    public let stories: [StoryResponse]
+
+    /// NPS survey configuration (if a server-side trigger fired)
+    public let nps: NpsConfig?
+
     /// Push notification configuration info
     public let push: PushInfo?
 
     // MARK: - Initializers
 
     /// Initialize a Releva response
-    /// - Parameters:
-    ///   - recommenders: List of recommender responses
-    ///   - banners: List of banner responses
-    ///   - push: Push notification configuration
     public init(
         recommenders: [RecommenderResponse] = [],
         banners: [BannerResponse] = [],
+        stories: [StoryResponse] = [],
+        nps: NpsConfig? = nil,
         push: PushInfo? = nil
     ) {
         self.recommenders = recommenders
         self.banners = banners
+        self.stories = stories
+        self.nps = nps
         self.push = push
     }
 
@@ -41,6 +47,16 @@ public struct RelevaResponse: Codable, Equatable {
     /// Check if there are any banners available
     public var hasBanners: Bool {
         return !banners.isEmpty
+    }
+
+    /// Check if there are any stories available
+    public var hasStories: Bool {
+        return !stories.isEmpty
+    }
+
+    /// Check if NPS config is available
+    public var hasNps: Bool {
+        return nps != nil
     }
 
     /// Check if push configuration is available
@@ -130,7 +146,7 @@ public struct RelevaResponse: Codable, Equatable {
     // MARK: - Codable
 
     enum CodingKeys: String, CodingKey {
-        case recommenders, banners, push
+        case recommenders, banners, stories, nps, push
     }
 
     public init(from decoder: Decoder) throws {
@@ -138,16 +154,18 @@ public struct RelevaResponse: Codable, Equatable {
         recommenders = try container.decodeIfPresent([RecommenderResponse].self, forKey: .recommenders) ?? []
         push = try container.decodeIfPresent(PushInfo.self, forKey: .push)
 
-        // Banners contain [String: Any] fields, so we decode them manually from raw JSON
-        // The standard Codable pipeline can't handle this, so we use the raw data approach
+        // Banners, stories, and NPS contain [String: Any] fields, so we decode them manually
         banners = RelevaResponse.decodeBanners(from: decoder)
+        // Stories and NPS are parsed from raw JSON in from(jsonData:)
+        stories = []
+        nps = nil
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(recommenders, forKey: .recommenders)
         try container.encodeIfPresent(push, forKey: .push)
-        // Banners are not re-encoded (they're read-only from API)
+        // Banners, stories, NPS are not re-encoded (they're read-only from API)
     }
 
     /// Decode banners from raw JSON data since BannerResponse contains [String: Any] fields
@@ -166,7 +184,7 @@ public struct RelevaResponse: Codable, Equatable {
         }
     }
 
-    // MARK: - Equatable (banners excluded from comparison since they contain [String: Any])
+    // MARK: - Equatable (banners/stories/nps excluded since they contain [String: Any])
 
     public static func == (lhs: RelevaResponse, rhs: RelevaResponse) -> Bool {
         return lhs.recommenders == rhs.recommenders && lhs.push == rhs.push
@@ -179,25 +197,34 @@ public struct RelevaResponse: Codable, Equatable {
     /// - Returns: RelevaResponse instance
     /// - Throws: Decoding error if JSON is invalid
     public static func from(jsonData data: Data) throws -> RelevaResponse {
-        // First decode banners manually from raw JSON (since they contain [String: Any])
+        // Parse banners, stories, and NPS manually from raw JSON (they contain [String: Any])
         var parsedBanners: [BannerResponse] = []
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let bannersArray = json["banners"] as? [[String: Any]] {
-            parsedBanners = bannersArray.map { BannerResponse.from(dict: $0) }
+        var parsedStories: [StoryResponse] = []
+        var parsedNps: NpsConfig?
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let bannersArray = json["banners"] as? [[String: Any]] {
+                parsedBanners = bannersArray.map { BannerResponse.from(dict: $0) }
+            }
+            if let storiesArray = json["stories"] as? [[String: Any]] {
+                parsedStories = storiesArray.map { StoryResponse.from(dict: $0) }
+            }
+            if let npsDict = json["nps"] as? [String: Any] {
+                parsedNps = NpsConfig.from(dict: npsDict)
+            }
         }
 
         // Decode the rest with standard Codable
         let decoder = JSONDecoder()
-        var response = try decoder.decode(RelevaResponse.self, from: data)
-        // Override banners with manually parsed ones (more reliable)
-        if !parsedBanners.isEmpty {
-            response = RelevaResponse(
-                recommenders: response.recommenders,
-                banners: parsedBanners,
-                push: response.push
-            )
-        }
-        return response
+        let response = try decoder.decode(RelevaResponse.self, from: data)
+
+        return RelevaResponse(
+            recommenders: response.recommenders,
+            banners: parsedBanners.isEmpty ? response.banners : parsedBanners,
+            stories: parsedStories,
+            nps: parsedNps,
+            push: response.push
+        )
     }
 
     /// Create from JSON string
@@ -214,7 +241,7 @@ public struct RelevaResponse: Codable, Equatable {
     /// Create an empty response
     /// - Returns: Empty RelevaResponse instance
     public static func empty() -> RelevaResponse {
-        return RelevaResponse(recommenders: [], banners: [], push: nil)
+        return RelevaResponse(recommenders: [], banners: [], stories: [], nps: nil, push: nil)
     }
 }
 
@@ -273,9 +300,10 @@ extension RelevaResponse {
     public static func merge(_ responses: [RelevaResponse]) -> RelevaResponse {
         let allRecommenders = responses.flatMap { $0.recommenders }
         let allBanners = responses.flatMap { $0.banners }
-        // Use the first non-nil push info
+        let allStories = responses.flatMap { $0.stories }
         let pushInfo = responses.first { $0.push != nil }?.push
-        return RelevaResponse(recommenders: allRecommenders, banners: allBanners, push: pushInfo)
+        let npsInfo = responses.first { $0.nps != nil }?.nps
+        return RelevaResponse(recommenders: allRecommenders, banners: allBanners, stories: allStories, nps: npsInfo, push: pushInfo)
     }
 
     /// Filter response to only include specific recommender tokens

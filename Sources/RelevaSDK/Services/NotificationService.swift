@@ -399,6 +399,12 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     private func handleNavigationData(_ data: [String: Any]) {
         print("RelevaSDK: handleNavigationData called with keys: \(data.keys)")
 
+        // Handle inbox sync signal
+        if let inboxSync = data["inbox_sync"] as? String, inboxSync == "true" {
+            print("RelevaSDK: Inbox sync signal received")
+            InboxService.shared.handleSyncSignal()
+        }
+
         guard let target = data["target"] as? String else {
             print("RelevaSDK: ⚠️ No 'target' key in data")
             return
@@ -456,6 +462,11 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         if let parameters = parameters {
             userInfo["parameters"] = parameters
+            // Parse JSON parameters to extract structured data like inboxMessageId
+            if let data = parameters.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                userInfo["parsedParameters"] = parsed
+            }
         }
 
         NotificationCenter.default.post(

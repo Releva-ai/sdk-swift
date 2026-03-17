@@ -33,6 +33,9 @@ public class NetworkService {
     /// Realm for API endpoint
     private let realm: String
 
+    /// Runtime endpoint override (set via setEndpointOverride)
+    private var endpointOverride: String?
+
     /// Maximum number of retry attempts
     private var maxRetryAttempts: Int {
         return config.maxRetryAttempts
@@ -63,10 +66,29 @@ public class NetworkService {
         self.session = session
     }
 
+    // MARK: - Endpoint Override
+
+    /// Set a runtime endpoint override (e.g. ngrok URL for local development)
+    /// - Parameter url: The override URL, or nil to clear
+    public func setEndpointOverride(_ url: String?) {
+        self.endpointOverride = url
+        if config.enableDebugLogging {
+            if let url = url {
+                print("RelevaSDK: Endpoint override set to '\(url)'")
+            } else {
+                print("RelevaSDK: Endpoint override cleared")
+            }
+        }
+    }
+
     // MARK: - Base URL
 
     /// Get the base URL for API requests
-    private func getBaseURL() -> String {
+    func getBaseURL() -> String {
+        if let override = endpointOverride {
+            return override
+        }
+
         if let customEndpoint = config.customEndpoint {
             return customEndpoint
         }
@@ -296,6 +318,189 @@ public class NetworkService {
         }
     }
 
+    // MARK: - NPS
+
+    /// Submit NPS survey response
+    public func sendNpsSubmission(
+        _ payload: [String: Any],
+        token: String,
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? token
+        performRequest(
+            endpoint: "/api/v0/nps/\(encodedToken)/submissions",
+            method: .post,
+            body: payload,
+            retryAttempts: 1
+        ) { (result: NetworkResult<Data>) in
+            switch result {
+            case .success:
+                completion(.success(true))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    // MARK: - Inbox
+
+    /// Fetch inbox messages
+    public func fetchInboxMessages(
+        userId: String,
+        limit: Int = 20,
+        cursor: String? = nil,
+        completion: @escaping CompletionHandler<[String: Any]>
+    ) {
+        var urlString = "\(getBaseURL())/api/v0/inbox/\(accessToken)/messages"
+        urlString += "?userId=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
+        urlString += "&limit=\(limit)"
+        if let cursor = cursor {
+            urlString += "&cursor=\(cursor.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? cursor)"
+        }
+
+        guard let url = URL(string: urlString) else {
+            completion(.failure(.invalidConfiguration("Invalid inbox URL")))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = requestTimeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async { completion(.failure(.networkError(error.localizedDescription))) }
+                return
+            }
+            guard let data = data,
+                  let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse("Inbox fetch failed"))) }
+                return
+            }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                DispatchQueue.main.async { completion(.success(json)) }
+            } else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse("Invalid inbox JSON"))) }
+            }
+        }
+        task.resume()
+    }
+
+    /// Fetch inbox unread count
+    public func fetchInboxUnreadCount(
+        userId: String,
+        completion: @escaping CompletionHandler<Int>
+    ) {
+        var urlString = "\(getBaseURL())/api/v0/inbox/\(accessToken)/unread-count"
+        urlString += "?userId=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
+
+        guard let url = URL(string: urlString) else {
+            completion(.failure(.invalidConfiguration("Invalid inbox URL")))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = requestTimeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async { completion(.failure(.networkError(error.localizedDescription))) }
+                return
+            }
+            guard let data = data,
+                  let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                DispatchQueue.main.async { completion(.failure(.invalidResponse("Unread count fetch failed"))) }
+                return
+            }
+            let count = (json["count"] as? NSNumber)?.intValue ?? 0
+            DispatchQueue.main.async { completion(.success(count)) }
+        }
+        task.resume()
+    }
+
+    /// Mark inbox message as read
+    public func inboxMarkAsRead(
+        messageId: String,
+        userId: String,
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        performRequest(
+            endpoint: "/api/v0/inbox/\(accessToken)/messages/\(messageId)/read",
+            method: .post,
+            body: ["userId": userId],
+            retryAttempts: 1
+        ) { (result: NetworkResult<Data>) in
+            switch result {
+            case .success: completion(.success(true))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    /// Mark all inbox messages as read
+    public func inboxMarkAllAsRead(
+        userId: String,
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        performRequest(
+            endpoint: "/api/v0/inbox/\(accessToken)/messages/read-all",
+            method: .post,
+            body: ["userId": userId],
+            retryAttempts: 1
+        ) { (result: NetworkResult<Data>) in
+            switch result {
+            case .success: completion(.success(true))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    /// Delete inbox message
+    public func inboxDeleteMessage(
+        messageId: String,
+        userId: String,
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        performRequest(
+            endpoint: "/api/v0/inbox/\(accessToken)/messages/\(messageId)",
+            method: .delete,
+            body: ["userId": userId],
+            retryAttempts: 1
+        ) { (result: NetworkResult<Data>) in
+            switch result {
+            case .success: completion(.success(true))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    /// Track inbox message action
+    public func inboxTrackAction(
+        messageId: String,
+        userId: String,
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        performRequest(
+            endpoint: "/api/v0/inbox/\(accessToken)/messages/\(messageId)/action",
+            method: .post,
+            body: ["userId": userId, "devicePlatform": "ios"],
+            retryAttempts: 0
+        ) { (result: NetworkResult<Data>) in
+            switch result {
+            case .success: completion(.success(true))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
     // MARK: - Private Methods
 
     /// Perform network request with retry logic
@@ -492,5 +697,5 @@ extension NetworkService {
 // MARK: - SDK Version
 
 struct SDKVersion {
-    static let current = "1.0.4"
+    static let current = "1.1.0"
 }

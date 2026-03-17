@@ -31,6 +31,12 @@ public class StorageService {
 
         // Profile merge
         case mergeProfileIds = "rlv_merge_profile_ids"
+
+        // Inbox
+        case inboxMessages = "rlv_inbox_messages"
+        case inboxUnreadCount = "rlv_inbox_unread_count"
+        case inboxNextCursor = "rlv_inbox_next_cursor"
+        case inboxLastFetch = "rlv_inbox_last_fetch"
     }
 
     // MARK: - Properties
@@ -259,6 +265,61 @@ public class StorageService {
     /// Clear merge profile IDs
     public func clearMergeProfileIds() {
         userDefaults.removeObject(forKey: StorageKey.mergeProfileIds.rawValue)
+    }
+
+    // MARK: - Inbox Management
+
+    /// Save inbox messages as JSON string
+    public func saveInboxMessages(_ jsonString: String) {
+        userDefaults.set(jsonString, forKey: StorageKey.inboxMessages.rawValue)
+    }
+
+    /// Get inbox messages JSON string
+    public func getInboxMessages() -> String? {
+        return userDefaults.string(forKey: StorageKey.inboxMessages.rawValue)
+    }
+
+    /// Save inbox unread count
+    public func saveInboxUnreadCount(_ count: Int) {
+        userDefaults.set(count, forKey: StorageKey.inboxUnreadCount.rawValue)
+    }
+
+    /// Get inbox unread count
+    public func getInboxUnreadCount() -> Int {
+        return userDefaults.integer(forKey: StorageKey.inboxUnreadCount.rawValue)
+    }
+
+    /// Save inbox next cursor
+    public func saveInboxNextCursor(_ cursor: String?) {
+        if let cursor = cursor {
+            userDefaults.set(cursor, forKey: StorageKey.inboxNextCursor.rawValue)
+        } else {
+            userDefaults.removeObject(forKey: StorageKey.inboxNextCursor.rawValue)
+        }
+    }
+
+    /// Get inbox next cursor
+    public func getInboxNextCursor() -> String? {
+        return userDefaults.string(forKey: StorageKey.inboxNextCursor.rawValue)
+    }
+
+    /// Save inbox last fetch timestamp
+    public func saveInboxLastFetch(_ timestamp: TimeInterval) {
+        userDefaults.set(timestamp, forKey: StorageKey.inboxLastFetch.rawValue)
+    }
+
+    /// Get inbox last fetch timestamp
+    public func getInboxLastFetch() -> TimeInterval? {
+        let val = userDefaults.double(forKey: StorageKey.inboxLastFetch.rawValue)
+        return val > 0 ? val : nil
+    }
+
+    /// Clear inbox data
+    public func clearInboxData() {
+        userDefaults.removeObject(forKey: StorageKey.inboxMessages.rawValue)
+        userDefaults.removeObject(forKey: StorageKey.inboxUnreadCount.rawValue)
+        userDefaults.removeObject(forKey: StorageKey.inboxNextCursor.rawValue)
+        userDefaults.removeObject(forKey: StorageKey.inboxLastFetch.rawValue)
     }
 
     // MARK: - Sync Management

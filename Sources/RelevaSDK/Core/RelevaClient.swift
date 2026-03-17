@@ -71,6 +71,15 @@ public class RelevaClient {
     /// Banner manager service
     private var bannerManager: BannerManagerService?
 
+    /// NPS manager service
+    private var npsManager: NpsManagerService?
+
+    /// Story manager service
+    private var storyManager: StoryManagerService?
+
+    /// App version string (sent in NPS push context)
+    private var appVersion: String?
+
     // MARK: - Initializers
 
     /// Initialize Releva client
@@ -169,6 +178,29 @@ public class RelevaClient {
         return profileId
     }
 
+    // MARK: - Configuration
+
+    /// Override the API endpoint at runtime (e.g. ngrok URL for local dev)
+    /// - Parameter url: The override URL, or nil to clear
+    public func setEndpointOverride(_ url: String?) {
+        networkService.setEndpointOverride(url)
+    }
+
+    /// Set the app version string (used in NPS push context for server-side filtering)
+    /// - Parameter version: Semantic version string (e.g. "1.2.3")
+    public func setAppVersion(_ version: String) {
+        self.appVersion = version
+        if config.enableDebugLogging {
+            print("RelevaSDK: App version set to '\(version)'")
+        }
+    }
+
+    /// Fire a named event for NPS trigger evaluation
+    /// - Parameter eventName: The event name to evaluate (e.g. "checkout_complete")
+    public func trackEvent(_ eventName: String) {
+        npsManager?.trackEvent(eventName)
+    }
+
     // MARK: - Cart Management
 
     /// Set the current cart
@@ -186,9 +218,10 @@ public class RelevaClient {
 
         storage.saveCart(cart)
 
-        // Trigger cart change banners
+        // Trigger cart change banners and stories
         if cartChanged {
             bannerManager?.onCartChanged()
+            storyManager?.onCartChanged()
         }
 
         if config.enableDebugLogging {
@@ -246,9 +279,10 @@ public class RelevaClient {
 
         storage.saveWishlist(products)
 
-        // Trigger wishlist change banners
+        // Trigger wishlist change banners and stories
         if wishlistChanged {
             bannerManager?.onWishlistChanged()
+            storyManager?.onWishlistChanged()
         }
 
         if config.enableDebugLogging {
@@ -314,6 +348,12 @@ public class RelevaClient {
                 if !response.banners.isEmpty {
                     self.bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
                 }
+                // Initialize stories from response
+                if !response.stories.isEmpty {
+                    self.storyManager?.initialize(newStories: response.stories, scrollPercentageProvider: nil)
+                }
+                // Initialize NPS from response
+                self.npsManager?.initialize(response.nps)
             }
             completion(result)
         }
@@ -596,6 +636,14 @@ public class RelevaClient {
             bannerManager = BannerManagerService()
         }
 
+        if npsManager == nil {
+            npsManager = NpsManagerService()
+        }
+
+        if storyManager == nil {
+            storyManager = StoryManagerService()
+        }
+
         if config.enableDebugLogging {
             print("RelevaSDK: Push engagement tracking enabled")
         }
@@ -628,16 +676,103 @@ public class RelevaClient {
         // Firebase iOS notifications put custom data at root level (not in "data" wrapper)
         // Check root level first (iOS format)
         if let clickAction = userInfo["click_action"] as? String {
-            return clickAction == "RELEVA_NOTIFICATION_CLICK"
+            return clickAction.hasPrefix("RELEVA_")
         }
 
         // Also check "data" wrapper (cross-platform / Android format)
         if let data = userInfo["data"] as? [String: Any],
            let clickAction = data["click_action"] as? String {
-            return clickAction == "RELEVA_NOTIFICATION_CLICK"
+            return clickAction.hasPrefix("RELEVA_")
         }
 
         return false
+    }
+
+    // MARK: - NPS
+
+    /// Submit an NPS survey response.
+    /// Failures are swallowed with one retry - the thank-you screen is shown regardless.
+    public func submitNpsResponse(
+        token: String,
+        score: Int,
+        comment: String? = nil,
+        completion: ((Result<Bool, RelevaError>) -> Void)? = nil
+    ) {
+        var payload: [String: Any] = [
+            "profileId": profileId ?? "",
+            "deviceId": deviceId ?? "",
+            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "score": score
+        ]
+        if let comment = comment, !comment.isEmpty {
+            payload["comment"] = comment
+        }
+
+        networkService.sendNpsSubmission(payload, token: token) { result in
+            switch result {
+            case .success:
+                completion?(.success(true))
+            case .failure:
+                // One silent retry
+                self.networkService.sendNpsSubmission(payload, token: token) { retryResult in
+                    completion?(retryResult)
+                }
+            }
+        }
+    }
+
+    // MARK: - Stories
+
+    /// Track story impression
+    public func storyImpression(_ story: StoryResponse) {
+        storyAction(story, action: "storyImpression")
+    }
+
+    /// Track story action (view, click, complete, close, slide events)
+    public func storyAction(_ story: StoryResponse, action: String, slideId: String? = nil) {
+        var attributions: [String: Any] = [
+            "storyId": story.token
+        ]
+        if let slideId = slideId {
+            attributions["slideId"] = slideId
+        }
+
+        let payload: [String: Any] = [
+            "deviceId": deviceId ?? "",
+            "profileId": profileId ?? "",
+            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "action": action,
+            "attributions": attributions
+        ]
+
+        networkService.sendBannerAction(payload) { result in
+            if self.config.enableDebugLogging {
+                switch result {
+                case .success:
+                    print("RelevaSDK: Story action '\(action)' tracked for \(story.token)")
+                case .failure(let error):
+                    print("RelevaSDK: Failed to track story action: \(error)")
+                }
+            }
+        }
+    }
+
+    // MARK: - Inbox
+
+    /// Access the inbox service
+    public var inbox: InboxService {
+        return InboxService.shared
+    }
+
+    /// Initialize the inbox service. Call after setProfileId().
+    public func initializeInbox() {
+        InboxService.shared.initialize(
+            networkService: networkService,
+            accessToken: accessToken,
+            profileId: profileId,
+            storage: storage
+        )
+        InboxService.shared.refreshIfStale()
     }
 
     // MARK: - Private Methods
@@ -690,6 +825,16 @@ public class RelevaClient {
         if !mergeProfileIds.isEmpty {
             context["mergeProfileIds"] = mergeProfileIds
         }
+
+        // Device info (for NPS server-side filtering)
+        var device: [String: Any] = [
+            "platform": "ios",
+            "sdkVersion": SDKVersion.current
+        ]
+        if let appVersion = appVersion {
+            device["version"] = appVersion
+        }
+        context["device"] = device
 
         return context
     }

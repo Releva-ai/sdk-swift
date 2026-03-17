@@ -1,0 +1,93 @@
+import XCTest
+@testable import RelevaSDK
+
+final class RelevaResponseTests: XCTestCase {
+
+    func testParseResponseWithNpsAndStories() throws {
+        let json = """
+        {
+            "recommenders": [],
+            "banners": [],
+            "stories": [
+                {
+                    "token": "story-1",
+                    "storyId": 1,
+                    "trigger": "immediately",
+                    "endBehavior": "dismiss",
+                    "slides": [
+                        {"id": 1, "durationSeconds": 5}
+                    ]
+                }
+            ],
+            "nps": {
+                "token": "nps-1",
+                "question": "Rate us?",
+                "triggers": [{"type": "appOpen"}],
+                "appearance": {
+                    "primaryColor": "#FF0000",
+                    "position": "bottomSheet"
+                }
+            }
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let response = try RelevaResponse.from(jsonData: data)
+
+        // Stories
+        XCTAssertTrue(response.hasStories)
+        XCTAssertEqual(response.stories.count, 1)
+        XCTAssertEqual(response.stories[0].token, "story-1")
+        XCTAssertEqual(response.stories[0].slides.count, 1)
+
+        // NPS
+        XCTAssertTrue(response.hasNps)
+        XCTAssertEqual(response.nps?.token, "nps-1")
+        XCTAssertEqual(response.nps?.question, "Rate us?")
+        XCTAssertEqual(response.nps?.triggers.count, 1)
+        XCTAssertEqual(response.nps?.appearance.primaryColor, "#FF0000")
+    }
+
+    func testParseResponseWithoutNpsOrStories() throws {
+        let json = """
+        {
+            "recommenders": [],
+            "banners": []
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let response = try RelevaResponse.from(jsonData: data)
+
+        XCTAssertFalse(response.hasStories)
+        XCTAssertFalse(response.hasNps)
+        XCTAssertTrue(response.stories.isEmpty)
+        XCTAssertNil(response.nps)
+    }
+
+    func testEmptyResponse() {
+        let response = RelevaResponse.empty()
+
+        XCTAssertTrue(response.recommenders.isEmpty)
+        XCTAssertTrue(response.banners.isEmpty)
+        XCTAssertTrue(response.stories.isEmpty)
+        XCTAssertNil(response.nps)
+        XCTAssertNil(response.push)
+    }
+
+    func testMergeResponses() {
+        let r1 = RelevaResponse(
+            stories: [StoryResponse(token: "s1", slides: [])],
+            nps: NpsConfig(token: "n1", question: "Q?")
+        )
+        let r2 = RelevaResponse(
+            stories: [StoryResponse(token: "s2", slides: [])]
+        )
+
+        let merged = RelevaResponse.merge([r1, r2])
+
+        XCTAssertEqual(merged.stories.count, 2)
+        XCTAssertNotNil(merged.nps)
+        XCTAssertEqual(merged.nps?.token, "n1")
+    }
+}
