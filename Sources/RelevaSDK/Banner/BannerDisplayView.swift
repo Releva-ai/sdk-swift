@@ -13,7 +13,7 @@ import Combine
 public struct BannerDisplayModifier: ViewModifier {
     let client: RelevaClient
     let targetSelector: String
-    let onLinkTap: ((String) -> Void)?
+    let onLinkTap: (String) -> Void
 
     @StateObject private var viewModel = BannerDisplayViewModel()
 
@@ -72,7 +72,7 @@ public struct BannerDisplayModifier: ViewModifier {
         if let design = banner.design {
             DesignRenderer.render(design: design, maxWidth: UIScreen.main.bounds.width, onLinkTap: { url in
                 viewModel.trackClick(banner)
-                onLinkTap?(url)
+                onLinkTap(url)
             })
         }
     }
@@ -93,7 +93,7 @@ public struct BannerDisplayModifier: ViewModifier {
                         maxWidth: UIScreen.main.bounds.width - 32,
                         onLinkTap: { url in
                             viewModel.trackClick(banner)
-                            onLinkTap?(url)
+                            onLinkTap(url)
                         }
                     )
                     .padding(.horizontal, 16)
@@ -165,7 +165,7 @@ public struct BannerDisplayModifier: ViewModifier {
                         onLinkTap: { url in
                             viewModel.dismissPopup(banner, track: false)
                             viewModel.trackClick(banner)
-                            onLinkTap?(url)
+                            onLinkTap(url)
                         }
                     )
                 }
@@ -219,7 +219,7 @@ public struct BannerDisplayModifier: ViewModifier {
                                 onLinkTap: { url in
                                     viewModel.dismissFlyout(banner, track: false)
                                     viewModel.trackClick(banner)
-                                    onLinkTap?(url)
+                                    onLinkTap(url)
                                 }
                             )
                         }
@@ -297,11 +297,11 @@ extension View {
     /// - Parameters:
     ///   - client: The RelevaClient instance
     ///   - targetSelector: CSS selector for static banner targeting (e.g., "#home-content")
-    ///   - onLinkTap: Callback when a banner link is tapped
+    ///   - onLinkTap: Callback when a banner link is tapped. Required — apps must handle link navigation.
     public func bannerDisplay(
         client: RelevaClient,
         targetSelector: String,
-        onLinkTap: ((String) -> Void)? = nil
+        onLinkTap: @escaping (String) -> Void
     ) -> some View {
         self.modifier(BannerDisplayModifier(
             client: client,

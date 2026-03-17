@@ -14,7 +14,7 @@ import Combine
 /// ```
 public struct StoryDisplayModifier: ViewModifier {
     let client: RelevaClient
-    let onLinkTap: ((String) -> Void)?
+    let onLinkTap: (String) -> Void
 
     @StateObject private var viewModel = StoryDisplayViewModel()
 
@@ -42,10 +42,10 @@ extension View {
     /// Add story display capability to this view.
     /// - Parameters:
     ///   - client: The RelevaClient instance
-    ///   - onLinkTap: Callback when a story link is tapped
+    ///   - onLinkTap: Callback when a story link is tapped. Required — apps must handle link navigation.
     public func storyDisplay(
         client: RelevaClient,
-        onLinkTap: ((String) -> Void)? = nil
+        onLinkTap: @escaping (String) -> Void
     ) -> some View {
         self.modifier(StoryDisplayModifier(
             client: client,

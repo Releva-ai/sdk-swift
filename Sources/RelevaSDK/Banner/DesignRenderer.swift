@@ -124,6 +124,8 @@ public struct DesignRenderer {
                 buildHeading(values: values, defaultTextColor: textColor)
             case "button":
                 buildButton(values: values, onLinkTap: onLinkTap)
+            case "carousel":
+                CarouselView(content: content, onLinkTap: onLinkTap)
             case "divider":
                 buildDivider(values: values)
             default:
@@ -405,3 +407,202 @@ public struct DesignRenderer {
         return values
     }
 }
+
+// MARK: - Carousel
+
+/// A SwiftUI carousel view for Unlayer carousel content blocks.
+/// Supports swipe navigation, left/right tap navigation, autoplay, loop, dot indicators, and preview strip.
+struct CarouselView: View {
+    let content: [String: Any]
+    let onLinkTap: ((String) -> Void)?
+
+    @State private var currentPage: Int = 0
+    @State private var autoplayTimer: Timer?
+
+    private var values: [String: Any] {
+        content["values"] as? [String: Any] ?? [:]
+    }
+
+    private var images: [[String: Any]] {
+        let embedded = content["embedded"] as? [String: Any] ?? [:]
+        let imagesMap = embedded["images"] as? [String: Any] ?? [:]
+        let imagesList = imagesMap["values"] as? [[String: Any]] ?? []
+        return imagesList
+    }
+
+    private var autoplay: Bool { values["autoplay"] as? Bool ?? false }
+    private var loop: Bool { values["loop"] as? Bool ?? false }
+    private var showPreviews: Bool { values["showPreviews"] as? Bool ?? false }
+    private var previewWidth: CGFloat { DesignRenderer.parseDimensionRaw(values["previewWidth"]) ?? 100 }
+
+    private var aspectRatio: CGFloat {
+        let firstSrc = images.first?["src"] as? [String: Any] ?? [:]
+        let w = (firstSrc["width"] as? NSNumber)?.doubleValue ?? 16
+        let h = (firstSrc["height"] as? NSNumber)?.doubleValue ?? 9
+        return CGFloat(w / h)
+    }
+
+    var body: some View {
+        if images.isEmpty {
+            EmptyView()
+        } else {
+            VStack(spacing: 0) {
+                // Main image area with aspect ratio
+                ZStack {
+                    TabView(selection: $currentPage) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { index, image in
+                            carouselImage(image: image)
+                                .tag(index)
+                        }
+                    }
+                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                    .aspectRatio(aspectRatio, contentMode: .fit)
+
+                    // Left/right tap navigation overlay
+                    HStack(spacing: 0) {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { goPrevious() }
+
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { goNext() }
+                    }
+                    .aspectRatio(aspectRatio, contentMode: .fit)
+                }
+
+                // Indicators
+                if images.count > 1 {
+                    if showPreviews {
+                        previewStrip
+                            .padding(.top, 8)
+                    } else {
+                        dotIndicators
+                            .padding(.top, 8)
+                    }
+                }
+            }
+            .onAppear { startAutoplayIfNeeded() }
+            .onDisappear { autoplayTimer?.invalidate() }
+            .onChange(of: currentPage) { _ in
+                // Reset autoplay timer on manual navigation
+                if autoplay { restartAutoplay() }
+            }
+        }
+    }
+
+    // MARK: - Image
+
+    @ViewBuilder
+    private func carouselImage(image: [String: Any]) -> some View {
+        let src = image["src"] as? [String: Any] ?? [:]
+        let url = src["url"] as? String ?? ""
+        let action = image["action"] as? [String: Any]
+        let actionValues = action?["values"] as? [String: Any] ?? [:]
+        let href = actionValues["href"] as? String ?? ""
+
+        if !url.isEmpty, let imageUrl = URL(string: url) {
+            let imageView = AsyncImage(url: imageUrl) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().aspectRatio(contentMode: .fill)
+                case .failure:
+                    Color.gray.opacity(0.3)
+                        .overlay(Image(systemName: "photo").foregroundColor(.gray))
+                default:
+                    Color.clear
+                }
+            }
+
+            if !href.isEmpty, let onLinkTap = onLinkTap {
+                imageView.onTapGesture { onLinkTap(href) }
+            } else {
+                imageView
+            }
+        }
+    }
+
+    // MARK: - Dot Indicators
+
+    private var dotIndicators: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<images.count, id: \.self) { index in
+                Circle()
+                    .fill(index == currentPage ? Color(white: 0.3) : Color(white: 0.8))
+                    .frame(width: 8, height: 8)
+            }
+        }
+    }
+
+    // MARK: - Preview Strip
+
+    private var previewStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(images.enumerated()), id: \.offset) { index, image in
+                    let src = image["src"] as? [String: Any] ?? [:]
+                    let url = src["url"] as? String ?? ""
+
+                    if !url.isEmpty, let imageUrl = URL(string: url) {
+                        AsyncImage(url: imageUrl) { phase in
+                            switch phase {
+                            case .success(let img):
+                                img.resizable().aspectRatio(contentMode: .fill)
+                            default:
+                                Color.gray.opacity(0.3)
+                            }
+                        }
+                        .frame(width: previewWidth, height: previewWidth * 0.75)
+                        .clipped()
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(index == currentPage ? Color(white: 0.3) : Color.clear, lineWidth: 2)
+                        )
+                        .onTapGesture {
+                            withAnimation { currentPage = index }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    // MARK: - Navigation
+
+    private func goNext() {
+        withAnimation {
+            if currentPage < images.count - 1 {
+                currentPage += 1
+            } else if loop {
+                currentPage = 0
+            }
+        }
+    }
+
+    private func goPrevious() {
+        withAnimation {
+            if currentPage > 0 {
+                currentPage -= 1
+            } else if loop {
+                currentPage = images.count - 1
+            }
+        }
+    }
+
+    // MARK: - Autoplay
+
+    private func startAutoplayIfNeeded() {
+        guard autoplay, images.count > 1 else { return }
+        autoplayTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            goNext()
+        }
+    }
+
+    private func restartAutoplay() {
+        autoplayTimer?.invalidate()
+        startAutoplayIfNeeded()
+    }
+}
+

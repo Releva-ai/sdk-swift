@@ -7,7 +7,7 @@ import SwiftUI
 public struct StoryViewerView: View {
     let story: StoryResponse
     let client: RelevaClient
-    let onLinkTap: ((String) -> Void)?
+    let onLinkTap: ((String) -> Void)
     let onClose: () -> Void
 
     @State private var currentSlideIndex = 0
@@ -75,7 +75,7 @@ public struct StoryViewerView: View {
                                     maxWidth: geometry.size.width,
                                     onLinkTap: { url in
                                         trackSlideClick()
-                                        onLinkTap?(url)
+                                        onLinkTap(url)
                                     }
                                 )
                             }
@@ -206,10 +206,10 @@ public struct StoryViewerView: View {
         trackSlideClick()
         if let url = currentSlide.actionUrl, !url.isEmpty {
             if currentSlide.actionType == "dismiss" {
-                onLinkTap?(url)
+                onLinkTap(url)
                 close()
             } else {
-                onLinkTap?(url)
+                onLinkTap(url)
             }
         }
     }
