@@ -497,6 +497,10 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 print("RelevaSDK: ⚠️ No 'navigate_to_url' in data")
             }
 
+        case "inbox":
+            print("RelevaSDK: Navigating to inbox")
+            navigateToInbox(parameters: data["navigate_to_parameters"] as? String)
+
         default:
             if config.enableDebugLogging {
                 print("RelevaSDK: ⚠️ Unknown target type: \(target)")
@@ -527,6 +531,29 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         if config.enableDebugLogging {
             print("RelevaSDK: Navigate to screen: \(screen)")
+        }
+    }
+
+    /// Navigate to inbox within the app
+    private func navigateToInbox(parameters: String?) {
+        var userInfo: [String: Any] = [:]
+
+        if let parameters = parameters {
+            userInfo["parameters"] = parameters
+            if let data = parameters.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                userInfo["parsedParameters"] = parsed
+            }
+        }
+
+        NotificationCenter.default.post(
+            name: Notification.Name("RelevaNavigateToInbox"),
+            object: nil,
+            userInfo: userInfo
+        )
+
+        if config.enableDebugLogging {
+            print("RelevaSDK: Navigate to inbox posted")
         }
     }
 
