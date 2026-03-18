@@ -32,7 +32,11 @@ public class StoryManagerService {
 
             switch story.trigger {
             case "immediately":
-                triggerStory(story)
+                if Thread.isMainThread {
+                    triggerStory(story)
+                } else {
+                    DispatchQueue.main.async { [weak self] in self?.triggerStory(story) }
+                }
 
             case "delaySeconds":
                 if let delay = story.delaySeconds, delay > 0 {

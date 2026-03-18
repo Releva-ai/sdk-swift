@@ -1,7 +1,15 @@
 import XCTest
+import Combine
 @testable import RelevaSDK
 
 final class NpsManagerServiceTests: XCTestCase {
+
+    private var cancellables = Set<AnyCancellable>()
+
+    override func tearDown() {
+        cancellables.removeAll()
+        super.tearDown()
+    }
 
     func testInitializeWithNoCustomEventTriggersFiresImmediately() {
         let manager = NpsManagerService()
@@ -12,12 +20,17 @@ final class NpsManagerServiceTests: XCTestCase {
             triggerDelaySeconds: 0
         )
 
-        // Should trigger immediately when no custom event triggers
+        let expectation = expectation(description: "NPS published")
+        NpsDisplayController.shared.npsPublisher
+            .sink { received in
+                XCTAssertEqual(received.token, "test")
+                expectation.fulfill()
+            }
+            .store(in: &cancellables)
+
         manager.initialize(config)
 
-        // The NPS should have been sent to NpsDisplayController
-        // (We can't easily test the published event without Combine,
-        // but we verify no crash and the manager accepted it)
+        waitForExpectations(timeout: 2)
     }
 
     func testInitializeWithCustomEventWaitsForEvent() {
@@ -28,20 +41,37 @@ final class NpsManagerServiceTests: XCTestCase {
             triggers: [NpsTrigger(type: "customEvent", eventName: "checkout")]
         )
 
+        let expectation = expectation(description: "NPS should not fire")
+        expectation.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { _ in expectation.fulfill() }
+            .store(in: &cancellables)
+
         manager.initialize(config)
-        // Should not fire yet - waiting for trackEvent("checkout")
+
+        waitForExpectations(timeout: 0.5)
     }
 
     func testTrackEventMatchesCustomTrigger() {
         let manager = NpsManagerService()
         let config = NpsConfig(
-            token: "test",
+            token: "test-purchase",
             question: "Rate us?",
             triggers: [NpsTrigger(type: "customEvent", eventName: "purchase_complete")]
         )
 
+        let expectation = expectation(description: "NPS published after matching event")
+        NpsDisplayController.shared.npsPublisher
+            .sink { received in
+                XCTAssertEqual(received.token, "test-purchase")
+                expectation.fulfill()
+            }
+            .store(in: &cancellables)
+
         manager.initialize(config)
-        manager.trackEvent("purchase_complete") // Should trigger
+        manager.trackEvent("purchase_complete")
+
+        waitForExpectations(timeout: 2)
     }
 
     func testTrackEventNonMatchingDoesNotTrigger() {
@@ -52,8 +82,16 @@ final class NpsManagerServiceTests: XCTestCase {
             triggers: [NpsTrigger(type: "customEvent", eventName: "purchase")]
         )
 
+        let expectation = expectation(description: "NPS should not fire")
+        expectation.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { _ in expectation.fulfill() }
+            .store(in: &cancellables)
+
         manager.initialize(config)
-        manager.trackEvent("other_event") // Should not trigger
+        manager.trackEvent("other_event")
+
+        waitForExpectations(timeout: 0.5)
     }
 
     func testCancelEventSuppresses() {
@@ -65,9 +103,17 @@ final class NpsManagerServiceTests: XCTestCase {
             cancelOnEvents: ["checkout_started"]
         )
 
+        let expectation = expectation(description: "NPS should not fire after cancel")
+        expectation.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { _ in expectation.fulfill() }
+            .store(in: &cancellables)
+
         manager.initialize(config)
         manager.trackEvent("checkout_started") // Should suppress
         manager.trackEvent("checkout") // Should not trigger after suppression
+
+        waitForExpectations(timeout: 0.5)
     }
 
     func testStartNewSessionResetsState() {
@@ -75,17 +121,45 @@ final class NpsManagerServiceTests: XCTestCase {
         let config = NpsConfig(
             token: "test",
             question: "Rate us?",
-            triggers: [NpsTrigger(type: "appOpen")]
+            triggers: [NpsTrigger(type: "appOpen")],
+            triggerDelaySeconds: 0
         )
 
-        manager.initialize(config) // Triggers once
+        // First trigger
+        let firstExpectation = expectation(description: "First NPS")
+        NpsDisplayController.shared.npsPublisher
+            .first()
+            .sink { _ in firstExpectation.fulfill() }
+            .store(in: &cancellables)
+
+        manager.initialize(config)
+        waitForExpectations(timeout: 2)
+
+        // Reset and re-trigger
         manager.startNewSession()
-        // After new session, it should be able to trigger again
+
+        let secondExpectation = expectation(description: "Second NPS after session reset")
+        NpsDisplayController.shared.npsPublisher
+            .first()
+            .sink { _ in secondExpectation.fulfill() }
+            .store(in: &cancellables)
+
+        manager.initialize(config)
+        waitForExpectations(timeout: 2)
     }
 
     func testInitializeWithNilConfigDoesNothing() {
         let manager = NpsManagerService()
-        manager.initialize(nil) // Should not crash
+
+        let expectation = expectation(description: "NPS should not fire")
+        expectation.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { _ in expectation.fulfill() }
+            .store(in: &cancellables)
+
+        manager.initialize(nil)
+
+        waitForExpectations(timeout: 0.5)
     }
 
     func testDispose() {
@@ -97,7 +171,15 @@ final class NpsManagerServiceTests: XCTestCase {
             triggerDelaySeconds: 60
         )
 
+        let expectation = expectation(description: "NPS should not fire after dispose")
+        expectation.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { _ in expectation.fulfill() }
+            .store(in: &cancellables)
+
         manager.initialize(config)
-        manager.dispose() // Should cancel timer without crash
+        manager.dispose()
+
+        waitForExpectations(timeout: 0.5)
     }
 }

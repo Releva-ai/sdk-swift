@@ -68,78 +68,85 @@ public class InboxService: ObservableObject {
 
     /// Fetch first page of messages + unread count in parallel.
     public func refresh() {
-        guard initialized, let userId = profileId else { return }
+        let work = { [weak self] in
+            guard let self = self, self.initialized, let userId = self.profileId else { return }
 
-        DispatchQueue.main.async { self.state.isLoading = true }
+            self.state.isLoading = true
 
-        let group = DispatchGroup()
-        var fetchedMessages: [InboxMessage]?
-        var fetchedCursor: String?
-        var fetchedUnread: Int?
+            let group = DispatchGroup()
+            var fetchedMessages: [InboxMessage]?
+            var fetchedCursor: String?
+            var fetchedUnread: Int?
 
-        group.enter()
-        networkService?.fetchInboxMessages(userId: userId) { result in
-            if case .success(let json) = result {
-                let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
-                fetchedMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
-                fetchedCursor = json["nextCursor"] as? String
+            group.enter()
+            self.networkService?.fetchInboxMessages(userId: userId) { result in
+                if case .success(let json) = result {
+                    let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
+                    fetchedMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
+                    fetchedCursor = json["nextCursor"] as? String
+                }
+                group.leave()
             }
-            group.leave()
+
+            group.enter()
+            self.networkService?.fetchInboxUnreadCount(userId: userId) { result in
+                if case .success(let count) = result {
+                    fetchedUnread = count
+                }
+                group.leave()
+            }
+
+            group.notify(queue: .main) { [weak self] in
+                guard let self = self else { return }
+
+                if let messages = fetchedMessages {
+                    self.state.messages = messages
+                    self.state.nextCursor = fetchedCursor
+                    self.state.hasMore = fetchedCursor != nil
+                    self.state.lastFetchTime = Date()
+                }
+                if let unread = fetchedUnread {
+                    self.state.unreadCount = unread
+                }
+                self.state.isLoading = false
+                self.persistState()
+            }
         }
-
-        group.enter()
-        networkService?.fetchInboxUnreadCount(userId: userId) { result in
-            if case .success(let count) = result {
-                fetchedUnread = count
-            }
-            group.leave()
-        }
-
-        group.notify(queue: .main) { [weak self] in
-            guard let self = self else { return }
-
-            if let messages = fetchedMessages {
-                self.state.messages = messages
-                self.state.nextCursor = fetchedCursor
-                self.state.hasMore = fetchedCursor != nil
-                self.state.lastFetchTime = Date()
-            }
-            if let unread = fetchedUnread {
-                self.state.unreadCount = unread
-            }
-            self.state.isLoading = false
-            self.persistState()
-        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Fetch next page using nextCursor and append to list.
     public func loadMore() {
-        guard initialized, !state.isLoading, state.hasMore, let userId = profileId else { return }
+        let work = { [weak self] in
+            guard let self = self, self.initialized, !self.state.isLoading, self.state.hasMore,
+                  let userId = self.profileId else { return }
 
-        DispatchQueue.main.async { self.state.isLoading = true }
+            self.state.isLoading = true
 
-        networkService?.fetchInboxMessages(userId: userId, cursor: state.nextCursor) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
+            self.networkService?.fetchInboxMessages(userId: userId, cursor: self.state.nextCursor) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
 
-                switch result {
-                case .success(let json):
-                    let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
-                    let newMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
-                    let nextCursor = json["nextCursor"] as? String
+                    switch result {
+                    case .success(let json):
+                        let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
+                        let newMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
+                        let nextCursor = json["nextCursor"] as? String
 
-                    self.state.messages.append(contentsOf: newMessages)
-                    self.state.nextCursor = nextCursor
-                    self.state.hasMore = nextCursor != nil
-                    self.state.lastFetchTime = Date()
-                    self.state.isLoading = false
-                    self.persistState()
+                        self.state.messages.append(contentsOf: newMessages)
+                        self.state.nextCursor = nextCursor
+                        self.state.hasMore = nextCursor != nil
+                        self.state.lastFetchTime = Date()
+                        self.state.isLoading = false
+                        self.persistState()
 
-                case .failure:
-                    self.state.isLoading = false
+                    case .failure:
+                        self.state.isLoading = false
+                    }
                 }
             }
         }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Mark single message as read (optimistic update).

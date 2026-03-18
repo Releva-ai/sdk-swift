@@ -1,7 +1,15 @@
 import XCTest
+import Combine
 @testable import RelevaSDK
 
 final class StoryManagerServiceTests: XCTestCase {
+
+    private var cancellables = Set<AnyCancellable>()
+
+    override func tearDown() {
+        cancellables.removeAll()
+        super.tearDown()
+    }
 
     func testInitializeWithImmediateTrigger() {
         let manager = StoryManagerService()
@@ -11,8 +19,17 @@ final class StoryManagerServiceTests: XCTestCase {
             slides: [StorySlideResponse(id: "s1", durationSeconds: 5)]
         )
 
+        let expectation = expectation(description: "Story published")
+        StoryDisplayController.shared.storyPublisher
+            .sink { received in
+                XCTAssertEqual(received.token, "story-1")
+                expectation.fulfill()
+            }
+            .store(in: &cancellables)
+
         manager.initialize(newStories: [story])
-        // Should trigger immediately
+
+        waitForExpectations(timeout: 2)
     }
 
     func testInitializeWithEmptySlides() {
@@ -23,8 +40,15 @@ final class StoryManagerServiceTests: XCTestCase {
             slides: []
         )
 
+        let expectation = expectation(description: "Story should not fire")
+        expectation.isInverted = true
+        StoryDisplayController.shared.storyPublisher
+            .sink { _ in expectation.fulfill() }
+            .store(in: &cancellables)
+
         manager.initialize(newStories: [story])
-        // Should not trigger (empty slides)
+
+        waitForExpectations(timeout: 0.5)
     }
 
     func testDeduplication() {
@@ -35,8 +59,24 @@ final class StoryManagerServiceTests: XCTestCase {
             slides: [StorySlideResponse(id: "s1", durationSeconds: 5)]
         )
 
-        // Initialize twice should not show the story twice
+        var receivedCount = 0
+        let expectation = expectation(description: "Story published once")
+        StoryDisplayController.shared.storyPublisher
+            .sink { received in
+                receivedCount += 1
+                XCTAssertEqual(received.token, "story-dup")
+                expectation.fulfill()
+            }
+            .store(in: &cancellables)
+
         manager.initialize(newStories: [story, story])
+
+        waitForExpectations(timeout: 2)
+        // Give time for potential duplicate
+        let noMore = expectation(description: "No more stories")
+        noMore.isInverted = true
+        waitForExpectations(timeout: 0.3)
+        XCTAssertEqual(receivedCount, 1)
     }
 
     func testCartChangedTrigger() {
@@ -47,9 +87,18 @@ final class StoryManagerServiceTests: XCTestCase {
             slides: [StorySlideResponse(id: "s1", durationSeconds: 5)]
         )
 
+        let expectation = expectation(description: "Cart story published")
+        StoryDisplayController.shared.storyPublisher
+            .sink { received in
+                XCTAssertEqual(received.token, "cart-story")
+                expectation.fulfill()
+            }
+            .store(in: &cancellables)
+
         manager.initialize(newStories: [story])
         manager.onCartChanged()
-        // Should trigger the cart story
+
+        waitForExpectations(timeout: 2)
     }
 
     func testWishlistChangedTrigger() {
@@ -60,9 +109,18 @@ final class StoryManagerServiceTests: XCTestCase {
             slides: [StorySlideResponse(id: "s1", durationSeconds: 5)]
         )
 
+        let expectation = expectation(description: "Wishlist story published")
+        StoryDisplayController.shared.storyPublisher
+            .sink { received in
+                XCTAssertEqual(received.token, "wishlist-story")
+                expectation.fulfill()
+            }
+            .store(in: &cancellables)
+
         manager.initialize(newStories: [story])
         manager.onWishlistChanged()
-        // Should trigger the wishlist story
+
+        waitForExpectations(timeout: 2)
     }
 
     func testDispose() {
@@ -74,7 +132,15 @@ final class StoryManagerServiceTests: XCTestCase {
             slides: [StorySlideResponse(id: "s1", durationSeconds: 5)]
         )
 
+        let expectation = expectation(description: "Story should not fire after dispose")
+        expectation.isInverted = true
+        StoryDisplayController.shared.storyPublisher
+            .sink { _ in expectation.fulfill() }
+            .store(in: &cancellables)
+
         manager.initialize(newStories: [story])
-        manager.dispose() // Should cancel timers
+        manager.dispose()
+
+        waitForExpectations(timeout: 0.5)
     }
 }

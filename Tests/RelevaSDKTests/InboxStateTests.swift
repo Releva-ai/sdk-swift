@@ -32,7 +32,7 @@ final class InboxStateTests: XCTestCase {
         XCTAssertEqual(state.unreadCount, 0)
         XCTAssertNil(state.nextCursor)
         XCTAssertFalse(state.isLoading)
-        XCTAssertTrue(state.hasMore)
+        XCTAssertFalse(state.hasMore)
         XCTAssertNil(state.lastFetchTime)
     }
 }

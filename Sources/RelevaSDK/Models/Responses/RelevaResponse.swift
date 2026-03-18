@@ -149,8 +149,8 @@ public struct RelevaResponse: Codable, Equatable {
         case recommenders, banners, stories, nps, push
     }
 
-    /// Internal Codable initializer — only decodes Codable-compatible fields.
-    /// Banners, stories, and NPS contain [String: Any] and must be parsed via `from(jsonData:)`.
+    /// Codable initializer — only decodes Codable-compatible fields.
+    /// Stories and NPS contain [String: Any] and are NOT decoded here.
     /// Always use `from(jsonData:)` or `from(jsonString:)` to get the full response.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -158,8 +158,21 @@ public struct RelevaResponse: Codable, Equatable {
         push = try container.decodeIfPresent(PushInfo.self, forKey: .push)
 
         banners = RelevaResponse.decodeBanners(from: decoder)
+
+        // Stories and NPS require manual JSON parsing (they contain [String: Any]).
+        // They are populated by from(jsonData:) after this initializer returns.
         stories = []
         nps = nil
+
+        #if DEBUG
+        // Warn if stories/nps keys are present — caller should use from(jsonData:) instead
+        if container.contains(.stories), (try? container.decodeNil(forKey: .stories)) == false {
+            print("RelevaSDK Warning: RelevaResponse.init(from:) drops stories data. Use RelevaResponse.from(jsonData:) instead.")
+        }
+        if container.contains(.nps), (try? container.decodeNil(forKey: .nps)) == false {
+            print("RelevaSDK Warning: RelevaResponse.init(from:) drops NPS data. Use RelevaResponse.from(jsonData:) instead.")
+        }
+        #endif
     }
 
     public func encode(to encoder: Encoder) throws {

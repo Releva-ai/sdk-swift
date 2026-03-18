@@ -65,5 +65,11 @@ final class InboxMessageTests: XCTestCase {
         XCTAssertEqual(restored?.title, original.title)
         XCTAssertEqual(restored?.read, original.read)
         XCTAssertEqual(restored?.inboxMessageId, original.inboxMessageId)
+        // Verify createdAt survives round-trip (within 1 second tolerance for formatting precision)
+        if let restoredDate = restored?.createdAt {
+            XCTAssertEqual(restoredDate.timeIntervalSince1970, original.createdAt.timeIntervalSince1970, accuracy: 1.0)
+        } else {
+            XCTFail("createdAt should not be nil after round-trip")
+        }
     }
 }
