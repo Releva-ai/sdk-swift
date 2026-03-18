@@ -71,7 +71,7 @@ public struct DesignRenderer {
                 }
             }
         }
-        .padding(padding ?? EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .padding(padding ?? EdgeInsets())
         .background(effectiveBg ?? .clear)
     }
 
@@ -95,7 +95,7 @@ public struct DesignRenderer {
                 buildContent(content: content, textColor: textColor, onLinkTap: onLinkTap)
             }
         }
-        .padding(padding ?? EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .padding(padding ?? EdgeInsets())
         .background(
             RoundedRectangle(cornerRadius: borderRadius ?? 0)
                 .fill(backgroundColor ?? .clear)
@@ -132,7 +132,7 @@ public struct DesignRenderer {
                 EmptyView()
             }
         }
-        .padding(containerPadding ?? EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .padding(containerPadding ?? EdgeInsets())
     }
 
     // MARK: - Image
