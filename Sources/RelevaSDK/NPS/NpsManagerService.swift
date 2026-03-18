@@ -67,8 +67,10 @@ public class NpsManagerService {
         triggered = true
         let delay = config?.triggerDelaySeconds ?? 0
 
-        delayTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
-            self?.showNps()
+        DispatchQueue.main.async { [weak self] in
+            self?.delayTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
+                self?.showNps()
+            }
         }
     }
 

@@ -119,22 +119,24 @@ public class InboxService: ObservableObject {
         state.isLoading = true
 
         networkService?.fetchInboxMessages(userId: userId, cursor: state.nextCursor) { [weak self] result in
-            guard let self = self else { return }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
 
-            switch result {
-            case .success(let json):
-                let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
-                let newMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
-                let nextCursor = json["nextCursor"] as? String
+                switch result {
+                case .success(let json):
+                    let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
+                    let newMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
+                    let nextCursor = json["nextCursor"] as? String
 
-                self.state.messages.append(contentsOf: newMessages)
-                self.state.nextCursor = nextCursor
-                self.state.hasMore = nextCursor != nil
-                self.state.isLoading = false
-                self.persistState()
+                    self.state.messages.append(contentsOf: newMessages)
+                    self.state.nextCursor = nextCursor
+                    self.state.hasMore = nextCursor != nil
+                    self.state.isLoading = false
+                    self.persistState()
 
-            case .failure:
-                self.state.isLoading = false
+                case .failure:
+                    self.state.isLoading = false
+                }
             }
         }
     }
@@ -155,15 +157,17 @@ public class InboxService: ObservableObject {
         state.unreadCount = max(0, state.unreadCount - 1)
 
         networkService?.inboxMarkAsRead(messageId: messageId, userId: userId) { [weak self] result in
-            guard let self = self else { return }
-            if case .failure = result {
-                // Revert on failure
-                if let idx = self.state.messages.firstIndex(where: { $0.id == messageId }) {
-                    self.state.messages[idx].read = originalRead
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if case .failure = result {
+                    // Revert on failure
+                    if let idx = self.state.messages.firstIndex(where: { $0.id == messageId }) {
+                        self.state.messages[idx].read = originalRead
+                    }
+                    self.state.unreadCount = originalCount
+                } else {
+                    self.persistState()
                 }
-                self.state.unreadCount = originalCount
-            } else {
-                self.persistState()
             }
         }
     }
@@ -183,16 +187,18 @@ public class InboxService: ObservableObject {
         state.unreadCount = 0
 
         networkService?.inboxMarkAllAsRead(userId: userId) { [weak self] result in
-            guard let self = self else { return }
-            if case .failure = result {
-                for (id, wasRead) in originalReadStates {
-                    if let idx = self.state.messages.firstIndex(where: { $0.id == id }) {
-                        self.state.messages[idx].read = wasRead
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if case .failure = result {
+                    for (id, wasRead) in originalReadStates {
+                        if let idx = self.state.messages.firstIndex(where: { $0.id == id }) {
+                            self.state.messages[idx].read = wasRead
+                        }
                     }
+                    self.state.unreadCount = originalCount
+                } else {
+                    self.persistState()
                 }
-                self.state.unreadCount = originalCount
-            } else {
-                self.persistState()
             }
         }
     }
@@ -214,12 +220,14 @@ public class InboxService: ObservableObject {
         }
 
         networkService?.inboxDeleteMessage(messageId: messageId, userId: userId) { [weak self] result in
-            guard let self = self else { return }
-            if case .failure = result {
-                self.state.messages = originalMessages
-                self.state.unreadCount = originalCount
-            } else {
-                self.persistState()
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if case .failure = result {
+                    self.state.messages = originalMessages
+                    self.state.unreadCount = originalCount
+                } else {
+                    self.persistState()
+                }
             }
         }
     }

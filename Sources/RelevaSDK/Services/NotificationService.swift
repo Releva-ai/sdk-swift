@@ -244,8 +244,10 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             print("RelevaSDK: UserInfo: \(notification.request.content.userInfo)")
         }
 
-        // Check if it's a Releva notification
+        // Check if it's a Releva notification via userInfo (categoryIdentifier is unreliable for direct APNs)
+        let userInfo = notification.request.content.userInfo
         let isReleva = notification.request.content.categoryIdentifier.hasPrefix("RELEVA")
+            || RelevaClient.shared?.isRelevaMessage(userInfo: userInfo) == true
         if config.enableDebugLogging {
             print("RelevaSDK: Is Releva: \(isReleva)")
         }
