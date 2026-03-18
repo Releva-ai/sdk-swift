@@ -499,25 +499,6 @@ public class NetworkService {
         }
     }
     
-    /// Convenience method to mark message as read (alias for inboxMarkAsRead)
-    public func markInboxMessageAsRead(
-        messageId: String,
-        completion: @escaping CompletionHandler<Bool>
-    ) {
-        // Use profile ID if available, otherwise use placeholder
-        let userId = "profile" // This would typically come from the calling service
-        inboxMarkAsRead(messageId: messageId, userId: userId, completion: completion)
-    }
-    
-    /// Convenience method to delete inbox message (alias for inboxDeleteMessage)
-    public func deleteInboxMessage(
-        messageId: String,
-        completion: @escaping CompletionHandler<Bool>
-    ) {
-        // Use profile ID if available, otherwise use placeholder
-        let userId = "profile" // This would typically come from the calling service
-        inboxDeleteMessage(messageId: messageId, userId: userId, completion: completion)
-    }
 
     // MARK: - Private Methods
 
