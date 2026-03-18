@@ -298,15 +298,66 @@ class NotificationService: RelevaNotificationServiceExtension {
 
 > **Note**: The SDK uses runtime reflection to safely handle UIApplication APIs. This means it works out-of-the-box in both your main app and the extension without any build configuration.
 
+### Handling Navigation from Push Notifications
+
+When a user taps a notification, the SDK posts `NotificationCenter` notifications that your app observes to perform navigation. Set up observers in your main view or app state:
+
+```swift
+// Listen for screen navigation
+NotificationCenter.default.addObserver(
+    forName: Notification.Name("RelevaNavigateToScreen"),
+    object: nil,
+    queue: .main
+) { notification in
+    guard let screen = notification.userInfo?["screen"] as? String else { return }
+    let parameters = notification.userInfo?["parsedParameters"] as? [String: Any]
+
+    // Map screen name to your app's navigation
+    // screen is a free-form value configured in the Releva dashboard
+    switch screen {
+    case "cart":
+        // Navigate to cart
+    case "product_details":
+        let productId = parameters?["productId"] as? String
+        // Navigate to product details
+    default:
+        // Navigate to home or handle unknown screens
+    }
+}
+
+// Listen for URL navigation (deep links with custom scheme)
+NotificationCenter.default.addObserver(
+    forName: Notification.Name("RelevaNavigateToURL"),
+    object: nil,
+    queue: .main
+) { notification in
+    guard let url = notification.userInfo?["url"] as? URL else { return }
+    // Handle deep link (e.g. myapp://product/123)
+}
+
+// Listen for inbox navigation
+NotificationCenter.default.addObserver(
+    forName: Notification.Name("RelevaNavigateToInbox"),
+    object: nil,
+    queue: .main
+) { notification in
+    let parameters = notification.userInfo?["parsedParameters"] as? [String: Any]
+    let inboxMessageId = parameters?["inboxMessageId"]
+    // Navigate to inbox, optionally scrolling to the specific message
+}
+```
+
+> **Note:** External URLs (`https://...`) are opened directly in Safari by the SDK. Only internal deep links (custom schemes) post a `RelevaNavigateToURL` notification.
+
 ### Navigation Types Supported
 
-The SDK supports two types of navigation from push notifications:
+The SDK supports three types of navigation from push notifications:
 
 **1. Screen Navigation** (`target: "screen"`):
 ```json
 {
   "target": "screen",
-  "navigate_to_screen": "/cart",
+  "navigate_to_screen": "cart",
   "navigate_to_parameters": "{\"inboxMessageId\": 123}"
 }
 ```
@@ -321,6 +372,15 @@ Posts a `RelevaNavigateToScreen` notification that your app can observe. Paramet
 ```
 - **Internal deep links** (e.g., `myapp://...`): Posts `RelevaNavigateToURL` notification for your app to handle
 - **External URLs** (e.g., `https://...`): Opens in Safari or appropriate app
+
+**3. Inbox Navigation** (`target: "inbox"`):
+```json
+{
+  "target": "inbox",
+  "navigate_to_parameters": "{\"inboxMessageId\": 456}"
+}
+```
+Posts a `RelevaNavigateToInbox` notification. Your app navigates to the inbox screen, optionally opening a specific message.
 
 ## Core Features
 
