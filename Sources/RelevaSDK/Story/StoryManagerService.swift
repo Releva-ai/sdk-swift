@@ -86,14 +86,23 @@ public class StoryManagerService {
 
     /// Call when the cart changes to trigger cart-based stories
     public func onCartChanged() {
-        stories.filter { $0.trigger == "cartChanged" }.forEach { triggerStory($0) }
+        let work = { [weak self] in
+            guard let self = self else { return }
+            self.stories.filter { $0.trigger == "cartChanged" }.forEach { self.triggerStory($0) }
+        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Call when the wishlist changes to trigger wishlist-based stories
     public func onWishlistChanged() {
-        stories.filter { $0.trigger == "wishlistChanged" }.forEach { triggerStory($0) }
+        let work = { [weak self] in
+            guard let self = self else { return }
+            self.stories.filter { $0.trigger == "wishlistChanged" }.forEach { self.triggerStory($0) }
+        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
+    /// Must be called on main thread.
     private func triggerStory(_ story: StoryResponse) {
         guard !displayedStories.contains(story.token) else { return }
         displayedStories.insert(story.token)

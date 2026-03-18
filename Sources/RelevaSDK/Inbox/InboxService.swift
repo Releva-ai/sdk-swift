@@ -143,93 +143,101 @@ public class InboxService: ObservableObject {
 
     /// Mark single message as read (optimistic update).
     public func markAsRead(_ messageId: String) {
-        guard initialized, let userId = profileId else { return }
+        let work = { [weak self] in
+            guard let self = self, self.initialized, let userId = self.profileId else { return }
 
-        guard let index = state.messages.firstIndex(where: { $0.id == messageId }) else { return }
-        if state.messages[index].read { return }
+            guard let index = self.state.messages.firstIndex(where: { $0.id == messageId }) else { return }
+            if self.state.messages[index].read { return }
 
-        // Snapshot for rollback
-        let originalRead = state.messages[index].read
-        let originalCount = state.unreadCount
+            // Snapshot for rollback
+            let originalRead = self.state.messages[index].read
+            let originalCount = self.state.unreadCount
 
-        // Optimistic update
-        state.messages[index].read = true
-        state.unreadCount = max(0, state.unreadCount - 1)
+            // Optimistic update
+            self.state.messages[index].read = true
+            self.state.unreadCount = max(0, self.state.unreadCount - 1)
 
-        networkService?.inboxMarkAsRead(messageId: messageId, userId: userId) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                if case .failure = result {
-                    // Revert on failure
-                    if let idx = self.state.messages.firstIndex(where: { $0.id == messageId }) {
-                        self.state.messages[idx].read = originalRead
+            self.networkService?.inboxMarkAsRead(messageId: messageId, userId: userId) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    if case .failure = result {
+                        if let idx = self.state.messages.firstIndex(where: { $0.id == messageId }) {
+                            self.state.messages[idx].read = originalRead
+                        }
+                        self.state.unreadCount = originalCount
+                    } else {
+                        self.persistState()
                     }
-                    self.state.unreadCount = originalCount
-                } else {
-                    self.persistState()
                 }
             }
         }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Mark all messages as read (optimistic update).
     public func markAllAsRead() {
-        guard initialized, let userId = profileId else { return }
+        let work = { [weak self] in
+            guard let self = self, self.initialized, let userId = self.profileId else { return }
 
-        // Snapshot for rollback
-        let originalReadStates = state.messages.map { ($0.id, $0.read) }
-        let originalCount = state.unreadCount
+            // Snapshot for rollback
+            let originalReadStates = self.state.messages.map { ($0.id, $0.read) }
+            let originalCount = self.state.unreadCount
 
-        // Optimistic update
-        for i in state.messages.indices {
-            state.messages[i].read = true
-        }
-        state.unreadCount = 0
+            // Optimistic update
+            for i in self.state.messages.indices {
+                self.state.messages[i].read = true
+            }
+            self.state.unreadCount = 0
 
-        networkService?.inboxMarkAllAsRead(userId: userId) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                if case .failure = result {
-                    for (id, wasRead) in originalReadStates {
-                        if let idx = self.state.messages.firstIndex(where: { $0.id == id }) {
-                            self.state.messages[idx].read = wasRead
+            self.networkService?.inboxMarkAllAsRead(userId: userId) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    if case .failure = result {
+                        for (id, wasRead) in originalReadStates {
+                            if let idx = self.state.messages.firstIndex(where: { $0.id == id }) {
+                                self.state.messages[idx].read = wasRead
+                            }
                         }
+                        self.state.unreadCount = originalCount
+                    } else {
+                        self.persistState()
                     }
-                    self.state.unreadCount = originalCount
-                } else {
-                    self.persistState()
                 }
             }
         }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Delete a message (optimistic update).
     public func deleteMessage(_ messageId: String) {
-        guard initialized, let userId = profileId else { return }
+        let work = { [weak self] in
+            guard let self = self, self.initialized, let userId = self.profileId else { return }
 
-        guard let index = state.messages.firstIndex(where: { $0.id == messageId }) else { return }
+            guard let index = self.state.messages.firstIndex(where: { $0.id == messageId }) else { return }
 
-        let removedMessage = state.messages[index]
-        let originalMessages = state.messages
-        let originalCount = state.unreadCount
+            let removedMessage = self.state.messages[index]
+            let originalMessages = self.state.messages
+            let originalCount = self.state.unreadCount
 
-        // Optimistic update
-        state.messages.remove(at: index)
-        if !removedMessage.read {
-            state.unreadCount = max(0, state.unreadCount - 1)
-        }
+            // Optimistic update
+            self.state.messages.remove(at: index)
+            if !removedMessage.read {
+                self.state.unreadCount = max(0, self.state.unreadCount - 1)
+            }
 
-        networkService?.inboxDeleteMessage(messageId: messageId, userId: userId) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                if case .failure = result {
-                    self.state.messages = originalMessages
-                    self.state.unreadCount = originalCount
-                } else {
-                    self.persistState()
+            self.networkService?.inboxDeleteMessage(messageId: messageId, userId: userId) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    if case .failure = result {
+                        self.state.messages = originalMessages
+                        self.state.unreadCount = originalCount
+                    } else {
+                        self.persistState()
+                    }
                 }
             }
         }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Track message action (tap/click). Fire-and-forget.
