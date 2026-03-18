@@ -14,7 +14,7 @@ public struct InboxState {
         unreadCount: Int = 0,
         nextCursor: String? = nil,
         isLoading: Bool = false,
-        hasMore: Bool = true,
+        hasMore: Bool = false,
         lastFetchTime: Date? = nil
     ) {
         self.messages = messages

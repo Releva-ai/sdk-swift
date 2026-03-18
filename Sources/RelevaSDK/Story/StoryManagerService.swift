@@ -8,6 +8,7 @@ public class StoryManagerService {
     private var displayedStories = Set<String>()
     private var delayTimers: [Timer] = []
     private var scrollTimer: Timer?
+    private var scrollTriggeredStories: [StoryResponse] = []
     private var scrollPercentageProvider: (() -> Int)?
 
     /// Initialize with stories from a push response.
@@ -50,7 +51,7 @@ public class StoryManagerService {
 
             case "scrollPercentage":
                 if story.scrollPercentage != nil, scrollPercentageProvider != nil {
-                    setupScrollTrigger(story)
+                    scrollTriggeredStories.append(story)
                 }
 
             case "cartChanged", "wishlistChanged", "leaveIntent":
@@ -60,18 +61,29 @@ public class StoryManagerService {
                 break
             }
         }
+
+        if !scrollTriggeredStories.isEmpty {
+            setupScrollTimer()
+        }
     }
 
-    private func setupScrollTrigger(_ story: StoryResponse) {
-        guard scrollTimer == nil else { return }
+    private func setupScrollTimer() {
         let scheduleBlock: () -> Void = { [weak self] in
             self?.scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 guard let self = self,
-                      let provider = self.scrollPercentageProvider,
-                      let threshold = story.scrollPercentage else { return }
+                      let provider = self.scrollPercentageProvider else { return }
                 let current = provider()
-                if current >= threshold && !self.displayedStories.contains(story.token) {
-                    self.triggerStory(story)
+                var allTriggered = true
+                for story in self.scrollTriggeredStories {
+                    guard let threshold = story.scrollPercentage else { continue }
+                    if current >= threshold && !self.displayedStories.contains(story.token) {
+                        self.triggerStory(story)
+                    }
+                    if !self.displayedStories.contains(story.token) {
+                        allTriggered = false
+                    }
+                }
+                if allTriggered {
                     self.scrollTimer?.invalidate()
                     self.scrollTimer = nil
                 }
@@ -115,6 +127,7 @@ public class StoryManagerService {
         let scroll = scrollTimer
         delayTimers.removeAll()
         scrollTimer = nil
+        scrollTriggeredStories.removeAll()
 
         let invalidateBlock = {
             timers.forEach { $0.invalidate() }

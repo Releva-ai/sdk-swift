@@ -298,8 +298,8 @@ public class NetworkService {
         }
     }
 
-    /// Send banner action (click, close, etc.)
-    public func sendBannerAction(
+    /// Send a push event action (banner click/close, story impression/click, etc.)
+    public func sendPushEvent(
         _ payload: [String: Any],
         completion: @escaping CompletionHandler<Bool>
     ) {
@@ -316,6 +316,14 @@ public class NetworkService {
                 completion(.failure(error))
             }
         }
+    }
+
+    /// Send banner action (click, close, etc.) — convenience alias for sendPushEvent
+    public func sendBannerAction(
+        _ payload: [String: Any],
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        sendPushEvent(payload, completion: completion)
     }
 
     // MARK: - NPS

@@ -81,7 +81,6 @@ struct NpsSurveyView: View {
     @State private var step: NpsStep = .score
     @State private var selectedScore: Int?
     @State private var comment: String = ""
-    @State private var isSubmitting = false
     @State private var dismissTimer: Timer?
 
     private var nps: NpsConfig { config.config }
@@ -240,25 +239,18 @@ struct NpsSurveyView: View {
             Button {
                 submitFollowUp()
             } label: {
-                if isSubmitting {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                } else {
-                    Text(nps.submitLabel)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                }
+                Text(nps.submitLabel)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
             }
             .background(
                 RoundedRectangle(cornerRadius: buttonCornerRadius(for: nps.appearance.buttonStyle, height: 48))
                     .fill(submitButtonEnabled ? primaryColor : primaryColor.opacity(0.4))
             )
             .clipShape(RoundedRectangle(cornerRadius: buttonCornerRadius(for: nps.appearance.buttonStyle, height: 48)))
-            .disabled(!submitButtonEnabled || isSubmitting)
+            .disabled(!submitButtonEnabled)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
@@ -304,9 +296,7 @@ struct NpsSurveyView: View {
     }
 
     private func submitScore(_ score: Int, comment: String?) {
-        isSubmitting = true
         onSubmit(nps.token, score, comment)
-        isSubmitting = false
         step = .thankYou
         // Auto-dismiss after 2 seconds
         dismissTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { _ in
@@ -332,10 +322,6 @@ struct NpsSurveyView: View {
         }
     }
 
-    @ViewBuilder
-    private func buttonShape(for style: String, height: CGFloat = 36) -> some Shape {
-        RoundedRectangle(cornerRadius: buttonCornerRadius(for: style, height: height))
-    }
 }
 
 // MARK: - Types

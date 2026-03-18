@@ -149,14 +149,15 @@ public struct RelevaResponse: Codable, Equatable {
         case recommenders, banners, stories, nps, push
     }
 
+    /// Internal Codable initializer — only decodes Codable-compatible fields.
+    /// Banners, stories, and NPS contain [String: Any] and must be parsed via `from(jsonData:)`.
+    /// Always use `from(jsonData:)` or `from(jsonString:)` to get the full response.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         recommenders = try container.decodeIfPresent([RecommenderResponse].self, forKey: .recommenders) ?? []
         push = try container.decodeIfPresent(PushInfo.self, forKey: .push)
 
-        // Banners, stories, and NPS contain [String: Any] fields, so we decode them manually
         banners = RelevaResponse.decodeBanners(from: decoder)
-        // Stories and NPS are parsed from raw JSON in from(jsonData:)
         stories = []
         nps = nil
     }

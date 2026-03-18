@@ -268,8 +268,7 @@ public class RelevaClient {
         let previousWishlist = self.wishlist
         self.wishlist = products
 
-        // Simple change detection - could be improved with proper equality
-        self.wishlistChanged = (previousWishlist?.count != products.count)
+        self.wishlistChanged = (previousWishlist != products)
 
         let isFirstInitialization = !wishlistInitialized
         if !wishlistInitialized {
@@ -750,7 +749,7 @@ public class RelevaClient {
             "attributions": attributions
         ]
 
-        networkService.sendBannerAction(payload) { result in
+        networkService.sendPushEvent(payload) { result in
             if self.config.enableDebugLogging {
                 switch result {
                 case .success:

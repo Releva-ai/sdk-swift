@@ -102,6 +102,7 @@ public class NpsManagerService {
     public func startNewSession() {
         queue.async { [weak self] in
             guard let self = self else { return }
+            self.config = nil
             self.suppressedThisSession = false
             self.triggered = false
             DispatchQueue.main.async {

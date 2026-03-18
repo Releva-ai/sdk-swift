@@ -131,6 +131,7 @@ public class InboxService: ObservableObject {
                     self.state.messages.append(contentsOf: newMessages)
                     self.state.nextCursor = nextCursor
                     self.state.hasMore = nextCursor != nil
+                    self.state.lastFetchTime = Date()
                     self.state.isLoading = false
                     self.persistState()
 
