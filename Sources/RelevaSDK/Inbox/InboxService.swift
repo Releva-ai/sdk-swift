@@ -78,7 +78,7 @@ public class InboxService: ObservableObject {
         var fetchedUnread: Int?
 
         group.enter()
-        networkService?.fetchInboxMessages(userId: userId) { [weak self] result in
+        networkService?.fetchInboxMessages(userId: userId) { result in
             if case .success(let json) = result {
                 let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
                 fetchedMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }

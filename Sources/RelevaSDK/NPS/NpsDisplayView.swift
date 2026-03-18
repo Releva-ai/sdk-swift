@@ -24,7 +24,7 @@ public struct NpsDisplayModifier: ViewModifier {
                     onSubmit: onSubmit,
                     onSkip: onSkip
                 )
-                .presentationDetents([.medium, .large])
+                .modifier(PresentationDetentsModifier())
             }
     }
 }
@@ -342,4 +342,16 @@ struct NpsSurveyView: View {
 
 private enum NpsStep {
     case score, followUp, thankYou
+}
+
+// MARK: - Presentation Detents Compatibility
+
+private struct PresentationDetentsModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content.presentationDetents([.medium, .large])
+        } else {
+            content
+        }
+    }
 }
