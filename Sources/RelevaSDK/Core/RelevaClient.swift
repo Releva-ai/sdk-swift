@@ -698,6 +698,11 @@ public class RelevaClient {
         comment: String? = nil,
         completion: ((Result<Bool, RelevaError>) -> Void)? = nil
     ) {
+        guard (0...10).contains(score) else {
+            completion?(.failure(.invalidConfiguration("NPS score must be between 0 and 10")))
+            return
+        }
+
         var payload: [String: Any] = [
             "profileId": profileId ?? "",
             "deviceId": deviceId ?? "",

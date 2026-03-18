@@ -25,16 +25,20 @@ public struct InboxMessage: Identifiable {
         self.inboxMessageId = inboxMessageId
     }
 
+    private static let dateFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let fallbackDateFormatter = ISO8601DateFormatter()
+
     public static func from(dict: [String: Any]) -> InboxMessage? {
         guard let id = dict["id"] as? String else { return nil }
-
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         let createdAt: Date
         if let dateString = dict["createdAt"] as? String {
             createdAt = dateFormatter.date(from: dateString)
-                ?? ISO8601DateFormatter().date(from: dateString)
+                ?? fallbackDateFormatter.date(from: dateString)
                 ?? Date()
         } else {
             createdAt = Date()
@@ -52,15 +56,12 @@ public struct InboxMessage: Identifiable {
 
     /// Serialize to dictionary for cache persistence
     public func toDict() -> [String: Any] {
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
         return [
             "id": id,
             "title": title,
             "design": design,
             "read": read,
-            "createdAt": dateFormatter.string(from: createdAt),
+            "createdAt": InboxMessage.dateFormatter.string(from: createdAt),
             "inboxMessageId": inboxMessageId
         ]
     }

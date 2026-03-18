@@ -184,10 +184,14 @@ public struct RelevaResponse: Codable, Equatable {
         }
     }
 
-    // MARK: - Equatable (banners/stories/nps excluded since they contain [String: Any])
+    // MARK: - Equatable
 
     public static func == (lhs: RelevaResponse, rhs: RelevaResponse) -> Bool {
-        return lhs.recommenders == rhs.recommenders && lhs.push == rhs.push
+        return lhs.recommenders == rhs.recommenders
+            && lhs.push == rhs.push
+            && lhs.banners.count == rhs.banners.count
+            && lhs.stories.count == rhs.stories.count
+            && lhs.nps?.token == rhs.nps?.token
     }
 
     // MARK: - Factory Methods

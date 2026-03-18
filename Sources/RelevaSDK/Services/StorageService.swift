@@ -45,7 +45,7 @@ public class StorageService {
     private let userDefaults: UserDefaults
 
     /// SDK version for migration purposes
-    private let sdkVersion = "1.0.2"
+    private let sdkVersion = "1.1.0"
 
     // MARK: - Initializers
 

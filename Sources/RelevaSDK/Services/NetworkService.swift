@@ -351,42 +351,25 @@ public class NetworkService {
         cursor: String? = nil,
         completion: @escaping CompletionHandler<[String: Any]>
     ) {
-        var urlString = "\(getBaseURL())/api/v0/inbox/messages"
-        urlString += "?userId=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
-        urlString += "&limit=\(limit)"
+        var endpoint = "/api/v0/inbox/messages"
+        endpoint += "?userId=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
+        endpoint += "&limit=\(limit)"
         if let cursor = cursor {
-            urlString += "&cursor=\(cursor.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? cursor)"
+            endpoint += "&cursor=\(cursor.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? cursor)"
         }
 
-        guard let url = URL(string: urlString) else {
-            completion(.failure(.invalidConfiguration("Invalid inbox URL")))
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = requestTimeout
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let task = session.dataTask(with: request) { data, response, error in
-            if let error = error {
-                DispatchQueue.main.async { completion(.failure(.networkError(error.localizedDescription))) }
-                return
-            }
-            guard let data = data,
-                  let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
-                DispatchQueue.main.async { completion(.failure(.invalidResponse("Inbox fetch failed"))) }
-                return
-            }
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                DispatchQueue.main.async { completion(.success(json)) }
-            } else {
-                DispatchQueue.main.async { completion(.failure(.invalidResponse("Invalid inbox JSON"))) }
+        performRequest(endpoint: endpoint, method: .get, retryAttempts: 1) { (result: NetworkResult<Data>) in
+            switch result {
+            case .success(let data):
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    completion(.success(json))
+                } else {
+                    completion(.failure(.invalidResponse("Invalid inbox JSON")))
+                }
+            case .failure(let error):
+                completion(.failure(error))
             }
         }
-        task.resume()
     }
 
     /// Fetch inbox unread count
@@ -394,36 +377,22 @@ public class NetworkService {
         userId: String,
         completion: @escaping CompletionHandler<Int>
     ) {
-        var urlString = "\(getBaseURL())/api/v0/inbox/unread-count"
-        urlString += "?userId=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
+        let encodedUserId = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
+        let endpoint = "/api/v0/inbox/unread-count?userId=\(encodedUserId)"
 
-        guard let url = URL(string: urlString) else {
-            completion(.failure(.invalidConfiguration("Invalid inbox URL")))
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = requestTimeout
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let task = session.dataTask(with: request) { data, response, error in
-            if let error = error {
-                DispatchQueue.main.async { completion(.failure(.networkError(error.localizedDescription))) }
-                return
+        performRequest(endpoint: endpoint, method: .get, retryAttempts: 1) { (result: NetworkResult<Data>) in
+            switch result {
+            case .success(let data):
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let count = (json["count"] as? NSNumber)?.intValue ?? 0
+                    completion(.success(count))
+                } else {
+                    completion(.failure(.invalidResponse("Unread count fetch failed")))
+                }
+            case .failure(let error):
+                completion(.failure(error))
             }
-            guard let data = data,
-                  let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                DispatchQueue.main.async { completion(.failure(.invalidResponse("Unread count fetch failed"))) }
-                return
-            }
-            let count = (json["count"] as? NSNumber)?.intValue ?? 0
-            DispatchQueue.main.async { completion(.success(count)) }
         }
-        task.resume()
     }
 
     /// Mark inbox message as read

@@ -16,7 +16,10 @@ public struct StoryViewerView: View {
     @State private var timer: Timer?
 
     private var currentSlide: StorySlideResponse {
-        story.slides[currentSlideIndex]
+        guard currentSlideIndex < story.slides.count else {
+            return StorySlideResponse()
+        }
+        return story.slides[currentSlideIndex]
     }
 
     private var activeColor: Color {
@@ -143,7 +146,8 @@ public struct StoryViewerView: View {
         timer?.invalidate()
         progress = 0
 
-        let duration = TimeInterval(currentSlide.durationSeconds)
+        guard !story.slides.isEmpty else { return }
+        let duration = max(TimeInterval(currentSlide.durationSeconds), 0.1)
         let interval: TimeInterval = 0.05
         let increment = CGFloat(interval / duration)
 

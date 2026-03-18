@@ -310,7 +310,9 @@ struct NpsSurveyView: View {
         step = .thankYou
         // Auto-dismiss after 2 seconds
         dismissTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { _ in
-            dismiss()
+            DispatchQueue.main.async {
+                dismiss()
+            }
         }
     }
 

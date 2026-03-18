@@ -32,12 +32,19 @@ public class InboxService: ObservableObject {
         profileId: String?,
         storage: StorageService
     ) {
+        let profileChanged = self.profileId != profileId
+
         self.networkService = networkService
         self.accessToken = accessToken
         self.profileId = profileId
         self.storage = storage
 
-        if initialized { return }
+        if initialized {
+            if profileChanged {
+                restoreCachedState()
+            }
+            return
+        }
         initialized = true
 
         // Register for foreground notifications to refresh on app resume
@@ -225,7 +232,6 @@ public class InboxService: ObservableObject {
 
     /// Look up an inbox message by its `inboxMessageId`.
     public func getMessageById(_ inboxMessageId: Int) -> InboxMessage? {
-        refreshIfStale()
         return state.messages.first { $0.inboxMessageId == inboxMessageId }
     }
 
