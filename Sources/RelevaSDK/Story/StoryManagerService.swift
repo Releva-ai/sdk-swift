@@ -141,8 +141,4 @@ public class StoryManagerService {
         if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
-    deinit {
-        delayTimers.forEach { $0.invalidate() }
-        scrollTimer?.invalidate()
-    }
 }

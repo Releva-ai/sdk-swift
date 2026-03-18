@@ -250,8 +250,11 @@ public class InboxService: ObservableObject {
 
     /// Track message action (tap/click). Fire-and-forget.
     public func trackAction(_ messageId: String) {
-        guard initialized, let userId = profileId else { return }
-        networkService?.inboxTrackAction(messageId: messageId, userId: userId) { _ in }
+        let work = { [weak self] in
+            guard let self = self, self.initialized, let userId = self.profileId else { return }
+            self.networkService?.inboxTrackAction(messageId: messageId, userId: userId) { _ in }
+        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Look up an inbox message by its `inboxMessageId`.

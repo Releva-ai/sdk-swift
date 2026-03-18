@@ -56,9 +56,9 @@ public class NpsManagerService {
 
             // Cancel events take priority
             if config.cancelOnEvents.contains(eventName) {
-                DispatchQueue.main.async {
-                    self.delayTimer?.invalidate()
-                    self.delayTimer = nil
+                DispatchQueue.main.async { [weak self] in
+                    self?.delayTimer?.invalidate()
+                    self?.delayTimer = nil
                 }
                 self.suppressedThisSession = true
                 return
@@ -81,7 +81,8 @@ public class NpsManagerService {
         let delay = config?.triggerDelaySeconds ?? 0
 
         DispatchQueue.main.async { [weak self] in
-            self?.delayTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            self.delayTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
                 self?.queue.async {
                     self?.showNps()
                 }
@@ -105,9 +106,9 @@ public class NpsManagerService {
             self.config = nil
             self.suppressedThisSession = false
             self.triggered = false
-            DispatchQueue.main.async {
-                self.delayTimer?.invalidate()
-                self.delayTimer = nil
+            DispatchQueue.main.async { [weak self] in
+                self?.delayTimer?.invalidate()
+                self?.delayTimer = nil
             }
         }
     }
@@ -122,8 +123,4 @@ public class NpsManagerService {
         }
     }
 
-    deinit {
-        delayTimer?.invalidate()
-        delayTimer = nil
-    }
 }

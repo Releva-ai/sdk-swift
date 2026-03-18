@@ -164,7 +164,6 @@ public struct RelevaResponse: Codable, Equatable {
         stories = []
         nps = nil
 
-        #if DEBUG
         // Warn if stories/nps keys are present — caller should use from(jsonData:) instead
         if container.contains(.stories), (try? container.decodeNil(forKey: .stories)) == false {
             print("RelevaSDK Warning: RelevaResponse.init(from:) drops stories data. Use RelevaResponse.from(jsonData:) instead.")
@@ -172,7 +171,6 @@ public struct RelevaResponse: Codable, Equatable {
         if container.contains(.nps), (try? container.decodeNil(forKey: .nps)) == false {
             print("RelevaSDK Warning: RelevaResponse.init(from:) drops NPS data. Use RelevaResponse.from(jsonData:) instead.")
         }
-        #endif
     }
 
     public func encode(to encoder: Encoder) throws {

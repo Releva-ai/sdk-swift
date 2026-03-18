@@ -478,28 +478,6 @@ public class NetworkService {
         }
     }
     
-    /// Convenience method to fetch inbox messages for profile ID (alias for fetchInboxMessages)
-    public func fetchInboxMessages(
-        profileId: String,
-        completion: @escaping CompletionHandler<[InboxMessage]>
-    ) {
-        fetchInboxMessages(userId: profileId) { result in
-            switch result {
-            case .success(let dict):
-                // Parse messages from response
-                if let messagesArray = dict["messages"] as? [[String: Any]] {
-                    let messages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
-                    completion(.success(messages))
-                } else {
-                    completion(.success([]))
-                }
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-
     // MARK: - Private Methods
 
     /// Perform network request with retry logic
