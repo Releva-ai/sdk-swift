@@ -126,17 +126,17 @@ public struct BannerDisplayModifier: ViewModifier {
         let borderRadius = isFullScreen ? CGFloat(0) : getBorderRadius(banner)
 
         let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
 
-        let popupWidth: CGFloat
-        if isFullScreen {
-            popupWidth = screenWidth
-        } else {
-            let contentWidth = resolveDimension(bodyValues["contentWidth"], relativeTo: screenWidth)
-                ?? resolveDimension(bodyValues["popupWidth"], relativeTo: screenWidth)
-                ?? 400
-            popupWidth = min(contentWidth, screenWidth - 32)
-        }
+        let popupWidth: CGFloat = {
+            if isFullScreen {
+                return screenWidth
+            } else {
+                let contentWidth = resolveDimension(bodyValues["contentWidth"], relativeTo: screenWidth)
+                    ?? resolveDimension(bodyValues["popupWidth"], relativeTo: screenWidth)
+                    ?? 400
+                return min(contentWidth, screenWidth - 32)
+            }
+        }()
 
         ZStack {
             // Overlay
