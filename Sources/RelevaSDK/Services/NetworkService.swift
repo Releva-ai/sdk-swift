@@ -351,7 +351,7 @@ public class NetworkService {
         cursor: String? = nil,
         completion: @escaping CompletionHandler<[String: Any]>
     ) {
-        var urlString = "\(getBaseURL())/api/v0/inbox/\(accessToken)/messages"
+        var urlString = "\(getBaseURL())/api/v0/inbox/messages"
         urlString += "?userId=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
         urlString += "&limit=\(limit)"
         if let cursor = cursor {
@@ -394,7 +394,7 @@ public class NetworkService {
         userId: String,
         completion: @escaping CompletionHandler<Int>
     ) {
-        var urlString = "\(getBaseURL())/api/v0/inbox/\(accessToken)/unread-count"
+        var urlString = "\(getBaseURL())/api/v0/inbox/unread-count"
         urlString += "?userId=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
 
         guard let url = URL(string: urlString) else {
@@ -433,7 +433,7 @@ public class NetworkService {
         completion: @escaping CompletionHandler<Bool>
     ) {
         performRequest(
-            endpoint: "/api/v0/inbox/\(accessToken)/messages/\(messageId)/read",
+            endpoint: "/api/v0/inbox/messages/\(messageId)/read",
             method: .post,
             body: ["userId": userId],
             retryAttempts: 1
@@ -451,7 +451,7 @@ public class NetworkService {
         completion: @escaping CompletionHandler<Bool>
     ) {
         performRequest(
-            endpoint: "/api/v0/inbox/\(accessToken)/messages/read-all",
+            endpoint: "/api/v0/inbox/messages/read-all",
             method: .post,
             body: ["userId": userId],
             retryAttempts: 1
@@ -470,7 +470,7 @@ public class NetworkService {
         completion: @escaping CompletionHandler<Bool>
     ) {
         performRequest(
-            endpoint: "/api/v0/inbox/\(accessToken)/messages/\(messageId)",
+            endpoint: "/api/v0/inbox/messages/\(messageId)",
             method: .delete,
             body: ["userId": userId],
             retryAttempts: 1
@@ -489,7 +489,7 @@ public class NetworkService {
         completion: @escaping CompletionHandler<Bool>
     ) {
         performRequest(
-            endpoint: "/api/v0/inbox/\(accessToken)/messages/\(messageId)/action",
+            endpoint: "/api/v0/inbox/messages/\(messageId)/action",
             method: .post,
             body: ["userId": userId, "devicePlatform": "ios"],
             retryAttempts: 0
