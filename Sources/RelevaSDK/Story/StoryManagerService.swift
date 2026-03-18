@@ -127,21 +127,18 @@ public class StoryManagerService {
 
     /// Clean up timers
     public func dispose() {
-        let timers = delayTimers
-        let scroll = scrollTimer
-        delayTimers.removeAll()
-        scrollTimer = nil
-        scrollTriggeredStories.removeAll()
+        let work = { [weak self] in
+            guard let self = self else { return }
+            let timers = self.delayTimers
+            let scroll = self.scrollTimer
+            self.delayTimers.removeAll()
+            self.scrollTimer = nil
+            self.scrollTriggeredStories.removeAll()
 
-        let invalidateBlock = {
             timers.forEach { $0.invalidate() }
             scroll?.invalidate()
         }
-        if Thread.isMainThread {
-            invalidateBlock()
-        } else {
-            DispatchQueue.main.async(execute: invalidateBlock)
-        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     deinit {

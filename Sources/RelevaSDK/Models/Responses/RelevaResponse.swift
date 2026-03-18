@@ -329,7 +329,7 @@ extension RelevaResponse {
     /// - Returns: Filtered response
     public func filtered(byTokens tokens: Set<String>) -> RelevaResponse {
         let filteredRecommenders = recommenders.filter { tokens.contains($0.token) }
-        return RelevaResponse(recommenders: filteredRecommenders, banners: banners, push: push)
+        return RelevaResponse(recommenders: filteredRecommenders, banners: banners, stories: stories, nps: nps, push: push)
     }
 
     /// Filter response to only include specific tags
@@ -340,6 +340,6 @@ extension RelevaResponse {
             guard let recommenderTags = recommender.tags else { return false }
             return !Set(recommenderTags).isDisjoint(with: tags)
         }
-        return RelevaResponse(recommenders: filteredRecommenders, banners: banners, push: push)
+        return RelevaResponse(recommenders: filteredRecommenders, banners: banners, stories: stories, nps: nps, push: push)
     }
 }
