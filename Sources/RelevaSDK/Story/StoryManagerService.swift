@@ -35,10 +35,17 @@ public class StoryManagerService {
 
             case "delaySeconds":
                 if let delay = story.delaySeconds, delay > 0 {
-                    let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
-                        self?.triggerStory(story)
+                    let scheduleBlock = { [weak self] in
+                        let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
+                            self?.triggerStory(story)
+                        }
+                        self?.delayTimers.append(timer)
                     }
-                    delayTimers.append(timer)
+                    if Thread.isMainThread {
+                        scheduleBlock()
+                    } else {
+                        DispatchQueue.main.async(execute: scheduleBlock)
+                    }
                 }
 
             case "scrollPercentage":
@@ -57,16 +64,23 @@ public class StoryManagerService {
 
     private func setupScrollTrigger(_ story: StoryResponse) {
         guard scrollTimer == nil else { return }
-        scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            guard let self = self,
-                  let provider = self.scrollPercentageProvider,
-                  let threshold = story.scrollPercentage else { return }
-            let current = provider()
-            if current >= threshold && !self.displayedStories.contains(story.token) {
-                self.triggerStory(story)
-                self.scrollTimer?.invalidate()
-                self.scrollTimer = nil
+        let scheduleBlock: () -> Void = { [weak self] in
+            self?.scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                guard let self = self,
+                      let provider = self.scrollPercentageProvider,
+                      let threshold = story.scrollPercentage else { return }
+                let current = provider()
+                if current >= threshold && !self.displayedStories.contains(story.token) {
+                    self.triggerStory(story)
+                    self.scrollTimer?.invalidate()
+                    self.scrollTimer = nil
+                }
             }
+        }
+        if Thread.isMainThread {
+            scheduleBlock()
+        } else {
+            DispatchQueue.main.async(execute: scheduleBlock)
         }
     }
 
@@ -88,13 +102,24 @@ public class StoryManagerService {
 
     /// Clean up timers
     public func dispose() {
-        delayTimers.forEach { $0.invalidate() }
+        let timers = delayTimers
+        let scroll = scrollTimer
         delayTimers.removeAll()
-        scrollTimer?.invalidate()
         scrollTimer = nil
+
+        let invalidateBlock = {
+            timers.forEach { $0.invalidate() }
+            scroll?.invalidate()
+        }
+        if Thread.isMainThread {
+            invalidateBlock()
+        } else {
+            DispatchQueue.main.async(execute: invalidateBlock)
+        }
     }
 
     deinit {
-        dispose()
+        delayTimers.forEach { $0.invalidate() }
+        scrollTimer?.invalidate()
     }
 }

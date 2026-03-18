@@ -70,7 +70,7 @@ public class InboxService: ObservableObject {
     public func refresh() {
         guard initialized, let userId = profileId else { return }
 
-        state.isLoading = true
+        DispatchQueue.main.async { self.state.isLoading = true }
 
         let group = DispatchGroup()
         var fetchedMessages: [InboxMessage]?
@@ -116,7 +116,7 @@ public class InboxService: ObservableObject {
     public func loadMore() {
         guard initialized, !state.isLoading, state.hasMore, let userId = profileId else { return }
 
-        state.isLoading = true
+        DispatchQueue.main.async { self.state.isLoading = true }
 
         networkService?.fetchInboxMessages(userId: userId, cursor: state.nextCursor) { [weak self] result in
             DispatchQueue.main.async {

@@ -10,7 +10,11 @@ import Foundation
 ///
 /// **Session-scoped suppression:** once the survey is shown or cancelled via a cancel event,
 /// it will not show again until `startNewSession()` is called.
+///
+/// All public methods are thread-safe. Internal state is serialized on a private queue.
 public class NpsManagerService {
+
+    private let queue = DispatchQueue(label: "com.releva.nps-manager")
 
     private var config: NpsConfig?
 
@@ -29,71 +33,96 @@ public class NpsManagerService {
     /// - Start the `triggerDelaySeconds` timer immediately if there are no `customEvent` triggers.
     /// - Otherwise hold the config and wait for a matching `trackEvent` call.
     public func initialize(_ config: NpsConfig?) {
-        self.config = config
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.config = config
 
-        if suppressedThisSession || config == nil { return }
-        if triggered { return }
+            if self.suppressedThisSession || config == nil { return }
+            if self.triggered { return }
 
-        let hasCustomEventTriggers = config!.triggers.contains { $0.type == "customEvent" }
+            let hasCustomEventTriggers = config!.triggers.contains { $0.type == "customEvent" }
 
-        if !hasCustomEventTriggers {
-            fireTrigger()
+            if !hasCustomEventTriggers {
+                self.fireTrigger()
+            }
         }
     }
 
     /// Called by `RelevaClient.trackEvent`. Evaluates `customEvent` triggers and cancel events.
     public func trackEvent(_ eventName: String) {
-        guard let config = config, !suppressedThisSession else { return }
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard let config = self.config, !self.suppressedThisSession else { return }
 
-        // Cancel events take priority
-        if config.cancelOnEvents.contains(eventName) {
-            delayTimer?.invalidate()
-            delayTimer = nil
-            suppressedThisSession = true
-            return
-        }
-
-        if triggered { return }
-
-        for trigger in config.triggers {
-            if trigger.type == "customEvent" && trigger.eventName == eventName {
-                fireTrigger()
+            // Cancel events take priority
+            if config.cancelOnEvents.contains(eventName) {
+                DispatchQueue.main.async {
+                    self.delayTimer?.invalidate()
+                    self.delayTimer = nil
+                }
+                self.suppressedThisSession = true
                 return
+            }
+
+            if self.triggered { return }
+
+            for trigger in config.triggers {
+                if trigger.type == "customEvent" && trigger.eventName == eventName {
+                    self.fireTrigger()
+                    return
+                }
             }
         }
     }
 
+    /// Must be called on `queue`.
     private func fireTrigger() {
         triggered = true
         let delay = config?.triggerDelaySeconds ?? 0
 
         DispatchQueue.main.async { [weak self] in
             self?.delayTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
-                self?.showNps()
+                self?.queue.async {
+                    self?.showNps()
+                }
             }
         }
     }
 
+    /// Must be called on `queue`.
     private func showNps() {
         guard !suppressedThisSession, let config = config else { return }
         suppressedThisSession = true
-        NpsDisplayController.shared.showNps(config)
+        DispatchQueue.main.async {
+            NpsDisplayController.shared.showNps(config)
+        }
     }
 
     /// Reset session-level state when a new NPS session begins.
     public func startNewSession() {
-        suppressedThisSession = false
-        triggered = false
-        delayTimer?.invalidate()
-        delayTimer = nil
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.suppressedThisSession = false
+            self.triggered = false
+            DispatchQueue.main.async {
+                self.delayTimer?.invalidate()
+                self.delayTimer = nil
+            }
+        }
     }
 
     public func dispose() {
-        delayTimer?.invalidate()
-        delayTimer = nil
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.delayTimer?.invalidate()
+                self.delayTimer = nil
+            }
+        }
     }
 
     deinit {
-        dispose()
+        delayTimer?.invalidate()
+        delayTimer = nil
     }
 }
