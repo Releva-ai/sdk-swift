@@ -10,6 +10,9 @@ public class BannerManagerService {
     private var scrollTimer: Timer?
     private var scrollPercentageProvider: (() -> Int)?
 
+    /// Public initializer
+    public init() {}
+
     /// Initialize with banners from a push response.
     /// Clears previous state and sets up triggers for each banner.
     public func initialize(

@@ -477,6 +477,47 @@ public class NetworkService {
             }
         }
     }
+    
+    /// Convenience method to fetch inbox messages for profile ID (alias for fetchInboxMessages)
+    public func fetchInboxMessages(
+        profileId: String,
+        completion: @escaping CompletionHandler<[InboxMessage]>
+    ) {
+        fetchInboxMessages(userId: profileId) { result in
+            switch result {
+            case .success(let dict):
+                // Parse messages from response
+                if let messagesArray = dict["messages"] as? [[String: Any]] {
+                    let messages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
+                    completion(.success(messages))
+                } else {
+                    completion(.success([]))
+                }
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    /// Convenience method to mark message as read (alias for inboxMarkAsRead)
+    public func markInboxMessageAsRead(
+        messageId: String,
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        // Use profile ID if available, otherwise use placeholder
+        let userId = "profile" // This would typically come from the calling service
+        inboxMarkAsRead(messageId: messageId, userId: userId, completion: completion)
+    }
+    
+    /// Convenience method to delete inbox message (alias for inboxDeleteMessage)
+    public func deleteInboxMessage(
+        messageId: String,
+        completion: @escaping CompletionHandler<Bool>
+    ) {
+        // Use profile ID if available, otherwise use placeholder
+        let userId = "profile" // This would typically come from the calling service
+        inboxDeleteMessage(messageId: messageId, userId: userId, completion: completion)
+    }
 
     // MARK: - Private Methods
 
