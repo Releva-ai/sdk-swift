@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-03-17
+
+### Added
+
+- **NPS Surveys** - Full NPS survey support with server-driven UI
+  - `NpsConfig`, `NpsFollowUp`, `NpsThankYou`, `NpsAppearance`, `NpsTrigger` models
+  - `NpsManagerService` for trigger evaluation (customEvent, appOpen, sessionCount, screenView)
+  - `NpsDisplayController` for reactive NPS event streaming via Combine
+  - `NpsDisplayView` SwiftUI view modifier with 3-step survey flow (score → follow-up → thank you)
+  - Dark mode support, server-driven colors, button styles (pill/rounded/square)
+  - Session-scoped suppression and cancel event support
+  - `submitNpsResponse()` method on `RelevaClient` with silent retry
+  - `trackEvent()` for firing NPS custom event triggers
+  - `setAppVersion()` for NPS server-side version filtering
+
+- **Stories** - Instagram/Facebook-style full-screen story viewer
+  - `StoryResponse`, `StorySlideResponse` models
+  - `StoryManagerService` for trigger logic (immediately, delay, scroll, cart/wishlist changes)
+  - `StoryDisplayController` for reactive story event streaming via Combine
+  - `StoryDisplayView` SwiftUI view modifier with queue-based sequential presentation
+  - `StoryViewerView` full-screen viewer with progress bars, auto-advance, tap/swipe navigation
+  - Slide content rendered via `DesignRenderer` (reuses banner rendering infrastructure)
+  - End behaviors: dismiss, loop, stayOnLast
+  - `storyImpression()` and `storyAction()` tracking methods on `RelevaClient`
+
+- **App Inbox** - Persistent in-app messaging with cursor pagination
+  - `InboxMessage`, `InboxState` models
+  - `InboxService` singleton (ObservableObject) with:
+    - Cursor-based pagination (refresh, loadMore)
+    - Optimistic updates with rollback (markAsRead, markAllAsRead, deleteMessage)
+    - Local cache persistence via UserDefaults
+    - Stale cache detection (auto-refresh after 5 minutes)
+    - App lifecycle awareness (refresh on foreground resume)
+    - Silent push sync via `handleSyncSignal()`
+    - Message lookup by `inboxMessageId` for push notification routing
+  - `InboxMessageView` SwiftUI view for rendering message content via `DesignRenderer`
+  - Six inbox API endpoints: fetchMessages, fetchUnreadCount, markAsRead, markAllAsRead, delete, trackAction
+  - `initializeInbox()` and `inbox` accessor on `RelevaClient`
+
+- **Endpoint Override** - Runtime API endpoint override for local development
+  - `setEndpointOverride(_ url: String?)` on `RelevaClient`
+  - Takes precedence over both realm-based URL and config `customEndpoint`
+
+- **Notification Enhancements**
+  - `isRelevaMessage()` now uses prefix matching (`RELEVA_*`) to support `RELEVA_INBOX_SYNC`
+  - Silent push `inbox_sync` signal triggers automatic inbox refresh
+  - `navigate_to_parameters` JSON is parsed and forwarded for inbox message routing
+
+- **Response Parsing**
+  - `RelevaResponse` now includes `stories: [StoryResponse]` and `nps: NpsConfig?`
+  - Stories and NPS initialized from push response alongside banners
+
 ## [1.0.4] - 2026-03-16
 
 ### Added
