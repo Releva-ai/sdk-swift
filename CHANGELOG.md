@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-03-19
+
+### Added
+
+- **Lifecycle-based session tracking.** New `SessionService` uses `UIApplication` lifecycle notifications to count sessions based on foreground/background transitions (>30s threshold). Each new session generates a fresh `sessionId`. Push payload now includes `device.sessions`, `device.views`, and `device.firstSeenAt`.
+
+### Fixed
+
+- **Banner text color ignoring content-level `color` property.** Text and heading elements in banner designs now correctly read the Unlayer `color` field, with fallback to `textColor` then body default. Previously only `textColor` was checked, causing content with explicit `color` (e.g. white text on dark background) to render in the body default color (black).
+
 ## [1.1.0] - 2026-03-17
 
 ### Added

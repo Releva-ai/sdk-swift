@@ -175,7 +175,7 @@ public struct DesignRenderer {
         if !text.isEmpty {
             let fontSize = parseDimensionRaw(values["fontSize"]) ?? 14
             let textAlign = parseTextAlign(values["textAlign"])
-            let color = parseColor(values["textColor"]) ?? defaultTextColor
+            let color = parseColor(values["color"]) ?? parseColor(values["textColor"]) ?? defaultTextColor
 
             Text(text)
                 .font(.system(size: fontSize))
@@ -196,7 +196,7 @@ public struct DesignRenderer {
             let headingType = values["headingType"] as? String ?? "h1"
             let fontSize = parseDimensionRaw(values["fontSize"]) ?? getHeadingFontSize(headingType)
             let textAlign = parseTextAlign(values["textAlign"])
-            let color = parseColor(values["textColor"]) ?? defaultTextColor
+            let color = parseColor(values["color"]) ?? parseColor(values["textColor"]) ?? defaultTextColor
 
             Text(text)
                 .font(.system(size: fontSize, weight: .bold))
