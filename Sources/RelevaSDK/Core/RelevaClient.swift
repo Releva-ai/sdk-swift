@@ -332,6 +332,9 @@ public class RelevaClient {
             return
         }
 
+        // Ensure lifecycle-based session tracking is initialized
+        SessionService.shared.initialize(storage: storage, npsManager: npsManager)
+
         // Build context
         let context = buildContext(for: request)
 
@@ -514,7 +517,7 @@ public class RelevaClient {
         let payload: [String: Any] = [
             "profileId": profileId ?? "",
             "deviceId": deviceId ?? "",
-            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "sessionId": SessionService.shared.getSessionId(),
             "banners": [
                 [
                     "token": banner.token,
@@ -544,7 +547,7 @@ public class RelevaClient {
         let payload: [String: Any] = [
             "deviceId": deviceId ?? "",
             "profileId": profileId ?? "",
-            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "sessionId": SessionService.shared.getSessionId(),
             "action": action,
             "attributions": [
                 "bannerBlockId": banner.token,
@@ -705,7 +708,7 @@ public class RelevaClient {
         var payload: [String: Any] = [
             "profileId": profileId ?? "",
             "deviceId": deviceId ?? "",
-            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "sessionId": SessionService.shared.getSessionId(),
             "score": score
         ]
         if let comment = comment, !comment.isEmpty {
@@ -744,7 +747,7 @@ public class RelevaClient {
         let payload: [String: Any] = [
             "deviceId": deviceId ?? "",
             "profileId": profileId ?? "",
-            "sessionId": sessionManager.getCurrentSession().sessionId,
+            "sessionId": SessionService.shared.getSessionId(),
             "action": action,
             "attributions": attributions
         ]
@@ -797,8 +800,7 @@ public class RelevaClient {
         var context: [String: Any] = [:]
 
         // Session
-        let session = sessionManager.getCurrentSession()
-        context["sessionId"] = session.sessionId
+        context["sessionId"] = SessionService.shared.getSessionId()
 
         // Device ID
         if let deviceId = deviceId {
@@ -830,13 +832,23 @@ public class RelevaClient {
             context["mergeProfileIds"] = mergeProfileIds
         }
 
-        // Device info (for NPS server-side filtering)
+        // Build device context (with analytics)
+        let sessionCount = storage.getDeviceSessionCount()
+        let firstSeenAt = storage.getDeviceFirstSeenAt()
+        let views = storage.getDeviceViewsCount()
+        storage.saveDeviceViewsCount(views + 1)
+
         var device: [String: Any] = [
+            "sessions": sessionCount,
             "platform": "ios",
+            "views": views,
             "sdkVersion": SDKVersion.current
         ]
         if let appVersion = appVersion {
             device["version"] = appVersion
+        }
+        if let firstSeenAt = firstSeenAt {
+            device["firstSeenAt"] = firstSeenAt
         }
         context["device"] = device
 
