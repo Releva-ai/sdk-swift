@@ -7,16 +7,26 @@ import UIKit
 /// in the background for longer than `debounceThresholdMs` (or on first-ever
 /// cold start). Each new session generates a fresh sessionId (UUID) and
 /// increments the persistent device session count.
+///
+/// All methods must be called on the main thread. UIApplication lifecycle
+/// notifications are always delivered on the main thread, and SDK callers
+/// are expected to invoke this service from the main thread as well.
+@MainActor
 class SessionService {
 
     static let shared = SessionService()
 
     private static let debounceThresholdMs = 30_000 // 30 seconds
+    private static let isoFormatter = ISO8601DateFormatter()
 
     private var storage: StorageService?
     private var npsManager: NpsManagerService?
     private var initialized = false
     private var pausedAtMs: Int?
+
+    /// Stable session ID used before `initialize()` is called, so all pre-init
+    /// callers (bannerImpression, bannerAction, etc.) share the same ID.
+    private var fallbackSessionId: String?
 
     private init() {}
 
@@ -62,7 +72,7 @@ class SessionService {
 
         // Record first-seen date on first ever session
         if storage.getDeviceFirstSeenAt() == nil {
-            let iso = ISO8601DateFormatter().string(from: Date())
+            let iso = SessionService.isoFormatter.string(from: Date())
             storage.saveDeviceFirstSeenAt(iso)
         }
 
@@ -71,13 +81,12 @@ class SessionService {
         storage.saveDeviceSessionCount(count + 1)
         storage.saveDeviceLastSessionTimestamp(now)
 
-        // Generate new session ID
+        // Generate new session ID and clear any pre-init fallback
         let sessionId = UUID().uuidString.lowercased()
+        fallbackSessionId = nil
         storage.saveSession(Session(sessionId: sessionId, timestamp: Date()))
 
         npsManager?.startNewSession()
-
-        print("RelevaSDK: [SessionService] New session #\(count + 1), id=\(sessionId)")
     }
 
     /// Returns the current session ID from storage.
@@ -85,14 +94,21 @@ class SessionService {
         if let session = storage?.getSession() {
             return session.sessionId
         }
-        // Safety fallback
+        // Safety fallback: return a stable ID until initialize() is called so that
+        // all pre-init callers (bannerImpression, bannerAction, etc.) share the same ID.
+        if let existing = fallbackSessionId {
+            return existing
+        }
         let sessionId = UUID().uuidString.lowercased()
-        storage?.saveSession(Session(sessionId: sessionId, timestamp: Date()))
+        fallbackSessionId = sessionId
         return sessionId
     }
 
     func dispose() {
         NotificationCenter.default.removeObserver(self)
         initialized = false
+        storage = nil
+        npsManager = nil
+        fallbackSessionId = nil
     }
 }

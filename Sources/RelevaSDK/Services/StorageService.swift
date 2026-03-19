@@ -51,7 +51,7 @@ public class StorageService {
     private let userDefaults: UserDefaults
 
     /// SDK version for migration purposes
-    private let sdkVersion = "1.1.0"
+    private let sdkVersion = "1.2.0"
 
     // MARK: - Initializers
 
@@ -408,7 +408,13 @@ public class StorageService {
         userDefaults.synchronize()
     }
 
-    /// Clear user-specific data (keep device ID and settings)
+    /// Clear user-specific data (keep device ID and settings).
+    ///
+    /// Device analytics (`deviceSessionCount`, `deviceFirstSeenAt`,
+    /// `deviceLastSessionTimestamp`, `deviceViewsCount`) are intentionally
+    /// retained because they are device-level metrics, not user-level data.
+    /// On a shared device, a new user will inherit the device's aggregate
+    /// analytics history. Use `clearAllData()` if you need a full reset.
     public func clearUserData() {
         clearSession()
         clearCart()
@@ -434,7 +440,7 @@ public class StorageService {
     /// Migrate data between versions
     private func migrateData(from oldVersion: String?, to newVersion: String) {
         // Add migration logic here when needed
-        // For now, no migration needed for v1.0.0
+        // For now, no migration needed for v1.2.0
     }
 }
 

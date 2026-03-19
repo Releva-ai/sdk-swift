@@ -228,9 +228,11 @@ public class RelevaClient {
             print("RelevaSDK: Cart updated with \(cart.products.count) products (changed: \(cartChanged))")
         }
 
-        // Automatically sync cart changes to backend (skip on first initialization)
+        // Automatically sync cart changes to backend (skip on first initialization).
+        // Uses incrementViews: false so cart updates don't inflate the page-view counter.
         if !isFirstInitialization && cartChanged && config.enableTracking {
-            trackScreenView(screenToken: nil) { result in
+            let request = ScreenViewRequest(screenToken: nil, productIds: nil, categories: nil, filter: nil)
+            push(request, incrementViews: false) { result in
                 if self.config.enableDebugLogging {
                     switch result {
                     case .success:
@@ -288,9 +290,11 @@ public class RelevaClient {
             print("RelevaSDK: Wishlist updated with \(products.count) products (changed: \(wishlistChanged))")
         }
 
-        // Automatically sync wishlist changes to backend (skip on first initialization)
+        // Automatically sync wishlist changes to backend (skip on first initialization).
+        // Uses incrementViews: false so wishlist updates don't inflate the page-view counter.
         if !isFirstInitialization && wishlistChanged && config.enableTracking {
-            trackScreenView(screenToken: nil) { result in
+            let request = ScreenViewRequest(screenToken: nil, productIds: nil, categories: nil, filter: nil)
+            push(request, incrementViews: false) { result in
                 if self.config.enableDebugLogging {
                     switch result {
                     case .success:
@@ -327,6 +331,17 @@ public class RelevaClient {
     ///   - request: Push request with page/product context
     ///   - completion: Completion handler with response
     public func push(_ request: PushRequest, completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void) {
+        push(request, incrementViews: true, completion: completion)
+    }
+
+    /// Internal push that lets callers opt out of incrementing the view counter.
+    /// Cart and wishlist auto-syncs use `incrementViews: false` to avoid inflating
+    /// the page-view count with non-navigation push calls.
+    private func push(
+        _ request: PushRequest,
+        incrementViews: Bool,
+        completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void
+    ) {
         guard config.enableTracking else {
             completion(.success(RelevaResponse.empty()))
             return
@@ -336,7 +351,7 @@ public class RelevaClient {
         SessionService.shared.initialize(storage: storage, npsManager: npsManager)
 
         // Build context
-        let context = buildContext(for: request)
+        let context = buildContext(for: request, incrementViews: incrementViews)
 
         // Get request dictionary
         let requestDict = request.toDict()
@@ -514,6 +529,7 @@ public class RelevaClient {
     /// Track banner impression
     /// - Parameter banner: The banner that was displayed
     public func bannerImpression(_ banner: BannerResponse) {
+        SessionService.shared.initialize(storage: storage, npsManager: npsManager)
         let payload: [String: Any] = [
             "profileId": profileId ?? "",
             "deviceId": deviceId ?? "",
@@ -544,6 +560,7 @@ public class RelevaClient {
     ///   - banner: The banner that was acted upon
     ///   - action: Action type (e.g., "bannerClick", "bannerClose")
     public func bannerAction(_ banner: BannerResponse, action: String) {
+        SessionService.shared.initialize(storage: storage, npsManager: npsManager)
         let payload: [String: Any] = [
             "deviceId": deviceId ?? "",
             "profileId": profileId ?? "",
@@ -705,6 +722,7 @@ public class RelevaClient {
             return
         }
 
+        SessionService.shared.initialize(storage: storage, npsManager: npsManager)
         var payload: [String: Any] = [
             "profileId": profileId ?? "",
             "deviceId": deviceId ?? "",
@@ -744,6 +762,7 @@ public class RelevaClient {
             attributions["slideId"] = slideId
         }
 
+        SessionService.shared.initialize(storage: storage, npsManager: npsManager)
         let payload: [String: Any] = [
             "deviceId": deviceId ?? "",
             "profileId": profileId ?? "",
@@ -796,7 +815,10 @@ public class RelevaClient {
     }
 
     /// Build context for API request
-    private func buildContext(for request: PushRequest) -> [String: Any] {
+    /// - Parameter incrementViews: Whether to increment the persistent view counter.
+    ///   Pass `false` for background syncs (cart/wishlist updates) that should not
+    ///   count as user-initiated page views.
+    private func buildContext(for request: PushRequest, incrementViews: Bool = true) -> [String: Any] {
         var context: [String: Any] = [:]
 
         // Session
@@ -836,7 +858,9 @@ public class RelevaClient {
         let sessionCount = storage.getDeviceSessionCount()
         let firstSeenAt = storage.getDeviceFirstSeenAt()
         let views = storage.getDeviceViewsCount()
-        storage.saveDeviceViewsCount(views + 1)
+        if incrementViews {
+            storage.saveDeviceViewsCount(views + 1)
+        }
 
         var device: [String: Any] = [
             "sessions": sessionCount,
