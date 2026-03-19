@@ -857,9 +857,9 @@ public class RelevaClient {
         // Build device context (with analytics)
         let sessionCount = storage.getDeviceSessionCount()
         let firstSeenAt = storage.getDeviceFirstSeenAt()
-        let views = storage.getDeviceViewsCount()
+        let views = storage.getDeviceViewsCount() + (incrementViews ? 1 : 0)
         if incrementViews {
-            storage.saveDeviceViewsCount(views + 1)
+            storage.saveDeviceViewsCount(views)
         }
 
         var device: [String: Any] = [
