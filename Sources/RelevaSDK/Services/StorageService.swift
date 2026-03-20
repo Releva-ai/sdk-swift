@@ -37,6 +37,12 @@ public class StorageService {
         case inboxUnreadCount = "rlv_inbox_unread_count"
         case inboxNextCursor = "rlv_inbox_next_cursor"
         case inboxLastFetch = "rlv_inbox_last_fetch"
+
+        // Device analytics
+        case deviceSessionCount = "rlv_device_session_count"
+        case deviceFirstSeenAt = "rlv_device_first_seen"
+        case deviceLastSessionTimestamp = "rlv_device_last_session_ts"
+        case deviceViewsCount = "rlv_device_views"
     }
 
     // MARK: - Properties
@@ -45,7 +51,7 @@ public class StorageService {
     private let userDefaults: UserDefaults
 
     /// SDK version for migration purposes
-    private let sdkVersion = "1.1.0"
+    private let sdkVersion = "1.2.0"
 
     // MARK: - Initializers
 
@@ -322,6 +328,50 @@ public class StorageService {
         userDefaults.removeObject(forKey: StorageKey.inboxLastFetch.rawValue)
     }
 
+    // MARK: - Device Analytics
+
+    /// Save device session count
+    public func saveDeviceSessionCount(_ count: Int) {
+        userDefaults.set(count, forKey: StorageKey.deviceSessionCount.rawValue)
+    }
+
+    /// Get device session count
+    public func getDeviceSessionCount() -> Int {
+        return userDefaults.integer(forKey: StorageKey.deviceSessionCount.rawValue)
+    }
+
+    /// Save device first seen date (ISO 8601)
+    public func saveDeviceFirstSeenAt(_ iso: String) {
+        userDefaults.set(iso, forKey: StorageKey.deviceFirstSeenAt.rawValue)
+    }
+
+    /// Get device first seen date (ISO 8601)
+    public func getDeviceFirstSeenAt() -> String? {
+        return userDefaults.string(forKey: StorageKey.deviceFirstSeenAt.rawValue)
+    }
+
+    /// Save device last session timestamp (milliseconds since epoch)
+    public func saveDeviceLastSessionTimestamp(_ ms: Int) {
+        userDefaults.set(ms, forKey: StorageKey.deviceLastSessionTimestamp.rawValue)
+    }
+
+    /// Get device last session timestamp (milliseconds since epoch)
+    public func getDeviceLastSessionTimestamp() -> Int? {
+        let val = userDefaults.integer(forKey: StorageKey.deviceLastSessionTimestamp.rawValue)
+        // integer(forKey:) returns 0 if key doesn't exist, so check containment
+        return userDefaults.object(forKey: StorageKey.deviceLastSessionTimestamp.rawValue) != nil ? val : nil
+    }
+
+    /// Save device views count
+    public func saveDeviceViewsCount(_ count: Int) {
+        userDefaults.set(count, forKey: StorageKey.deviceViewsCount.rawValue)
+    }
+
+    /// Get device views count
+    public func getDeviceViewsCount() -> Int {
+        return userDefaults.integer(forKey: StorageKey.deviceViewsCount.rawValue)
+    }
+
     // MARK: - Sync Management
 
     /// Save last sync timestamp
@@ -358,7 +408,13 @@ public class StorageService {
         userDefaults.synchronize()
     }
 
-    /// Clear user-specific data (keep device ID and settings)
+    /// Clear user-specific data (keep device ID and settings).
+    ///
+    /// Device analytics (`deviceSessionCount`, `deviceFirstSeenAt`,
+    /// `deviceLastSessionTimestamp`, `deviceViewsCount`) are intentionally
+    /// retained because they are device-level metrics, not user-level data.
+    /// On a shared device, a new user will inherit the device's aggregate
+    /// analytics history. Use `clearAllData()` if you need a full reset.
     public func clearUserData() {
         clearSession()
         clearCart()
@@ -384,7 +440,7 @@ public class StorageService {
     /// Migrate data between versions
     private func migrateData(from oldVersion: String?, to newVersion: String) {
         // Add migration logic here when needed
-        // For now, no migration needed for v1.0.0
+        // For now, no migration needed for v1.2.0
     }
 }
 

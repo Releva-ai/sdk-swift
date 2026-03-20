@@ -246,27 +246,30 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         // Check if it's a Releva notification via userInfo (categoryIdentifier is unreliable for direct APNs)
         let userInfo = notification.request.content.userInfo
-        let isReleva = notification.request.content.categoryIdentifier.hasPrefix("RELEVA")
-            || RelevaClient.shared?.isRelevaMessage(userInfo: userInfo) == true
-        if config.enableDebugLogging {
-            print("RelevaSDK: Is Releva: \(isReleva)")
-        }
+        let categoryPrefix = notification.request.content.categoryIdentifier.hasPrefix("RELEVA")
+        let enableDebugLogging = config.enableDebugLogging
 
-        if isReleva {
-            // Track delivered event
-            if let client = RelevaClient.shared {
-                client.trackEngagement(userInfo: notification.request.content.userInfo, type: .delivered)
+        Task { @MainActor in
+            let isReleva = categoryPrefix
+                || RelevaClient.shared?.isRelevaMessage(userInfo: userInfo) == true
+            if enableDebugLogging {
+                print("RelevaSDK: Is Releva: \(isReleva)")
             }
 
-            // Show notification even when app is in foreground
-            if #available(iOS 14.0, *) {
-                completionHandler([.banner, .sound, .badge])
+            if isReleva {
+                // Track delivered event
+                RelevaClient.shared?.trackEngagement(userInfo: userInfo, type: .delivered)
+
+                // Show notification even when app is in foreground
+                if #available(iOS 14.0, *) {
+                    completionHandler([.banner, .sound, .badge])
+                } else {
+                    completionHandler([.alert, .sound, .badge])
+                }
             } else {
-                completionHandler([.alert, .sound, .badge])
+                // Let other notifications through
+                completionHandler([])
             }
-        } else {
-            // Let other notifications through
-            completionHandler([])
         }
     }
 
@@ -344,23 +347,27 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         // Handle ALL notifications, not just Releva ones (for Firebase compatibility)
         // Track engagement based on action
-        if let client = RelevaClient.shared {
-            if config.enableDebugLogging {
-                print("RelevaSDK: Client available, tracking engagement...")
-            }
-            if response.actionIdentifier == "RELEVA_ACTION_BUTTON" {
-                client.trackEngagement(userInfo: userInfo, type: .clicked)
-                if config.enableDebugLogging {
-                    print("RelevaSDK: ✓ Tracked as clicked")
+        let actionIdentifier = response.actionIdentifier
+        let enableDebugLogging = config.enableDebugLogging
+        Task { @MainActor in
+            if let client = RelevaClient.shared {
+                if enableDebugLogging {
+                    print("RelevaSDK: Client available, tracking engagement...")
                 }
-            } else {
-                client.trackEngagement(userInfo: userInfo, type: .opened)
-                if config.enableDebugLogging {
-                    print("RelevaSDK: ✓ Tracked as opened")
+                if actionIdentifier == "RELEVA_ACTION_BUTTON" {
+                    client.trackEngagement(userInfo: userInfo, type: .clicked)
+                    if enableDebugLogging {
+                        print("RelevaSDK: ✓ Tracked as clicked")
+                    }
+                } else {
+                    client.trackEngagement(userInfo: userInfo, type: .opened)
+                    if enableDebugLogging {
+                        print("RelevaSDK: ✓ Tracked as opened")
+                    }
                 }
+            } else if enableDebugLogging {
+                print("RelevaSDK: ⚠️ Client not available for tracking")
             }
-        } else if config.enableDebugLogging {
-            print("RelevaSDK: ⚠️ Client not available for tracking")
         }
 
         // Handle navigation for all notifications
@@ -498,7 +505,9 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             }
 
         case "inbox":
-            print("RelevaSDK: Navigating to inbox")
+            if config.enableDebugLogging {
+                print("RelevaSDK: Navigating to inbox")
+            }
             navigateToInbox(parameters: data["navigate_to_parameters"] as? String)
 
         default:

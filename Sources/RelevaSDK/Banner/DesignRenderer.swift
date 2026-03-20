@@ -13,13 +13,14 @@ public struct DesignRenderer {
     public static func render(
         design: [String: Any],
         maxWidth: CGFloat? = nil,
+        transparentBody: Bool = false,
         onLinkTap: ((String) -> Void)? = nil
     ) -> some View {
         let body = design["body"] as? [String: Any] ?? [:]
         let bodyValues = body["values"] as? [String: Any] ?? [:]
         let rows = body["rows"] as? [[String: Any]] ?? []
 
-        let backgroundColor = parseColor(bodyValues["backgroundColor"]) ?? .clear
+        let backgroundColor = transparentBody ? Color.clear : (parseColor(bodyValues["backgroundColor"]) ?? .clear)
         let textColor = parseColor(bodyValues["textColor"]) ?? .black
 
         let contentWidthRaw = bodyValues["contentWidth"] as? String ?? ""
@@ -36,6 +37,17 @@ public struct DesignRenderer {
         }
         .frame(width: effectiveContentWidth)
         .frame(maxWidth: effectiveContentWidth == nil ? .infinity : nil, alignment: .center)
+        .background(
+            Group {
+                if !transparentBody, let bgInfo = parseBackgroundImage(bodyValues["backgroundImage"], forceCover: true) {
+                    AsyncImage(url: bgInfo.url) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
+                        }
+                    }
+                }
+            }
+        )
         .background(backgroundColor)
     }
 
@@ -72,6 +84,17 @@ public struct DesignRenderer {
             }
         }
         .padding(padding ?? EdgeInsets())
+        .background(
+            Group {
+                if let bgInfo = parseBackgroundImage(rowValues["backgroundImage"]) {
+                    AsyncImage(url: bgInfo.url) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
+                        }
+                    }
+                }
+            }
+        )
         .background(effectiveBg ?? .clear)
     }
 
@@ -175,7 +198,7 @@ public struct DesignRenderer {
         if !text.isEmpty {
             let fontSize = parseDimensionRaw(values["fontSize"]) ?? 14
             let textAlign = parseTextAlign(values["textAlign"])
-            let color = parseColor(values["textColor"]) ?? defaultTextColor
+            let color = parseColor(values["color"]) ?? parseColor(values["textColor"]) ?? defaultTextColor
 
             Text(text)
                 .font(.system(size: fontSize))
@@ -196,7 +219,7 @@ public struct DesignRenderer {
             let headingType = values["headingType"] as? String ?? "h1"
             let fontSize = parseDimensionRaw(values["fontSize"]) ?? getHeadingFontSize(headingType)
             let textAlign = parseTextAlign(values["textAlign"])
-            let color = parseColor(values["textColor"]) ?? defaultTextColor
+            let color = parseColor(values["color"]) ?? parseColor(values["textColor"]) ?? defaultTextColor
 
             Text(text)
                 .font(.system(size: fontSize, weight: .bold))
@@ -272,6 +295,64 @@ public struct DesignRenderer {
     }
 
     // MARK: - Parsing Utilities
+
+    /// Parses a backgroundImage JSON object into an image URL and content mode.
+    /// - Parameters:
+    ///   - value: The backgroundImage dictionary from Unlayer JSON
+    ///   - forceCover: When true, always use .fill content mode
+    /// - Returns: Tuple of (URL, ContentMode, Alignment) or nil if no valid URL
+    public static func parseBackgroundImage(_ value: Any?, forceCover: Bool = false) -> (url: URL, contentMode: ContentMode, alignment: Alignment)? {
+        guard let bgImage = value as? [String: Any],
+              let urlStr = bgImage["url"] as? String, !urlStr.isEmpty,
+              let url = URL(string: urlStr) else { return nil }
+
+        let contentMode: ContentMode
+        if forceCover {
+            contentMode = .fill
+        } else {
+            let size = bgImage["size"] as? String ?? "cover"
+            switch size {
+            case "contain":
+                contentMode = .fit
+            case "custom":
+                let customSize = bgImage["customSize"] as? [Any]
+                if let cs = customSize, cs.count == 2,
+                   "\(cs[0])".contains("%"), "\(cs[1])" == "auto" {
+                    contentMode = .fit  // fitWidth approximation
+                } else {
+                    contentMode = .fill
+                }
+            default:
+                contentMode = .fill
+            }
+        }
+
+        let position = bgImage["position"] as? String ?? "center"
+        let alignment: Alignment
+        switch position {
+        case "top-center": alignment = .top
+        case "top-left": alignment = .topLeading
+        case "top-right": alignment = .topTrailing
+        case "bottom-center": alignment = .bottom
+        case "bottom-left": alignment = .bottomLeading
+        case "bottom-right": alignment = .bottomTrailing
+        case "center-left": alignment = .leading
+        case "center-right": alignment = .trailing
+        default:
+            if let customPos = bgImage["customPosition"] as? [Any], customPos.count == 2 {
+                let x = Double("\(customPos[0])".replacingOccurrences(of: "%", with: "")) ?? 50
+                let y = Double("\(customPos[1])".replacingOccurrences(of: "%", with: "")) ?? 50
+                alignment = Alignment(
+                    horizontal: x < 33 ? .leading : x > 66 ? .trailing : .center,
+                    vertical: y < 33 ? .top : y > 66 ? .bottom : .center
+                )
+            } else {
+                alignment = .center
+            }
+        }
+
+        return (url, contentMode, alignment)
+    }
 
     public static func parseColor(_ value: Any?) -> Color? {
         guard let str = (value as? String)?.trimmingCharacters(in: .whitespaces), !str.isEmpty else { return nil }

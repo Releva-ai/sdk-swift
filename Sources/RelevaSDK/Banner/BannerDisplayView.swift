@@ -83,33 +83,38 @@ public struct BannerDisplayModifier: ViewModifier {
     private func barBannerView(for banner: BannerResponse) -> some View {
         let isBottom = banner.displayPosition == "bottom"
 
-        VStack {
-            if isBottom { Spacer() }
+        GeometryReader { geometry in
+            VStack {
+                if isBottom { Spacer() }
 
-            ZStack(alignment: .topTrailing) {
-                if let design = banner.design {
-                    DesignRenderer.render(
-                        design: design,
-                        maxWidth: UIScreen.main.bounds.width - 32,
-                        onLinkTap: { url in
-                            viewModel.trackClick(banner)
-                            onLinkTap(url)
-                        }
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
+                ZStack(alignment: .topTrailing) {
+                    if let design = banner.design {
+                        DesignRenderer.render(
+                            design: design,
+                            maxWidth: UIScreen.main.bounds.width - 32,
+                            onLinkTap: { url in
+                                viewModel.trackClick(banner)
+                                onLinkTap(url)
+                            }
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .padding(isBottom ? .bottom : .top,
+                                 isBottom ? geometry.safeAreaInsets.bottom : geometry.safeAreaInsets.top)
+                    }
 
-                closeButton(for: banner, size: 24) {
-                    viewModel.dismissBar(banner)
+                    closeButton(for: banner, size: 24) {
+                        viewModel.dismissBar(banner)
+                    }
+                    .offset(x: 4, y: -4)
+                    .padding(isBottom ? .bottom : .top,
+                             isBottom ? geometry.safeAreaInsets.bottom : geometry.safeAreaInsets.top)
                 }
-                .padding(.top, 4)
-                .padding(.trailing, 4)
+                .background(Color.white)
+                .shadow(radius: 5)
+
+                if !isBottom { Spacer() }
             }
-            .background(Color.white)
-            .shadow(radius: 5)
-
-            if !isBottom { Spacer() }
         }
         .edgesIgnoringSafeArea(isBottom ? .bottom : .top)
     }
@@ -118,23 +123,9 @@ public struct BannerDisplayModifier: ViewModifier {
 
     @ViewBuilder
     private func popupBannerView(for banner: BannerResponse) -> some View {
-        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
         let overlayColor = getOverlayColor(banner)
-        let popupBgColor = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"]) ?? .white
-        let popupPosition = bodyValues["popupPosition"] as? String ?? ""
-        let isFullScreen = popupPosition == "full-screen"
-        let borderRadius = isFullScreen ? CGFloat(0) : getBorderRadius(banner)
-
         let screenWidth = UIScreen.main.bounds.width
-
-        let popupWidth: CGFloat = isFullScreen
-            ? screenWidth
-            : min(
-                resolveDimension(bodyValues["contentWidth"], relativeTo: screenWidth)
-                    ?? resolveDimension(bodyValues["popupWidth"], relativeTo: screenWidth)
-                    ?? 400,
-                screenWidth - 32
-            )
+        let screenHeight = UIScreen.main.bounds.height
 
         ZStack {
             // Overlay
@@ -144,9 +135,30 @@ public struct BannerDisplayModifier: ViewModifier {
                     viewModel.dismissPopup(banner)
                 }
 
-            // Popup container
-            VStack(spacing: 0) {
-                // Close button row
+            // Full-screen popup
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        if let design = banner.design {
+                            DesignRenderer.render(
+                                design: design,
+                                maxWidth: screenWidth,
+                                onLinkTap: { url in
+                                    viewModel.dismissPopup(banner, track: false)
+                                    viewModel.trackClick(banner)
+                                    onLinkTap(url)
+                                }
+                            )
+                        }
+                    }
+                    .frame(minHeight: geometry.size.height)
+                }
+            }
+            .frame(width: screenWidth, height: screenHeight)
+            .edgesIgnoringSafeArea(.all)
+
+            // Close button overlaid at top-right
+            VStack {
                 HStack {
                     Spacer()
                     closeButton(for: banner, size: 32) {
@@ -154,27 +166,8 @@ public struct BannerDisplayModifier: ViewModifier {
                     }
                     .padding(8)
                 }
-
-                // Content
-                if let design = banner.design {
-                    DesignRenderer.render(
-                        design: design,
-                        maxWidth: popupWidth,
-                        onLinkTap: { url in
-                            viewModel.dismissPopup(banner, track: false)
-                            viewModel.trackClick(banner)
-                            onLinkTap(url)
-                        }
-                    )
-                }
+                Spacer()
             }
-            .frame(width: popupWidth)
-            .background(
-                RoundedRectangle(cornerRadius: borderRadius)
-                    .fill(popupBgColor)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: borderRadius))
-            .shadow(radius: 16)
         }
     }
 
@@ -182,6 +175,9 @@ public struct BannerDisplayModifier: ViewModifier {
 
     @ViewBuilder
     private func flyoutBannerView(for banner: BannerResponse) -> some View {
+        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
+        let bgImageMap = bodyValues["backgroundImage"] as? [String: Any]
+        let hasBodyBgImage = bgImageMap != nil && !(bgImageMap?["url"] as? String ?? "").isEmpty
         let overlayColor = getOverlayColor(banner)
         let isLeft = banner.displayPosition == "left"
         let flyoutWidth = UIScreen.main.bounds.width * 0.8
@@ -214,6 +210,7 @@ public struct BannerDisplayModifier: ViewModifier {
                             DesignRenderer.render(
                                 design: design,
                                 maxWidth: flyoutWidth,
+                                transparentBody: hasBodyBgImage,
                                 onLinkTap: { url in
                                     viewModel.dismissFlyout(banner, track: false)
                                     viewModel.trackClick(banner)
@@ -224,7 +221,19 @@ public struct BannerDisplayModifier: ViewModifier {
                     }
                 }
                 .frame(width: flyoutWidth)
-                .background(Color.white)
+                .background(
+                    Group {
+                        if hasBodyBgImage, let bgInfo = DesignRenderer.parseBackgroundImage(bgImageMap, forceCover: true) {
+                            AsyncImage(url: bgInfo.url) { phase in
+                                if case .success(let image) = phase {
+                                    image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
+                                }
+                            }
+                        } else {
+                            Color.white
+                        }
+                    }
+                )
                 .shadow(radius: 10)
 
                 if isLeft { Spacer() }
@@ -240,7 +249,7 @@ public struct BannerDisplayModifier: ViewModifier {
         let bodyValues = DesignRenderer.getDesignBodyValues(banner)
 
         let bgColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_backgroundColor"])
-            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonBackgroudColor"])
+            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonBackgroundColor"])
             ?? .white
         let iconColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_iconColor"])
             ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonColor"])
@@ -270,22 +279,6 @@ public struct BannerDisplayModifier: ViewModifier {
         return Color.black.opacity(0.5)
     }
 
-    private func getBorderRadius(_ banner: BannerResponse) -> CGFloat {
-        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
-        if let str = bodyValues["borderRadius"] as? String,
-           let val = DesignRenderer.parseDimensionRaw(str) { return val }
-        return 8
-    }
-
-    private func resolveDimension(_ value: Any?, relativeTo: CGFloat) -> CGFloat? {
-        guard let str = (value as? String)?.trimmingCharacters(in: .whitespaces), !str.isEmpty else { return nil }
-        if str.hasSuffix("%") {
-            if let pct = Double(str.replacingOccurrences(of: "%", with: "")) {
-                return relativeTo * CGFloat(pct) / 100
-            }
-        }
-        return DesignRenderer.parseDimensionRaw(str)
-    }
 }
 
 // MARK: - View Extension
@@ -311,6 +304,7 @@ extension View {
 
 // MARK: - ViewModel
 
+@MainActor
 class BannerDisplayViewModel: ObservableObject {
     @Published var staticBannersBeforeContent: [BannerResponse] = []
     @Published var staticBannersAfterContent: [BannerResponse] = []

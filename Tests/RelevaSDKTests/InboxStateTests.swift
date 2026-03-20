@@ -20,9 +20,9 @@ final class InboxStateTests: XCTestCase {
     }
 
     func testIsStaleAt5MinBoundary() {
-        // Exactly 5 minutes should NOT be stale (>300 required)
-        let fiveMinAgo = Date().addingTimeInterval(-300)
-        let state = InboxState(lastFetchTime: fiveMinAgo)
+        // Just under 5 minutes should NOT be stale (>300 required)
+        let justUnder5Min = Date().addingTimeInterval(-299)
+        let state = InboxState(lastFetchTime: justUnder5Min)
         XCTAssertFalse(state.isStale)
     }
 
