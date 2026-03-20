@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 
 /// Main SDK client for Releva integration
+@MainActor
 public class RelevaClient {
 
     // MARK: - Singleton
@@ -529,7 +530,6 @@ public class RelevaClient {
     /// Track banner impression
     /// - Parameter banner: The banner that was displayed
     public func bannerImpression(_ banner: BannerResponse) {
-        SessionService.shared.initialize(storage: storage, npsManager: npsManager)
         let payload: [String: Any] = [
             "profileId": profileId ?? "",
             "deviceId": deviceId ?? "",
@@ -560,7 +560,6 @@ public class RelevaClient {
     ///   - banner: The banner that was acted upon
     ///   - action: Action type (e.g., "bannerClick", "bannerClose")
     public func bannerAction(_ banner: BannerResponse, action: String) {
-        SessionService.shared.initialize(storage: storage, npsManager: npsManager)
         let payload: [String: Any] = [
             "deviceId": deviceId ?? "",
             "profileId": profileId ?? "",
@@ -722,7 +721,6 @@ public class RelevaClient {
             return
         }
 
-        SessionService.shared.initialize(storage: storage, npsManager: npsManager)
         var payload: [String: Any] = [
             "profileId": profileId ?? "",
             "deviceId": deviceId ?? "",
@@ -762,7 +760,6 @@ public class RelevaClient {
             attributions["slideId"] = slideId
         }
 
-        SessionService.shared.initialize(storage: storage, npsManager: npsManager)
         let payload: [String: Any] = [
             "deviceId": deviceId ?? "",
             "profileId": profileId ?? "",

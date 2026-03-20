@@ -17,8 +17,12 @@ class SessionService {
     static let shared = SessionService()
 
     /// Minimum background duration (ms) before a new session is counted.
-    /// Exposed as `internal` so unit tests can override it without sleeping.
+    /// In DEBUG builds this is a `var` so unit tests can override it without sleeping.
+    #if DEBUG
     static var debounceThresholdMs = 30_000 // 30 seconds
+    #else
+    static let debounceThresholdMs = 30_000 // 30 seconds
+    #endif
     private static let isoFormatter = ISO8601DateFormatter()
 
     private var storage: StorageService?

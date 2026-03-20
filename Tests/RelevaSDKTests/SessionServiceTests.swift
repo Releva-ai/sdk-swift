@@ -135,6 +135,8 @@ final class SessionServiceTests: XCTestCase {
         let realId = SessionService.shared.getSessionId()
         XCTAssertNotEqual(realId, fallbackId,
                           "Post-init getSessionId() must return the real session ID, not the fallback")
+        XCTAssertEqual(realId, storage.getSession()?.sessionId,
+                       "Post-init getSessionId() must return the storage-backed session ID")
     }
 
     // MARK: - dispose / re-initialize lifecycle
