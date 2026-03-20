@@ -505,7 +505,9 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             }
 
         case "inbox":
-            print("RelevaSDK: Navigating to inbox")
+            if config.enableDebugLogging {
+                print("RelevaSDK: Navigating to inbox")
+            }
             navigateToInbox(parameters: data["navigate_to_parameters"] as? String)
 
         default:

@@ -249,7 +249,7 @@ public struct BannerDisplayModifier: ViewModifier {
         let bodyValues = DesignRenderer.getDesignBodyValues(banner)
 
         let bgColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_backgroundColor"])
-            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonBackgroudColor"])
+            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonBackgroundColor"])
             ?? .white
         let iconColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_iconColor"])
             ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonColor"])
