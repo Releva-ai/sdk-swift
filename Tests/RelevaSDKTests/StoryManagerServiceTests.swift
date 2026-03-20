@@ -73,7 +73,7 @@ final class StoryManagerServiceTests: XCTestCase {
 
         waitForExpectations(timeout: 2)
         // Give time for potential duplicate
-        let noMore = expectation(description: "No more stories")
+        let noMore = self.expectation(description: "No more stories")
         noMore.isInverted = true
         waitForExpectations(timeout: 0.3)
         XCTAssertEqual(receivedCount, 1)

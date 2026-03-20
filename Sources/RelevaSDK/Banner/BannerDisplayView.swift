@@ -83,32 +83,38 @@ public struct BannerDisplayModifier: ViewModifier {
     private func barBannerView(for banner: BannerResponse) -> some View {
         let isBottom = banner.displayPosition == "bottom"
 
-        VStack {
-            if isBottom { Spacer() }
+        GeometryReader { geometry in
+            VStack {
+                if isBottom { Spacer() }
 
-            ZStack(alignment: .topTrailing) {
-                if let design = banner.design {
-                    DesignRenderer.render(
-                        design: design,
-                        maxWidth: UIScreen.main.bounds.width - 32,
-                        onLinkTap: { url in
-                            viewModel.trackClick(banner)
-                            onLinkTap(url)
-                        }
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
+                ZStack(alignment: .topTrailing) {
+                    if let design = banner.design {
+                        DesignRenderer.render(
+                            design: design,
+                            maxWidth: UIScreen.main.bounds.width - 32,
+                            onLinkTap: { url in
+                                viewModel.trackClick(banner)
+                                onLinkTap(url)
+                            }
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .padding(isBottom ? .bottom : .top,
+                                 isBottom ? geometry.safeAreaInsets.bottom : geometry.safeAreaInsets.top)
+                    }
 
-                closeButton(for: banner, size: 24) {
-                    viewModel.dismissBar(banner)
+                    closeButton(for: banner, size: 24) {
+                        viewModel.dismissBar(banner)
+                    }
+                    .offset(x: 4, y: -4)
+                    .padding(isBottom ? .bottom : .top,
+                             isBottom ? geometry.safeAreaInsets.bottom : geometry.safeAreaInsets.top)
                 }
-                .offset(x: 4, y: -4)
+                .background(Color.white)
+                .shadow(radius: 5)
+
+                if !isBottom { Spacer() }
             }
-            .background(Color.white)
-            .shadow(radius: 5)
-
-            if !isBottom { Spacer() }
         }
         .edgesIgnoringSafeArea(isBottom ? .bottom : .top)
     }
@@ -117,10 +123,7 @@ public struct BannerDisplayModifier: ViewModifier {
 
     @ViewBuilder
     private func popupBannerView(for banner: BannerResponse) -> some View {
-        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
         let overlayColor = getOverlayColor(banner)
-        let bgImageMap = bodyValues["backgroundImage"] as? [String: Any]
-        let hasBodyBgImage = bgImageMap != nil && !(bgImageMap?["url"] as? String ?? "").isEmpty
         let screenWidth = UIScreen.main.bounds.width
         let screenHeight = UIScreen.main.bounds.height
 
@@ -301,6 +304,7 @@ extension View {
 
 // MARK: - ViewModel
 
+@MainActor
 class BannerDisplayViewModel: ObservableObject {
     @Published var staticBannersBeforeContent: [BannerResponse] = []
     @Published var staticBannersAfterContent: [BannerResponse] = []

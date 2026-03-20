@@ -56,6 +56,7 @@ extension View {
 
 // MARK: - ViewModel
 
+@MainActor
 class StoryDisplayViewModel: ObservableObject {
     @Published var activeStory: IdentifiableStory?
 
