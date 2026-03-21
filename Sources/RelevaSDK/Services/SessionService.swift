@@ -19,9 +19,9 @@ class SessionService {
     /// Minimum background duration (ms) before a new session is counted.
     /// In DEBUG builds this is a `var` so unit tests can override it without sleeping.
     #if DEBUG
-    static var debounceThresholdMs = 30_000 // 30 seconds
+    static var debounceThresholdMs = 30 * 60 * 1000 // 30 minutes
     #else
-    static let debounceThresholdMs = 30_000 // 30 seconds
+    static let debounceThresholdMs = 30 * 60 * 1000 // 30 minutes
     #endif
     private static let isoFormatter = ISO8601DateFormatter()
 
