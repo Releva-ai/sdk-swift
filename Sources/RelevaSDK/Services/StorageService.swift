@@ -24,6 +24,7 @@ public class StorageService {
         // Push notifications
         case pushToken = "rlv_push_token"
         case deviceType = "rlv_device_type"
+        case pushTokenUploadedAt = "rlv_push_token_uploaded_at"
 
         // Settings
         case sdkVersion = "rlv_sdk_version"
@@ -245,6 +246,19 @@ public class StorageService {
     public func clearPushToken() {
         userDefaults.removeObject(forKey: StorageKey.pushToken.rawValue)
         userDefaults.removeObject(forKey: StorageKey.deviceType.rawValue)
+        userDefaults.removeObject(forKey: StorageKey.pushTokenUploadedAt.rawValue)
+    }
+
+    /// Record the timestamp of the last successful push-token upload to the backend.
+    /// Used to throttle the auto-refresh-on-foreground re-uploads.
+    public func savePushTokenUploadedAt(_ date: Date) {
+        userDefaults.set(date.timeIntervalSince1970, forKey: StorageKey.pushTokenUploadedAt.rawValue)
+    }
+
+    /// Get the timestamp of the last successful push-token upload, if any.
+    public func getPushTokenUploadedAt() -> Date? {
+        let raw = userDefaults.double(forKey: StorageKey.pushTokenUploadedAt.rawValue)
+        return raw > 0 ? Date(timeIntervalSince1970: raw) : nil
     }
 
     // MARK: - Profile Merge Management
