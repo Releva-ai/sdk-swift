@@ -257,8 +257,10 @@ public class StorageService {
 
     /// Get the timestamp of the last successful push-token upload, if any.
     public func getPushTokenUploadedAt() -> Date? {
-        let raw = userDefaults.double(forKey: StorageKey.pushTokenUploadedAt.rawValue)
-        return raw > 0 ? Date(timeIntervalSince1970: raw) : nil
+        guard let interval = userDefaults.object(forKey: StorageKey.pushTokenUploadedAt.rawValue) as? TimeInterval else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: interval)
     }
 
     // MARK: - Profile Merge Management

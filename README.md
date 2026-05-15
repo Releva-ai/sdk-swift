@@ -233,6 +233,12 @@ func application(_ application: UIApplication, didRegisterForRemoteNotifications
 }
 
 // Also re-register whenever FCM rotates the token at runtime.
+// IMPORTANT: assign the delegate during app launch — typically in
+// `application(_:didFinishLaunchingWithOptions:)` — otherwise this
+// extension will never be invoked:
+//
+//     Messaging.messaging().delegate = self
+//
 extension AppDelegate: MessagingDelegate {
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
         guard let fcmToken = fcmToken else { return }
