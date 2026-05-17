@@ -211,7 +211,16 @@ func application(_ application: UIApplication, didRegisterForRemoteNotifications
     // Only use this line if you have not configured that in Firebase Console
     // Messaging.messaging().apnsToken = deviceToken
 
-    // Retrieve FCM token and register with Releva
+    // Wire a token provider so the SDK can fetch the current FCM token on every app
+    // launch / foreground. FCM rotates tokens silently — without this, the backend's
+    // record drifts stale and test pushes start failing with "device token expired".
+    client.pushTokenProvider = { completion in
+        Messaging.messaging().token { token, _ in
+            completion(token)
+        }
+    }
+
+    // Initial registration (the lifecycle observer will also fire shortly after).
     Task {
         do {
             let fcmToken = try await Messaging.messaging().token()
@@ -220,6 +229,20 @@ func application(_ application: UIApplication, didRegisterForRemoteNotifications
         } catch {
             print("Failed to register push token: \(error)")
         }
+    }
+}
+
+// Also re-register whenever FCM rotates the token at runtime.
+// IMPORTANT: assign the delegate during app launch — typically in
+// `application(_:didFinishLaunchingWithOptions:)` — otherwise this
+// extension will never be invoked:
+//
+//     Messaging.messaging().delegate = self
+//
+extension AppDelegate: MessagingDelegate {
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        guard let fcmToken = fcmToken else { return }
+        Task { try? await client.registerPushToken(fcmToken, deviceType: .ios) }
     }
 }
 
@@ -877,6 +900,8 @@ let config = RelevaConfig(
 | `trackCheckoutSuccess(orderedCart:screenToken:userEmail:...:completion:)` | Track checkout |
 | `trackCustomEvent(_:screenToken:completion:)` | Track custom event |
 | `registerPushToken(_:deviceType:completion:)` | Register FCM token |
+| `refreshPushToken()` | Re-fetch via `pushTokenProvider` and re-upload if stale |
+| `pushTokenProvider` | Closure the SDK calls on launch/foreground to get the current token |
 | `enablePushEngagementTracking()` | Enable push engagement tracking |
 | `trackEngagement(userInfo:type:)` | Track push engagement |
 | `isRelevaMessage(userInfo:)` | Check if notification is from Releva |

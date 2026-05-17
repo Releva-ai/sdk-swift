@@ -81,6 +81,25 @@ public class RelevaClient {
     /// App version string (sent in NPS push context)
     private var appVersion: String?
 
+    /// Host-supplied callback that fetches the latest push token from the OS / Firebase.
+    /// The SDK invokes this on app launch and on foreground to keep the backend in sync
+    /// with FCM's rotating token. Host should wire it to e.g. `Messaging.messaging().token`.
+    ///
+    /// The inner `(String?) -> Void` completion may be invoked from any thread (Firebase's
+    /// `Messaging.token(...)` delivers on an internal queue); the SDK re-hops to the main
+    /// actor before touching any state, so host implementers do not need to dispatch.
+    public var pushTokenProvider: ((@escaping @Sendable (String?) -> Void) -> Void)?
+
+    /// Last device type used for `registerPushToken`, replayed by `refreshPushToken()`.
+    private var lastPushTokenDeviceType: DeviceType?
+
+    /// Lifecycle observer that triggers `refreshPushToken()` when the app becomes active.
+    private var pushTokenLifecycleObserver: NSObjectProtocol?
+
+    /// In-flight guard for `refreshPushToken()` so a fast background→foreground→background→foreground
+    /// cycle cannot enqueue overlapping provider callbacks and produce duplicate uploads.
+    private var isRefreshingPushToken = false
+
     // MARK: - Initializers
 
     /// Initialize Releva client
@@ -110,10 +129,23 @@ public class RelevaClient {
             RelevaClient.shared = self
         }
 
+        // Subscribe to foreground events so we can refresh the FCM token.
+        // FCM rotates tokens silently and the host's `didRegisterForRemoteNotifications`
+        // only fires on first registration, so the backend would otherwise drift stale.
+        if config.enablePushNotifications {
+            installPushTokenLifecycleObserver()
+        }
+
         if config.enableDebugLogging {
             print("RelevaSDK: Initialized with realm '\(realm)'")
         }
     }
+
+    // Intentionally no `deinit` observer cleanup: `RelevaClient` is `@MainActor`-isolated
+    // so touching `pushTokenLifecycleObserver` from a nonisolated `deinit` would emit a
+    // Swift 6 strict-concurrency warning. The observer block captures `[weak self]`, so
+    // it no-ops once the client is freed; the `NSObjectProtocol` token lives only until
+    // the (typically singleton) client is itself deallocated.
 
     // MARK: - User Identification
 
@@ -611,9 +643,13 @@ public class RelevaClient {
 
         // Save token
         storage.savePushToken(token, deviceType: deviceType)
+        lastPushTokenDeviceType = deviceType
 
         // Register with backend
         networkService.registerPushToken(token, deviceType: deviceType, deviceId: deviceId, profileId: profileId) { result in
+            if case .success = result {
+                self.storage.savePushTokenUploadedAt(Date())
+            }
             if self.config.enableDebugLogging {
                 switch result {
                 case .success:
@@ -628,6 +664,88 @@ public class RelevaClient {
         if config.enableDebugLogging {
             print("RelevaSDK: Registering push token for \(deviceType.rawValue)...")
         }
+    }
+
+    /// Minimum interval between unconditional push-token re-uploads. A changed
+    /// token is always re-uploaded; an unchanged token is re-uploaded at most
+    /// once per this interval to keep the backend record fresh.
+    private static let pushTokenRefreshInterval: TimeInterval = 24 * 60 * 60
+
+    /// Fetch the current push token from `pushTokenProvider` and re-register it with
+    /// the backend if the token changed or the last successful upload was more than
+    /// 24 hours ago. Safe to call anytime; no-ops if the provider isn't set or the
+    /// provider returns nil. Called automatically on app launch and on foreground.
+    public func refreshPushToken() {
+        guard config.enablePushNotifications else { return }
+        guard let provider = pushTokenProvider else {
+            if config.enableDebugLogging {
+                print("RelevaSDK: refreshPushToken skipped - pushTokenProvider not set")
+            }
+            return
+        }
+
+        guard !isRefreshingPushToken else {
+            if config.enableDebugLogging {
+                print("RelevaSDK: refreshPushToken skipped - refresh already in flight")
+            }
+            return
+        }
+        isRefreshingPushToken = true
+
+        provider { [weak self] token in
+            Task { @MainActor in
+                guard let self = self else { return }
+
+                guard let token = token, !token.isEmpty else {
+                    self.isRefreshingPushToken = false
+                    if self.config.enableDebugLogging {
+                        print("RelevaSDK: refreshPushToken - provider returned empty token")
+                    }
+                    return
+                }
+
+                // Re-read storage inside the Task: the provider call is async, and an
+                // explicit `registerPushToken` from the host could have mutated `stored`
+                // in the meantime. Computing `tokenChanged` against a fresh snapshot
+                // keeps the change-detection consistent with `lastUpload`.
+                let stored = self.storage.getPushToken()
+                let deviceType = self.lastPushTokenDeviceType ?? stored?.deviceType ?? .current
+                let tokenChanged = (stored?.token != token)
+                let lastUpload = self.storage.getPushTokenUploadedAt()
+                let isStale = lastUpload.map { Date().timeIntervalSince($0) > RelevaClient.pushTokenRefreshInterval } ?? true
+
+                guard tokenChanged || isStale else {
+                    self.isRefreshingPushToken = false
+                    if self.config.enableDebugLogging {
+                        print("RelevaSDK: refreshPushToken - token unchanged and uploaded recently, skipping")
+                    }
+                    return
+                }
+
+                self.registerPushToken(token, deviceType: deviceType) { [weak self] _ in
+                    Task { @MainActor in
+                        self?.isRefreshingPushToken = false
+                    }
+                }
+            }
+        }
+    }
+
+    /// Subscribe to `didBecomeActive` so that every app launch / foreground triggers
+    /// `refreshPushToken()`. The first emission happens once the app finishes launching,
+    /// which covers the cold-start case too.
+    private func installPushTokenLifecycleObserver() {
+        #if canImport(UIKit)
+        pushTokenLifecycleObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshPushToken()
+            }
+        }
+        #endif
     }
 
     /// Enable push engagement tracking
