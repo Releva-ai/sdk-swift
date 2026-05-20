@@ -409,57 +409,86 @@ Posts a `RelevaNavigateToInbox` notification. Your app navigates to the inbox sc
 
 ### User Tracking
 
-```swift
-// Track screen view
-client.trackScreenView(
-    // Token should be changed with the one you have for home page inside Releva's admin panel (UUID)
-    screenToken: "home",
-    productIds: ["product-1", "product-2"],
-    categories: ["electronics", "phones"]
-)
+Most tracking — screen views, product views, search, checkout, recommendations — is sent through a single API: build a `PushRequest` using the fluent builder, then hand it to `client.push(...)`. The builder methods can be chained in any order on the same request.
 
-// Track product view
+```swift
+// Track a screen view (home page, listing page, etc.)
+let request = PushRequest()
+    // Token should be changed with the one you have for the page inside Releva's admin panel (UUID)
+    .screenView("home")
+    .pageProductIds(["product-1", "product-2"])
+    .pageCategories(["electronics", "phones"])
+    .locale("en_US")
+    .currency("USD")
+
+client.push(request) { result in
+    switch result {
+    case .success(let response):
+        // Process recommendations returned for this page
+        for recommender in response.recommenders {
+            print("Recommender: \(recommender.name)")
+            for product in recommender.response {
+                print("- \(product.name): $\(product.price)")
+            }
+        }
+    case .failure(let error):
+        print("Error: \(error)")
+    }
+}
+
+// Track a product view
 let product = ViewedProduct(id: "product-123")
     .withStringField(key: "brand", values: ["Apple"])
     .withNumericField(key: "speakersCount", values: [2])
 
-client.trackProductView(
+let productRequest = PushRequest()
     // Token should be changed with the one you have for product page inside Releva's admin panel (UUID)
-    screenToken: "product_detail",
-    product: product
-)
+    .screenView("product_detail")
+    .productView(product)
 
-// Track search
-client.trackSearchView(
+client.push(productRequest) { _ in }
+
+// Track a search
+let searchRequest = PushRequest()
     // Token should be changed with the one you have for search page inside Releva's admin panel (UUID)
-    screenToken: "search_results",
-    query: "iPhone",
-    resultProductIds: ["product-1", "product-2", "product-3"]
-)
+    .screenView("search_results")
+    .search("iPhone")
+    .pageProductIds(["product-1", "product-2", "product-3"])
+
+client.push(searchRequest) { _ in }
 ```
 
+The `push()` response includes recommenders, banners, stories, and NPS configuration — the SDK handles banner/story/NPS state internally, so a screen-view push is also what populates them.
+
 ### Cart Management
+
+`client.setCart(...)` is stateful: it stores the cart locally and automatically syncs changes to the backend. Checkout success is a tracking event and goes through the builder.
 
 ```swift
 // Create cart products
 let product1 = CartProduct(id: "sku-123", price: 29.99, quantity: 2)
 let product2 = CartProduct(id: "sku-456", price: 49.99, quantity: 1)
 
-// Set active cart
+// Set the active cart (auto-syncs on change)
 let cart = Cart.active([product1, product2])
 client.setCart(cart)
 
-// Track checkout success
+// Track checkout success via the builder
 let orderedCart = Cart.paid([product1, product2], orderId: "order-789")
-client.trackCheckoutSuccess(
-    orderedCart: orderedCart,
-    userEmail: "user@example.com",
-    userFirstName: "John",
-    userLastName: "Doe"
-)
+let checkoutRequest = PushRequest()
+    .setCart(orderedCart)
+    .profile(
+        email: "user@example.com",
+        firstName: "John",
+        lastName: "Doe"
+    )
+
+client.push(checkoutRequest) { _ in }
 ```
 
 ### Wishlist Management
+
+The wishlist is stateful, like the cart — set it on the client and the SDK syncs changes automatically.
 
 ```swift
 let wishlistProducts = [
@@ -472,6 +501,8 @@ client.setWishlist(wishlistProducts)
 
 ### Custom Events
 
+Custom events are the one exception to the builder pattern — call `client.trackCustomEvent(...)` directly.
+
 ```swift
 let event = CustomEvent(action: "selectedColor")
     .withProduct(id: "product-123", quantity: 1)
@@ -482,6 +513,8 @@ client.trackCustomEvent(event)
 ```
 
 ### Advanced Filtering
+
+Filters compose with the rest of the request via `pageFilter(...)` on the builder.
 
 ```swift
 // Simple filter
@@ -497,39 +530,13 @@ let complexFilter = NestedFilter.and(
     SimpleFilter.brand("Apple")
 )
 
-// Apply filter to screen view
-client.trackScreenView(
-    // Token should be changed with the one you have for category page inside Releva's admin panel (UUID)
-    screenToken: "category_listing",
-    filter: complexFilter
-)
-```
-
-### Get Recommendations
-
-```swift
-// Build request
+// Apply filter to a screen view
 let request = PushRequest()
-    .screenView("home")
-    .locale("en_US")
-    .currency("USD")
+    // Token should be changed with the one you have for category page inside Releva's admin panel (UUID)
+    .screenView("category_listing")
+    .pageFilter(complexFilter)
 
-// Send request
-client.push(request) { result in
-    switch result {
-    case .success(let response):
-        // Process recommendations
-        for recommender in response.recommenders {
-            print("Recommender: \(recommender.name)")
-            for product in recommender.response {
-                print("- \(product.name): $\(product.price)")
-            }
-        }
-
-    case .failure(let error):
-        print("Error: \(error)")
-    }
-}
+client.push(request) { _ in }
 ```
 
 ## Banners
