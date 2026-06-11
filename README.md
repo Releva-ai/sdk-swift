@@ -440,6 +440,7 @@ client.push(request) { result in
 let product = ViewedProduct(id: "product-123")
     .withStringField(key: "brand", values: ["Apple"])
     .withNumericField(key: "speakersCount", values: [2])
+    .withDateField(key: "releaseDate", values: [Date()])
 
 let productRequest = PushRequest()
     // Token should be changed with the one you have for product page inside Releva's admin panel (UUID)
@@ -503,7 +504,14 @@ client.setWishlist(wishlistProducts)
 
 Custom events are the one exception to the builder pattern — call `client.trackCustomEvent(...)` directly.
 
+`CustomFields` is built fluently: start from an empty `CustomFields()` and chain the typed field builders. Each method takes a `key` and an array of values, and returns a new `CustomFields`. Three field types are supported:
+
 ```swift
+let customFields = CustomFields()
+    .withStringField(key: "color", values: ["red"])           // [String]
+    .withNumericField(key: "discountPercent", values: [15])   // [Double]
+    .withDateField(key: "promoEndsAt", values: [Date()])      // [Date] — serialized as ISO-8601 (e.g. "2026-06-11T12:00:00Z")
+
 let event = CustomEvent(action: "selectedColor")
     .withProduct(id: "product-123", quantity: 1)
     .withTag("promo")
@@ -511,6 +519,8 @@ let event = CustomEvent(action: "selectedColor")
 
 client.trackCustomEvent(event)
 ```
+
+> Date fields take native `Date` values. The SDK converts them to ISO-8601 strings on serialization via `ISO8601DateFormatter`, so you never format the date yourself. The same `.withStringField` / `.withNumericField` / `.withDateField` builders also exist directly on `ViewedProduct` (see [User Tracking](#user-tracking)).
 
 ### Advanced Filtering
 
