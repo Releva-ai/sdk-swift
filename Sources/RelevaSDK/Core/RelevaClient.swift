@@ -499,20 +499,10 @@ public class RelevaClient {
     /// - Parameters:
     ///   - orderedCart: Cart that was ordered
     ///   - screenToken: Screen identifier
-    ///   - userEmail: User email
-    ///   - userPhoneNumber: User phone
-    ///   - userFirstName: User first name
-    ///   - userLastName: User last name
-    ///   - userRegisteredAt: User registration date
     ///   - completion: Completion handler
     public func trackCheckoutSuccess(
         orderedCart: Cart,
         screenToken: String? = nil,
-        userEmail: String? = nil,
-        userPhoneNumber: String? = nil,
-        userFirstName: String? = nil,
-        userLastName: String? = nil,
-        userRegisteredAt: Date? = nil,
         completion: ((Result<RelevaResponse, RelevaError>) -> Void)? = nil
     ) {
         guard config.enableTracking else {
@@ -522,12 +512,7 @@ public class RelevaClient {
 
         let request = CheckoutSuccessRequest(
             screenToken: screenToken,
-            orderedCart: orderedCart,
-            userEmail: userEmail,
-            userPhoneNumber: userPhoneNumber,
-            userFirstName: userFirstName,
-            userLastName: userLastName,
-            userRegisteredAt: userRegisteredAt
+            orderedCart: orderedCart
         )
 
         push(request) { result in

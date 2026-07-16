@@ -148,38 +148,9 @@ public class PushRequest {
         return self
     }
 
-    /// Set profile information
-    /// - Parameters:
-    ///   - email: User email
-    ///   - phoneNumber: User phone number
-    ///   - firstName: User first name
-    ///   - lastName: User last name
-    ///   - registeredAt: User registration date
-    /// - Returns: Self for chaining
-    @discardableResult
-    public func profile(
-        email: String? = nil,
-        phoneNumber: String? = nil,
-        firstName: String? = nil,
-        lastName: String? = nil,
-        registeredAt: Date? = nil
-    ) -> PushRequest {
-        var profileMap: [String: Any] = [:]
-
-        if let email = email { profileMap["email"] = email }
-        if let phoneNumber = phoneNumber { profileMap["phoneNumber"] = phoneNumber }
-        if let firstName = firstName { profileMap["firstName"] = firstName }
-        if let lastName = lastName { profileMap["lastName"] = lastName }
-        if let registeredAt = registeredAt {
-            profileMap["registeredAt"] = ISO8601DateFormatter().string(from: registeredAt)
-        }
-
-        if !profileMap.isEmpty {
-            request["profile"] = profileMap
-        }
-
-        return self
-    }
+    // NOTE: a `profile(email:phoneNumber:firstName:lastName:registeredAt:)` builder was removed.
+    // The SDK identifies the user solely by profileId (sent as context.profile.id by RelevaClient);
+    // contact details and other profile attributes are never accepted or sent from the client.
 
     /// Add a single custom event
     /// - Parameter event: The custom event to add

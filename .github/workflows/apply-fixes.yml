@@ -54,7 +54,7 @@ jobs:
             - Use plain bullet points "-" when ordering doesn't matter.
             - When referencing a file and line, write it as e.g. "`index.mjs` line 69".
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr reviews:*),Edit,Write,Bash(git commit:*),Bash(npm test:*),Bash(npm run lint:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr reviews:*),Edit,Write,Bash(git commit:*),Bash(swift build:*),Bash(swift test:*)"
 
       - name: Push changes
         run: |

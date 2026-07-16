@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-07-17
+
+### Changed
+
+- **BREAKING — profile attributes removed from the public API.** `trackCheckoutSuccess(...)`, `CheckoutSuccessRequest` (including its `withUserInfo`, `complete`, and `guestCheckout` factories, the `hasUserInfo`/`isRegisteredUser` properties and the email-format validation) and the `PushRequest.profile(email:phoneNumber:firstName:lastName:registeredAt:)` builder no longer accept `email`, `phoneNumber`, `firstName`, `lastName` or `registeredAt`. The SDK now identifies users solely by the `profileId` set via `setProfileId(_:)`; contact details and other profile attributes are never sent from the client. **Migration:** drop these arguments; use `CheckoutSuccessRequest(orderedCart:screenToken:)` / `CheckoutSuccessRequest.minimal(orderId:products:)` and `trackCheckoutSuccess(orderedCart:screenToken:)`.
+- Aligned the podspec version with the SDK version constant (both now `2.0.0`; the podspec previously lagged at `1.0.4`).
+
 ## [1.2.0] - 2026-03-19
 
 ### Added

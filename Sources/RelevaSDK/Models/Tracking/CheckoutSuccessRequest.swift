@@ -1,6 +1,10 @@
 import Foundation
 
-/// Request for tracking successful checkout/purchase events
+/// Request for tracking successful checkout/purchase events.
+///
+/// The SDK identifies the user solely by the `profileId` set via
+/// `RelevaClient.setProfileId(_:)` (sent as `context.profile.id`). Contact details
+/// and other profile attributes are never accepted or sent from the client.
 public class CheckoutSuccessRequest: PushRequest {
 
     // MARK: - Properties
@@ -11,48 +15,18 @@ public class CheckoutSuccessRequest: PushRequest {
     /// The cart that was successfully ordered
     public let orderedCart: Cart
 
-    /// User email address
-    public let userEmail: String?
-
-    /// User phone number
-    public let userPhoneNumber: String?
-
-    /// User first name
-    public let userFirstName: String?
-
-    /// User last name
-    public let userLastName: String?
-
-    /// User registration date
-    public let userRegisteredAt: Date?
-
     // MARK: - Initializers
 
     /// Initialize a checkout success request
     /// - Parameters:
     ///   - screenToken: The screen identifier token
     ///   - orderedCart: The cart that was successfully ordered
-    ///   - userEmail: User email address
-    ///   - userPhoneNumber: User phone number
-    ///   - userFirstName: User first name
-    ///   - userLastName: User last name
-    ///   - userRegisteredAt: User registration date
     public init(
         screenToken: String? = nil,
-        orderedCart: Cart,
-        userEmail: String? = nil,
-        userPhoneNumber: String? = nil,
-        userFirstName: String? = nil,
-        userLastName: String? = nil,
-        userRegisteredAt: Date? = nil
+        orderedCart: Cart
     ) {
         self.screenToken = screenToken
         self.orderedCart = orderedCart
-        self.userEmail = userEmail
-        self.userPhoneNumber = userPhoneNumber
-        self.userFirstName = userFirstName
-        self.userLastName = userLastName
-        self.userRegisteredAt = userRegisteredAt
 
         super.init()
 
@@ -64,19 +38,13 @@ public class CheckoutSuccessRequest: PushRequest {
             self.screenView(token)
         }
 
-        // Apply profile information
-        self.profile(
-            email: userEmail,
-            phoneNumber: userPhoneNumber,
-            firstName: userFirstName,
-            lastName: userLastName,
-            registeredAt: userRegisteredAt
-        )
+        // NOTE: no profile attributes are attached. Identity is carried by
+        // context.profile.id (set in RelevaClient from the stored profileId).
     }
 
     // MARK: - Factory Methods
 
-    /// Create a checkout success request with minimal information
+    /// Create a checkout success request
     /// - Parameters:
     ///   - orderId: The order ID
     ///   - products: The products that were ordered
@@ -92,93 +60,7 @@ public class CheckoutSuccessRequest: PushRequest {
         )
     }
 
-    /// Create a checkout success request with user information
-    /// - Parameters:
-    ///   - orderId: The order ID
-    ///   - products: The products that were ordered
-    ///   - userEmail: User email address
-    ///   - userFirstName: User first name
-    ///   - userLastName: User last name
-    /// - Returns: A configured checkout success request
-    public static func withUserInfo(
-        orderId: String,
-        products: [CartProduct],
-        userEmail: String,
-        userFirstName: String? = nil,
-        userLastName: String? = nil
-    ) -> CheckoutSuccessRequest {
-        let orderedCart = Cart.paid(products, orderId: orderId)
-        return CheckoutSuccessRequest(
-            screenToken: nil,
-            orderedCart: orderedCart,
-            userEmail: userEmail,
-            userFirstName: userFirstName,
-            userLastName: userLastName
-        )
-    }
-
-    /// Create a checkout success request with complete information
-    /// - Parameters:
-    ///   - orderId: The order ID
-    ///   - products: The products that were ordered
-    ///   - userEmail: User email address
-    ///   - userPhoneNumber: User phone number
-    ///   - userFirstName: User first name
-    ///   - userLastName: User last name
-    ///   - userRegisteredAt: User registration date
-    /// - Returns: A configured checkout success request
-    public static func complete(
-        orderId: String,
-        products: [CartProduct],
-        userEmail: String,
-        userPhoneNumber: String,
-        userFirstName: String,
-        userLastName: String,
-        userRegisteredAt: Date? = nil
-    ) -> CheckoutSuccessRequest {
-        let orderedCart = Cart.paid(products, orderId: orderId)
-        return CheckoutSuccessRequest(
-            screenToken: nil,
-            orderedCart: orderedCart,
-            userEmail: userEmail,
-            userPhoneNumber: userPhoneNumber,
-            userFirstName: userFirstName,
-            userLastName: userLastName,
-            userRegisteredAt: userRegisteredAt
-        )
-    }
-
-    /// Create a checkout success request for a guest checkout
-    /// - Parameters:
-    ///   - orderId: The order ID
-    ///   - products: The products that were ordered
-    ///   - guestEmail: Guest email address
-    /// - Returns: A configured checkout success request
-    public static func guestCheckout(
-        orderId: String,
-        products: [CartProduct],
-        guestEmail: String? = nil
-    ) -> CheckoutSuccessRequest {
-        let orderedCart = Cart.paid(products, orderId: orderId)
-        return CheckoutSuccessRequest(
-            screenToken: nil,
-            orderedCart: orderedCart,
-            userEmail: guestEmail
-        )
-    }
-
     // MARK: - Computed Properties
-
-    /// Check if user information is provided
-    public var hasUserInfo: Bool {
-        return userEmail != nil || userPhoneNumber != nil ||
-               userFirstName != nil || userLastName != nil
-    }
-
-    /// Check if this is a registered user checkout
-    public var isRegisteredUser: Bool {
-        return userRegisteredAt != nil
-    }
 
     /// Get the order ID
     public var orderId: String? {
@@ -201,29 +83,14 @@ public class CheckoutSuccessRequest: PushRequest {
     /// - Parameters:
     ///   - screenToken: New screen token
     ///   - orderedCart: New ordered cart
-    ///   - userEmail: New user email
-    ///   - userPhoneNumber: New user phone number
-    ///   - userFirstName: New user first name
-    ///   - userLastName: New user last name
-    ///   - userRegisteredAt: New user registration date
     /// - Returns: A new checkout success request with updated values
     public func copyWith(
         screenToken: String? = nil,
-        orderedCart: Cart? = nil,
-        userEmail: String? = nil,
-        userPhoneNumber: String? = nil,
-        userFirstName: String? = nil,
-        userLastName: String? = nil,
-        userRegisteredAt: Date? = nil
+        orderedCart: Cart? = nil
     ) -> CheckoutSuccessRequest {
         return CheckoutSuccessRequest(
             screenToken: screenToken ?? self.screenToken,
-            orderedCart: orderedCart ?? self.orderedCart,
-            userEmail: userEmail ?? self.userEmail,
-            userPhoneNumber: userPhoneNumber ?? self.userPhoneNumber,
-            userFirstName: userFirstName ?? self.userFirstName,
-            userLastName: userLastName ?? self.userLastName,
-            userRegisteredAt: userRegisteredAt ?? self.userRegisteredAt
+            orderedCart: orderedCart ?? self.orderedCart
         )
     }
 
@@ -247,15 +114,6 @@ public class CheckoutSuccessRequest: PushRequest {
         // Validate cart has products
         if orderedCart.products.isEmpty {
             throw RelevaError.invalidConfiguration("Ordered cart must contain at least one product")
-        }
-
-        // Validate email format if provided
-        if let email = userEmail, !email.isEmpty {
-            let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
-            let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
-            if !emailPredicate.evaluate(with: email) {
-                throw RelevaError.invalidConfiguration("Invalid email format")
-            }
         }
     }
 }

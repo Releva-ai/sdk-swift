@@ -474,17 +474,10 @@ let product2 = CartProduct(id: "sku-456", price: 49.99, quantity: 1)
 let cart = Cart.active([product1, product2])
 client.setCart(cart)
 
-// Track checkout success via the builder
+// Track checkout success. The SDK identifies the user solely by the profileId set
+// via setProfileId(); contact details and other profile attributes are never sent.
 let orderedCart = Cart.paid([product1, product2], orderId: "order-789")
-let checkoutRequest = PushRequest()
-    .setCart(orderedCart)
-    .profile(
-        email: "user@example.com",
-        firstName: "John",
-        lastName: "Doe"
-    )
-
-client.push(checkoutRequest) { _ in }
+client.trackCheckoutSuccess(orderedCart: orderedCart, screenToken: "checkout_success") { _ in }
 ```
 
 ### Wishlist Management
@@ -914,7 +907,7 @@ let config = RelevaConfig(
 | `trackScreenView(screenToken:productIds:categories:filter:completion:)` | Track screen view |
 | `trackProductView(product:screenToken:completion:)` | Track product view |
 | `trackSearchView(query:resultProductIds:screenToken:filter:completion:)` | Track search |
-| `trackCheckoutSuccess(orderedCart:screenToken:userEmail:...:completion:)` | Track checkout |
+| `trackCheckoutSuccess(orderedCart:screenToken:completion:)` | Track checkout |
 | `trackCustomEvent(_:screenToken:completion:)` | Track custom event |
 | `registerPushToken(_:deviceType:completion:)` | Register FCM token |
 | `refreshPushToken()` | Re-fetch via `pushTokenProvider` and re-upload if stale |
