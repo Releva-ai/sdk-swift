@@ -3,6 +3,13 @@ import Foundation
 /// Represents the main API response from Releva
 public struct RelevaResponse: Codable, Equatable {
 
+    // NOTE: the /api/v0/push response also carries a top-level `userId` (the backend's resolved
+    // canonical id). We intentionally do NOT decode or persist it. Identity is client-owned: the SDK
+    // always sends its profileId, and under the userId-only contract the backend returns the same id
+    // it was given (anonymous->known merges are driven explicitly via setProfileId + mergeProfileIds),
+    // so there is nothing to adopt. Wiring it up would be dead code. (The web SDK adopts it only
+    // because web has an anonymous email-consolidation flow that the mobile SDKs do not.)
+
     // MARK: - Properties
 
     /// List of recommender responses
