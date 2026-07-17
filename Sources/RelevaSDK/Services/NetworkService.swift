@@ -604,7 +604,8 @@ public class NetworkService {
     }
 
     /// Build push request payload with context
-    private func buildPushPayload(request: [String: Any], context: [String: Any]) -> [String: Any] {
+    // internal (not private) so the identity-merge contract can be unit-tested via @testable.
+    func buildPushPayload(request: [String: Any], context: [String: Any]) -> [String: Any] {
         var payload: [String: Any] = [
             "context": context,
             "options": [
@@ -616,10 +617,13 @@ public class NetworkService {
             ]
         ]
 
-        // Merge request data into context
+        // Merge request data into context. NOTE: `profile` is deliberately NOT mergeable from the
+        // request — identity (`context.profile.id`) is owned by the context builder. No public API
+        // can set request["profile"] anymore, so allowing it here would only risk re-introducing the
+        // identity-clobber bug where a request profile map overwrote context.profile.id.
         if var contextCopy = payload["context"] as? [String: Any] {
             request.forEach { key, value in
-                if key == "page" || key == "product" || key == "events" || key == "profile" {
+                if key == "page" || key == "product" || key == "events" {
                     contextCopy[key] = value
                 }
             }
@@ -674,5 +678,5 @@ extension NetworkService {
 // MARK: - SDK Version
 
 struct SDKVersion {
-    static let current = "1.2.0"
+    static let current = "2.0.0"
 }
