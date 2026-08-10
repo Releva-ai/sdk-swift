@@ -26,13 +26,24 @@ RESULT_BUNDLE="${1:?usage: bash scripts/coverage.sh <path-to.xcresult> [min-line
 DEFAULT_MIN_LINE_COVERAGE=27.0
 MIN_LINE_COVERAGE="${2:-$DEFAULT_MIN_LINE_COVERAGE}"
 
+# The comparison below hands this straight to awk, which coerces anything
+# non-numeric (an empty string, a typo like "none", a stray "27%") to 0 -
+# silently disabling the floor instead of failing loudly. Reject it here
+# while the value is still known to be user input.
+case "$MIN_LINE_COVERAGE" in
+  ''|*[!0-9.]*|*.*.*)
+    echo "min-line-coverage must be a number, got '$MIN_LINE_COVERAGE'" >&2
+    exit 1
+    ;;
+esac
+
 if [ ! -e "$RESULT_BUNDLE" ]; then
   echo "No result bundle at $RESULT_BUNDLE - did the test step run at all?" >&2
   exit 1
 fi
 
 if ! xcrun xccov view --report --json "$RESULT_BUNDLE" > coverage.json; then
-  echo "No coverage data in $RESULT_BUNDLE - the test run probably failed before any test executed (build failure, or the simulator never launched). See the test step above." >&2
+  echo "Could not read coverage data from $RESULT_BUNDLE - most likely the test run failed before any test executed, but a bundle written by a different Xcode version or truncated by a killed runner would also land here. See the test step above." >&2
   exit 1
 fi
 

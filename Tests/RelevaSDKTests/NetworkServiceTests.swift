@@ -21,6 +21,7 @@ final class NetworkServiceTests: XCTestCase {
     override func tearDown() {
         StubURLProtocol.reset()
         service = nil
+        session?.finishTasksAndInvalidate()
         session = nil
         super.tearDown()
     }

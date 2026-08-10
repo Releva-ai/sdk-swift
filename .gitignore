@@ -36,6 +36,7 @@ playground.xcworkspace
 
 ## Test results and coverage output (see .github/workflows/ci.yml and the Makefile)
 *.xcresult
+*.xcresult.zip
 coverage*.json
 
 # Swift Package Manager
