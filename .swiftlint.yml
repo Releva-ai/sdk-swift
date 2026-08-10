@@ -36,8 +36,8 @@ included:
 
 excluded:
   - Carthage
-  - Pods
   - .build
+  - .spm
 
 force_cast: warning
 force_try: warning

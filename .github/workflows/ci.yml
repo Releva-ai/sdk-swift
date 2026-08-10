@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Only cancel superseded runs on PR refs. A push to master is the run that
+  # gates a release tag, so a quick succession of merges must not cancel it
+  # out from under itself and land with no green run recorded.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ios:
+    name: iOS build and test
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Must come before any xcodebuild invocation: `xcodebuild -list` on a
+      # package directory has to resolve the package graph to enumerate
+      # schemes, which clones firebase-ios-sdk (~1 GB) into whatever
+      # -clonedSourcePackagesDirPath is in effect. Restoring the cache first,
+      # and passing the same path to every xcodebuild call below (including
+      # -list), means that clone only ever happens once per Package.swift.
+      - name: Cache resolved Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .spm
+          # Package.resolved is gitignored (see .gitignore), so the cache key
+          # can only depend on Package.swift. It will occasionally serve a
+          # checkout that then re-resolves against a newer compatible
+          # version - harmless, still a net win versus refetching Firebase's
+          # source on every run.
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift') }}
+
+      - name: Resolve the aggregate scheme name
+        id: scheme
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          name=$(xcodebuild -list -json -clonedSourcePackagesDirPath .spm \
+            | jq -r '(.workspace // .project).schemes[] | select(endswith("-Package"))' \
+            | head -n 1)
+          if [ -z "$name" ]; then
+            echo "No aggregate -Package scheme found:" >&2
+            xcodebuild -list -json -clonedSourcePackagesDirPath .spm >&2
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Build all products for iOS
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -scheme "${{ steps.scheme.outputs.name }}" \
+            -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath .spm \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Select an iOS simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available --json \
+            | jq -r '
+                .devices
+                | to_entries
+                | map(select(.key | contains("SimRuntime.iOS-")))
+                # Sort numerically on the version components: a lexicographic
+                # sort of the runtime key ranks "iOS-18-2" above "iOS-18-10".
+                | sort_by(.key | split("SimRuntime.iOS-")[1] | split("-") | map(tonumber))
+                | last // {}
+                | .value // []
+                | map(select(.name | startswith("iPhone")))
+                | sort_by(.name)
+                | first // {}
+                | .udid // empty
+              ')
+          if [ -z "$udid" ]; then
+            echo "No available iOS simulator on this runner image:" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests on the iOS simulator
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -scheme "${{ steps.scheme.outputs.name }}" \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -clonedSourcePackagesDirPath .spm \
+            CODE_SIGNING_ALLOWED=NO

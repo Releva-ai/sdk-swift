@@ -39,24 +39,18 @@ playground.xcworkspace
 # Add this line if you want to avoid checking in source code from Swift Package Manager dependencies.
 # Packages/
 # Package.pins
-# Package.resolved
 # *.xcodeproj
 #
 # Xcode automatically generates this directory with a .xcworkspacedata file and xcuserdata
 # hence it is not needed unless you have added a package configuration file to your project
 .swiftpm
 .build/
-
-# CocoaPods
-#
-# We recommend against adding the Pods directory to your .gitignore. However
-# you should judge for yourself, the pros and cons are mentioned at:
-# https://guides.cocoapods.org/using/using-cocoapods.html#should-i-check-the-pods-directory-into-source-control
-#
-# Pods/
-#
-# Add this line if you want to avoid checking in source code from the Xcode workspace
-# *.xcworkspace
+# CI's -clonedSourcePackagesDirPath cache directory (see .github/workflows/ci.yml).
+.spm/
+# Not committed: consumers of a library package ignore its Package.resolved, so a
+# committed one only goes stale. Anchored — an app project's own resolved file
+# (*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved) should be committed.
+/Package.resolved
 
 # Carthage
 #

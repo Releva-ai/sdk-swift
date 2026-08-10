@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-08-10
+
+### Removed
+
+- **BREAKING — CocoaPods support removed; Swift Package Manager is now the only distribution channel.** `RelevaSDK.podspec` is deleted. The pod was never published to the CocoaPods trunk; the only way to consume it was a local-path `Podfile` entry (`pod 'RelevaSDK', :path => '../sdk-swift'`) against a clone of this repository, and no tagged release ever shipped that path — the last tag is `v1.0.4`, predating it. This is a major bump because the break is a source break, not merely a packaging one: under CocoaPods the root spec and the `NotificationExtension` subspec compiled into a single `RelevaSDK` module, so an extension that builds today against `import RelevaSDK` no longer compiles. **Migration:** remove the `RelevaSDK` / `RelevaSDK/NotificationExtension` entries from your `Podfile`, run `pod install`, then add `https://github.com/Releva-ai/sdk-swift.git` as a Swift package dependency and attach the `RelevaSDK` product to your app target and the `RelevaNotificationExtension` product to your Notification Service Extension target. Under SPM the extension base class lives in its own module, so `NotificationService.swift` must `import RelevaNotificationExtension` instead of `import RelevaSDK`. If your app also calls `Messaging.messaging()` directly (see the README's push setup), you now need to declare `firebase-ios-sdk` as a package dependency of your own app too — see `### Changed` below and the README Installation section.
+- `Package.resolved` is no longer committed (it is now gitignored): it pinned Firebase 10.29.0, and for a library package it is not consulted by downstream consumers.
+
+### Changed
+
+- Raised the `firebase-ios-sdk` floor in `Package.swift` from `10.0.0` to `11.15.0`, which is what the removed podspec required (`Firebase/Messaging ~> 11.15`) and therefore what integrations were actually building against. This is a floor raise across a Firebase major version, not a cost-free bump: an app still pinned to Firebase 10.x that also declares `firebase-ios-sdk` directly (now necessary per the README) will hit a resolution conflict, not a silent upgrade, until it moves to 11.x too — see [Firebase's own iOS SDK release notes](https://firebase.google.com/support/release-notes/ios) for that migration (it requires Xcode 16.2+, which the Requirements section of the README now states). Firebase 11.15.0's own manifest declares an iOS 12 platform floor, below this package's iOS 15 floor, so there is no platform conflict with this package itself.
+
+### Added
+
+- **iOS CI.** `.github/workflows/ci.yml` runs on `macos-latest` for pull requests and pushes to `master`: builds the aggregate `RelevaSDK-Package` scheme (both library targets) for `generic/platform=iOS`, then runs the test suite on an iOS simulator resolved at runtime from the runner image. The scheme name and simulator are both discovered at runtime (`xcodebuild -list -json`, `xcrun simctl list devices`) rather than hardcoded.
+- A test (`SDKVersionChangelogTests`) that pins `SDKVersion.current` against the top `CHANGELOG.md` heading, so CI now fails if the version constant and this file drift apart, as they did between `[2.0.0]` and the podspec.
+
+### Fixed
+
+- Corrected the repository URL in the README installation instructions and the Support section: the previously documented `github.com/releva-ai/releva-ios-sdk.git` does not exist, the package lives at `github.com/Releva-ai/sdk-swift.git`.
+
 ## [2.0.0] - 2026-07-17
 
 ### Changed

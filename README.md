@@ -58,52 +58,71 @@ Native iOS SDK for integrating Releva's AI-powered e-commerce personalization pl
 ## Requirements
 
 - iOS 15.0+
-- Xcode 14.0+
-- Swift 5.7+
+- Xcode 16.2+ (required by `firebase-ios-sdk` 11.15)
+- Swift 5.7 language mode or later (the package declares `swift-tools-version: 5.7`)
 
 ## Installation
 
-### Using CocoaPods
+Swift Package Manager is the only supported distribution channel. The package
+exposes two library products:
 
-Add to your `Podfile`:
+- `RelevaSDK` — add to your app target.
+- `RelevaNotificationExtension` — add to your Notification Service Extension
+  target, if you want rich push notifications.
 
-```ruby
-target 'YourApp' do
-  # Make sure you have cloned sdk-swift repository one directory outside of the Application - https://github.com/Releva-ai/sdk-swift
+`firebase-ios-sdk` (11.15.0 or newer) is resolved automatically as a dependency,
+but SPM only attaches package *products* to targets that ask for them. The push
+notification setup below calls `Messaging.messaging()` directly from your own
+`AppDelegate`, so your app target also needs to depend on `FirebaseMessaging`
+(and `FirebaseCore`, which it requires) explicitly — see below.
 
-  pod 'Firebase/Core', '~> 10.0'
-
-  # Local Releva SDK
-  pod 'RelevaSDK', :path => '../sdk-swift'
-
-  # For Notification Service Extension
-  target 'NotificationExtension' do
-    pod 'Firebase/Messaging', '~> 10.0'
-    pod 'RelevaSDK/NotificationExtension', :path => '../sdk-swift'
-  end
-end
-```
-
-Then run:
-```bash
-pod install
-```
-
-### Using Swift Package Manager (Not working currently)
+### In a `Package.swift` manifest
 
 Add the following to your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/releva-ai/releva-ios-sdk.git", from: "1.0.0")
+    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "3.0.0"),
+    // Required because the push setup below calls Messaging.messaging() from
+    // your own code: SPM only lets a target use products from packages this
+    // manifest declares directly, so a transitive resolve is not enough.
+    .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "11.15.0")
 ]
 ```
 
-Or in Xcode:
-1. File → Add Package Dependencies
-2. Enter: `https://github.com/releva-ai/releva-ios-sdk.git`
-3. Select version: 1.0.0 or later
+and depend on the products from your target:
 
+```swift
+.target(
+    name: "YourApp",
+    dependencies: [
+        .product(name: "RelevaSDK", package: "sdk-swift"),
+        .product(name: "FirebaseMessaging", package: "firebase-ios-sdk"),
+        .product(name: "FirebaseCore", package: "firebase-ios-sdk")
+    ]
+)
+```
+
+### In Xcode
+
+1. File → Add Package Dependencies…
+2. Enter: `https://github.com/Releva-ai/sdk-swift.git`
+3. Dependency Rule: "Up to Next Major Version", starting from `3.0.0`
+4. Add the `RelevaSDK` product to your app target
+5. Add `https://github.com/firebase/firebase-ios-sdk.git` as a second package
+   dependency (Dependency Rule: "Up to Next Major Version", starting from
+   `11.15.0`) and add its `FirebaseMessaging` and `FirebaseCore` products to your
+   app target — the push-notification setup below calls `Messaging.messaging()`
+   from your own code, and the "Choose Package Products" sheet for `sdk-swift`
+   only offers this package's own products (`RelevaSDK`, `RelevaNotificationExtension`).
+6. For rich push notifications, also add the `RelevaNotificationExtension` product
+   to your Notification Service Extension target — see
+   [Add Notification Service Extension for Rich Notifications](#3-add-notification-service-extension-for-rich-notifications)
+
+This SDK does not set up Firebase itself: you still need a `GoogleService-Info.plist`
+in your app target and a `FirebaseApp.configure()` call (typically in
+`application(_:didFinishLaunchingWithOptions:)`, before the push setup below)
+from the standard Firebase iOS setup.
 
 ## Quick Start
 
@@ -272,31 +291,19 @@ func userNotificationCenter(_ center: UNUserNotificationCenter,
 4. Name it (e.g., "NotificationExtension")
 5. Click "Finish" (Activate if prompted)
 
-#### Step 2: Add SDK to Extension's Podfile
+#### Step 2: Add the SDK to the Extension Target
 
-Update your `Podfile`:
+The extension needs the `RelevaNotificationExtension` product (the app target only
+needs `RelevaSDK`):
 
-```ruby
-target 'YourApp' do
-  # Make sure you have cloned sdk-swift repository one directory outside of the main directory with Podfile - https://github.com/Releva-ai/sdk-swift
+1. In Xcode, select your project → the extension target → General
+2. Under "Frameworks and Libraries", click "+"
+3. Pick `RelevaNotificationExtension` from the `sdk-swift` package
 
-  pod 'Firebase/Core', '~> 10.0'
-
-  # Local Releva SDK
-  pod 'RelevaSDK', :path => '../sdk-swift'
-
-  # For Notification Service Extension
-  target 'NotificationExtension' do
-    pod 'Firebase/Messaging', '~> 10.0'
-    pod 'RelevaSDK/NotificationExtension', :path => '../sdk-swift'
-  end
-end
-```
-
-Run:
-```bash
-pod install
-```
+If you have not added the package yet, do File → Add Package Dependencies… first
+(see [Installation](#installation)) — the "Add to Target" column of that dialog
+also lets you assign `RelevaNotificationExtension` to the extension target
+directly.
 
 #### Step 3: Inherit from SDK's Base Class
 
@@ -304,7 +311,7 @@ In your extension's `NotificationService.swift`, replace the entire file with:
 
 ```swift
 import UserNotifications
-import RelevaSDK
+import RelevaNotificationExtension
 
 class NotificationService: RelevaNotificationServiceExtension {
     // That's it! No additional code needed.
@@ -955,8 +962,7 @@ Task {
 **Rich notifications (images/buttons) not showing:**
 - Confirm you've created the Notification Service Extension target
 - Verify extension inherits from `RelevaNotificationServiceExtension` (NOT `UNNotificationServiceExtension`)
-- Check the extension is included in your Podfile with Firebase/Messaging
-- Run `pod install` after adding the extension
+- Check the `RelevaNotificationExtension` product is listed under the extension target's "Frameworks and Libraries"
 - Test with app in background (extensions don't run when app is in foreground)
 - Verify `imageUrl` is a valid, publicly accessible HTTPS URL
 - Check Xcode Console for "RelevaSDK" logs to see processing details
@@ -985,7 +991,7 @@ Task {
 
 **Build errors about UIApplication in extensions:**
 - Update to SDK version 1.0.0+ which uses runtime reflection
-- No build flags or Podfile modifications should be needed
+- No build flags or package configuration changes should be needed
 - If you're still seeing errors, clean build folder (Cmd+Shift+K) and rebuild
 
 ### Debug Logging
@@ -1008,7 +1014,7 @@ This will show:
 ## Support
 
 For issues, questions, or feature requests:
-- GitHub Issues: https://github.com/releva-ai/releva-ios-sdk/issues
+- GitHub Issues: https://github.com/Releva-ai/sdk-swift/issues
 - Documentation: https://docs.releva.ai/ios-sdk
 - Email: support@releva.ai
 
