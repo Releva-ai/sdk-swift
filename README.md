@@ -59,7 +59,7 @@ Native iOS SDK for integrating Releva's AI-powered e-commerce personalization pl
 
 - iOS 15.0+
 - Xcode 16.2+ (required by `firebase-ios-sdk` 11.15)
-- Swift 5.7+
+- Swift 5.7 language mode or later (the package declares `swift-tools-version: 5.7`)
 
 ## Installation
 
@@ -70,7 +70,11 @@ exposes two library products:
 - `RelevaNotificationExtension` — add to your Notification Service Extension
   target, if you want rich push notifications.
 
-`firebase-ios-sdk` (11.15.0 or newer) is resolved automatically as a dependency.
+`firebase-ios-sdk` (11.15.0 or newer) is resolved automatically as a dependency,
+but SPM only attaches package *products* to targets that ask for them. The push
+notification setup below calls `Messaging.messaging()` directly from your own
+`AppDelegate`, so your app target also needs to depend on `FirebaseMessaging`
+(and `FirebaseCore`, which it requires) explicitly — see below.
 
 ### In a `Package.swift` manifest
 
@@ -82,13 +86,17 @@ dependencies: [
 ]
 ```
 
-and depend on the product from your target:
+and depend on the products from your target:
 
 ```swift
 .target(
     name: "YourApp",
     dependencies: [
-        .product(name: "RelevaSDK", package: "sdk-swift")
+        .product(name: "RelevaSDK", package: "sdk-swift"),
+        // Required because the push setup below calls Messaging.messaging()
+        // from your own code, not from inside RelevaSDK.
+        .product(name: "FirebaseMessaging", package: "firebase-ios-sdk"),
+        .product(name: "FirebaseCore", package: "firebase-ios-sdk")
     ]
 )
 ```
@@ -99,9 +107,20 @@ and depend on the product from your target:
 2. Enter: `https://github.com/Releva-ai/sdk-swift.git`
 3. Dependency Rule: "Up to Next Major Version", starting from `2.1.0`
 4. Add the `RelevaSDK` product to your app target
-5. For rich push notifications, also add the `RelevaNotificationExtension` product
+5. In the same "Choose Package Products" dialog (or later, in your app target's
+   "Frameworks, Libraries, and Embedded Content"), also add `FirebaseMessaging`
+   and `FirebaseCore` from the `firebase-ios-sdk` package that was resolved
+   alongside it — the push-notification setup below calls
+   `Messaging.messaging()` from your own code, and Xcode does not attach
+   transitive dependencies' products to your target automatically.
+6. For rich push notifications, also add the `RelevaNotificationExtension` product
    to your Notification Service Extension target — see
    [Add Notification Service Extension for Rich Notifications](#3-add-notification-service-extension-for-rich-notifications)
+
+This SDK does not set up Firebase itself: you still need a `GoogleService-Info.plist`
+in your app target and a `FirebaseApp.configure()` call (typically in
+`application(_:didFinishLaunchingWithOptions:)`, before the push setup below)
+from the standard Firebase iOS setup.
 
 ## Quick Start
 

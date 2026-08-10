@@ -37,7 +37,6 @@ let package = Package(
         .target(
             name: "RelevaNotificationExtension",
             dependencies: [
-                "RelevaSDK",
                 .product(name: "FirebaseMessaging", package: "firebase-ios-sdk", condition: .when(platforms: [.iOS]))
             ],
             path: "Sources/RelevaNotificationExtension"

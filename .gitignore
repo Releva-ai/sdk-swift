@@ -46,8 +46,9 @@ playground.xcworkspace
 .swiftpm
 .build/
 # Not committed: consumers of a library package ignore its Package.resolved, so a
-# committed one only goes stale.
-Package.resolved
+# committed one only goes stale. Anchored — an app project's own resolved file
+# (*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved) should be committed.
+/Package.resolved
 
 # Carthage
 #
