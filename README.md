@@ -162,6 +162,7 @@ client.setProfileId(newAnonymousProfileId, true)
 
 // Re-register push token with the new anonymous profile
 // This is necessary because we skipped the merge, so the token needs to be explicitly registered
+// (Messaging.messaging() needs `import FirebaseMessaging` in the enclosing file.)
 Task {
     do {
         let fcmToken = try await Messaging.messaging().token()
@@ -206,6 +207,9 @@ This default behavior is ideal for:
 
 ```swift
 import UserNotifications
+// Required for the Messaging.messaging() calls below (see the FirebaseMessaging
+// dependency in the installation steps above).
+import FirebaseMessaging
 
 // Request permission
 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in

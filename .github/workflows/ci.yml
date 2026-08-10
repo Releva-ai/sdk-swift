@@ -98,4 +98,51 @@ jobs:
             -scheme "${{ steps.scheme.outputs.name }}" \
             -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
             -clonedSourcePackagesDirPath .spm \
+            -enableCodeCoverage YES \
+            -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Report code coverage
+        env:
+          # Line-coverage floor for the shipped targets, test targets excluded.
+          # Raise it as coverage improves; do not lower it to accommodate a
+          # regression - add tests instead.
+          MIN_LINE_COVERAGE: '20.0'
+        run: |
+          set -euo pipefail
+          xcrun xccov view --report --json TestResults.xcresult > coverage.json
+
+          # Per-target, then per-file within each target, largest files first so
+          # the biggest untested areas are visible at the top of each block.
+          jq -r '
+            .targets
+            | map(select(.name | test("Tests") | not))
+            | .[]
+            | "\(.name): \(.coveredLines)/\(.executableLines) lines",
+              (.files | sort_by(-.executableLines) | .[]
+                | "    \(.name): \(.coveredLines)/\(.executableLines) lines")
+          ' coverage.json
+
+          # `add` on an empty array yields null, which would break the arithmetic
+          # below, so the empty case is spelled out rather than coalesced.
+          covered=$(jq '[.targets[] | select(.name | test("Tests") | not) | .coveredLines]
+            | if length == 0 then 0 else add end' coverage.json)
+          executable=$(jq '[.targets[] | select(.name | test("Tests") | not) | .executableLines]
+            | if length == 0 then 0 else add end' coverage.json)
+          if [ "$executable" -eq 0 ]; then
+            echo "No shipped target reported executable lines. Targets in the report:" >&2
+            jq -r '.targets[].name' coverage.json >&2
+            exit 1
+          fi
+
+          percent=$(awk -v c="$covered" -v e="$executable" 'BEGIN { printf "%.2f", 100 * c / e }')
+          echo "Line coverage: ${percent}% (${covered}/${executable} lines), floor ${MIN_LINE_COVERAGE}%"
+          echo "Line coverage: **${percent}%** (${covered}/${executable} lines), floor ${MIN_LINE_COVERAGE}%" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+          awk -v p="$percent" -v min="$MIN_LINE_COVERAGE" 'BEGIN {
+            if (p + 0 < min + 0) {
+              printf "Line coverage %s%% is below the %s%% floor\n", p, min > "/dev/stderr"
+              exit 1
+            }
+          }'
