@@ -318,8 +318,12 @@ final class DesignRendererParsingTests: XCTestCase {
             ("bottom-left", .bottomLeading),
             ("bottom-right", .bottomTrailing),
             ("center-left", .leading),
-            ("center-right", .trailing),
-            ("center-center", .center)
+            ("center-right", .trailing)
+            // Deliberately not "center-center": it has no `case` in the switch and
+            // reaches `.center` through the `default` arm, so it would pass here
+            // whatever the named mappings did. That arm is already covered by
+            // testBackgroundImageDefaultsToACenteredCover, whose absent `position`
+            // becomes the equally unlisted "center".
         ]
 
         for (position, expected) in cases {

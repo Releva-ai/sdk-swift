@@ -18,11 +18,17 @@ final class NetworkServiceTests: XCTestCase {
         service = makeService()
     }
 
+    /// `invalidateAndCancel()`, not `finishTasksAndInvalidate()`, and before `reset()`:
+    /// `StubURLProtocol`'s state is `static`, so a request still in flight when a test
+    /// ends writes into the *next* test's fixture. That only happens after a
+    /// `waitForExpectations` timeout, which is exactly when a second, misattributed
+    /// failure is least welcome. Cancelling first means nothing can still be writing
+    /// when the shared state is cleared.
     override func tearDown() {
-        StubURLProtocol.reset()
-        service = nil
-        session?.finishTasksAndInvalidate()
+        session?.invalidateAndCancel()
         session = nil
+        service = nil
+        StubURLProtocol.reset()
         super.tearDown()
     }
 

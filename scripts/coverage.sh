@@ -27,15 +27,19 @@ DEFAULT_MIN_LINE_COVERAGE=27.0
 MIN_LINE_COVERAGE="${2:-$DEFAULT_MIN_LINE_COVERAGE}"
 
 # The comparison below hands this straight to awk, which coerces anything
-# non-numeric (an empty string, a typo like "none", a stray "27%") to 0 -
-# silently disabling the floor instead of failing loudly. Reject it here
-# while the value is still known to be user input.
-case "$MIN_LINE_COVERAGE" in
-  ''|*[!0-9.]*|*.*.*)
-    echo "min-line-coverage must be a number, got '$MIN_LINE_COVERAGE'" >&2
-    exit 1
-    ;;
-esac
+# non-numeric (an empty string, a typo like "none", a stray "27%", a bare
+# ".") to 0 - silently disabling the floor instead of failing loudly. Reject
+# it here while the value is still known to be user input.
+#
+# Spelled as what a floor may look like rather than as a list of shapes it
+# may not be: an exclusion list has to enumerate every string awk misreads as
+# a number, and missing one leaves the gate silently open. This accepts "27",
+# "27.0", "0" and ".5" and nothing else, and it is the same awk deciding here
+# as does the comparison at the bottom of the file.
+if ! awk -v v="$MIN_LINE_COVERAGE" 'BEGIN { exit (v ~ /^[0-9]*\.?[0-9]+$/) ? 0 : 1 }'; then
+  echo "min-line-coverage must be a number, got '$MIN_LINE_COVERAGE'" >&2
+  exit 1
+fi
 
 if [ ! -e "$RESULT_BUNDLE" ]; then
   echo "No result bundle at $RESULT_BUNDLE - did the test step run at all?" >&2
