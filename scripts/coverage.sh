@@ -4,23 +4,37 @@
 # below the floor. Both `.github/workflows/ci.yml` and `make test` call this,
 # so the number a developer sees locally is the same one that gates CI.
 #
-# Usage: scripts/coverage.sh <path-to.xcresult> [min-line-coverage]
+# Usage: bash scripts/coverage.sh <path-to.xcresult> [min-line-coverage]
 #
-# `min-line-coverage` defaults to 0 (report only, no gate) so ad-hoc local
-# runs against an arbitrary bundle don't fail by surprise; CI and `make test`
-# both pass the real floor explicitly.
+# (Invoke with `bash`, not directly - the file isn't marked executable and
+# both callers below already run it this way.)
+#
+# `min-line-coverage` defaults to the figure below (the real CI floor) so a
+# local `make test` fails exactly when CI would without either caller having
+# to carry its own copy of the number - that duplication is what let the two
+# drift out of sync before. An ad-hoc run that wants report-only behaviour can
+# still get it by passing an explicit 0.
 
 set -euo pipefail
 
-RESULT_BUNDLE="${1:?usage: scripts/coverage.sh <path-to.xcresult> [min-line-coverage]}"
-MIN_LINE_COVERAGE="${2:-0}"
+RESULT_BUNDLE="${1:?usage: bash scripts/coverage.sh <path-to.xcresult> [min-line-coverage]}"
+# Set just under the figure this suite actually achieves, so the gate is real
+# rather than nominal: the measured figure is 27.74% (2743/9889 lines), and
+# 27.0 leaves only enough slack for run-to-run jitter. Do not lower it to
+# accommodate a regression - add tests instead. Raise it when coverage
+# genuinely climbs.
+DEFAULT_MIN_LINE_COVERAGE=27.0
+MIN_LINE_COVERAGE="${2:-$DEFAULT_MIN_LINE_COVERAGE}"
 
 if [ ! -e "$RESULT_BUNDLE" ]; then
   echo "No result bundle at $RESULT_BUNDLE - did the test step run at all?" >&2
   exit 1
 fi
 
-xcrun xccov view --report --json "$RESULT_BUNDLE" > coverage.json
+if ! xcrun xccov view --report --json "$RESULT_BUNDLE" > coverage.json; then
+  echo "No coverage data in $RESULT_BUNDLE - the test run probably failed before any test executed (build failure, or the simulator never launched). See the test step above." >&2
+  exit 1
+fi
 
 # -enableCodeCoverage instruments the whole build, so the raw report also
 # lists the Firebase dependency's targets. Narrow it to this package's own

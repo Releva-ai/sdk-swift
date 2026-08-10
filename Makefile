@@ -8,9 +8,11 @@
 SCHEME ?= RelevaSDK-Package
 SPM_CACHE ?= .spm
 RESULT_BUNDLE ?= TestResults.xcresult
-# Must match the MIN_LINE_COVERAGE set on the "Report code coverage" step in
-# .github/workflows/ci.yml, so a local `make test` fails exactly when CI would.
-MIN_LINE_COVERAGE ?= 15.0
+# No default here on purpose: scripts/coverage.sh carries the one copy of the
+# real floor, so this file and ci.yml can't drift out of sync with each other
+# again. Set MIN_LINE_COVERAGE=<n> on the `make` invocation to override it for
+# an ad-hoc local run.
+MIN_LINE_COVERAGE ?=
 
 .PHONY: all build test lint require-macos
 
@@ -32,6 +34,12 @@ build: require-macos
 # Picks any available iPhone simulator. CI is stricter (it takes the newest
 # runtime) because it has to be reproducible; locally, whatever is installed
 # will do.
+#
+# The coverage report still runs even if `xcodebuild test` fails, matching
+# ci.yml's "Report code coverage" step - a failed test run is exactly when
+# the bundle's per-test detail is worth having, and skipping the report here
+# would make `make test` diverge from what CI does on failure. The target
+# still exits non-zero on a test failure even if coverage passed.
 test: require-macos
 	@set -eu; \
 	if ! command -v jq >/dev/null 2>&1; then \
@@ -45,14 +53,19 @@ test: require-macos
 	  exit 1; \
 	fi; \
 	rm -rf $(RESULT_BUNDLE); \
+	set +e; \
 	xcodebuild test \
 	  -scheme $(SCHEME) \
 	  -destination "platform=iOS Simulator,id=$$udid" \
 	  -clonedSourcePackagesDirPath $(SPM_CACHE) \
 	  -enableCodeCoverage YES \
 	  -resultBundlePath $(RESULT_BUNDLE) \
-	  CODE_SIGNING_ALLOWED=NO
-	bash scripts/coverage.sh $(RESULT_BUNDLE) $(MIN_LINE_COVERAGE)
+	  CODE_SIGNING_ALLOWED=NO; \
+	test_status=$$?; \
+	bash scripts/coverage.sh $(RESULT_BUNDLE) $(MIN_LINE_COVERAGE); \
+	coverage_status=$$?; \
+	if [ "$$test_status" -ne 0 ]; then exit "$$test_status"; fi; \
+	exit "$$coverage_status"
 
 # Not wired into CI: the existing sources violate opt-in rules that .swiftlint.yml
 # switches on (implicit_return, for one), so this reports rather than gates.
