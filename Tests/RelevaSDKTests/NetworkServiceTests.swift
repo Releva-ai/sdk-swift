@@ -87,6 +87,10 @@ final class NetworkServiceTests: XCTestCase {
         }
     }
 
+    // Overlaps `EndpointOverrideTests.testEndpointOverrideTakesPrecedence`, which pins the same
+    // precedence at the `getBaseURL()` seam. Kept here too because the two seams can drift; see
+    // `testClearingTheEndpointOverrideSendsTheNextRequestBackToTheRealm` below for the
+    // previously-uncovered wire-level case of clearing the override.
     func testRequestsGoToTheEndpointOverrideRatherThanTheCustomEndpoint() throws {
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data("{}".utf8)) }
 
