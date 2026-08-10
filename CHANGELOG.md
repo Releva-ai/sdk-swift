@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-08-10
+
+### Changed
+
+- **BREAKING for CocoaPods integrators — CocoaPods support removed; Swift Package Manager is the only distribution channel.** No Swift API changed, hence the minor rather than major bump. `RelevaSDK.podspec` is deleted. The pod was never published to the CocoaPods trunk; the README documented it as a local-path pod (`pod 'RelevaSDK', :path => '../sdk-swift'`) against a clone of this repository. **Migration:** remove the `RelevaSDK` / `RelevaSDK/NotificationExtension` entries from your `Podfile`, run `pod install`, then add `https://github.com/Releva-ai/sdk-swift.git` as a Swift package dependency and attach the `RelevaSDK` product to your app target and the `RelevaNotificationExtension` product to your Notification Service Extension target. Under SPM the extension base class lives in its own module, so `NotificationService.swift` must `import RelevaNotificationExtension` instead of `import RelevaSDK`.
+- Raised the `firebase-ios-sdk` floor in `Package.swift` from `10.0.0` to `11.15.0`, which is what the removed podspec required (`Firebase/Messaging ~> 11.15`) and therefore what integrations were actually building against. Firebase 11.15.0's own manifest declares an iOS 12 platform floor, below this package's iOS 15 floor, so there is no platform conflict; it does require Xcode 16.2+, which the Requirements section of the README now states.
+- `Package.resolved` is no longer committed (it is now gitignored): it pinned Firebase 10.29.0, and for a library package it is not consulted by downstream consumers.
+
+### Added
+
+- **iOS CI.** `.github/workflows/ci.yml` runs on `macos-latest` for pull requests and pushes to `master`: builds the `RelevaSDK` and `RelevaNotificationExtension` products for `generic/platform=iOS`, then runs the test suite on an iOS simulator resolved at runtime from the runner image.
+
+### Fixed
+
+- Corrected the repository URL in the README installation instructions and the Support section: the previously documented `github.com/releva-ai/releva-ios-sdk.git` does not exist, the package lives at `github.com/Releva-ai/sdk-swift.git`.
+
 ## [2.0.0] - 2026-07-17
 
 ### Changed

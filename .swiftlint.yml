@@ -36,7 +36,6 @@ included:
 
 excluded:
   - Carthage
-  - Pods
   - .build
 
 force_cast: warning

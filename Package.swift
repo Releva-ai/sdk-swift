@@ -22,7 +22,7 @@ let package = Package(
     ],
     dependencies: [
         // Firebase dependency (optional - only if using FCM)
-        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "10.0.0")
+        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "11.15.0")
     ],
     targets: [
         // Main SDK target

@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: iOS build and test
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show toolchain and schemes
+        run: |
+          xcodebuild -version
+          xcodebuild -list -json
+
+      - name: Build RelevaSDK for iOS
+        run: |
+          xcodebuild build \
+            -scheme RelevaSDK \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build RelevaNotificationExtension for iOS
+        run: |
+          xcodebuild build \
+            -scheme RelevaNotificationExtension \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Select an iOS simulator
+        id: simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json \
+            | jq -r '[.devices | to_entries[]
+                      | select(.key | contains("SimRuntime.iOS-"))
+                      | .value[] | select(.name | startswith("iPhone")) | .udid] | first')
+          if [ -z "$udid" ] || [ "$udid" = "null" ]; then
+            echo "No available iOS simulator on this runner image:" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests on the iOS simulator
+        run: |
+          xcodebuild test \
+            -scheme RelevaSDK-Package \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO
