@@ -82,7 +82,7 @@ Add the following to your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "2.1.0")
+    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "3.0.0")
 ]
 ```
 
@@ -105,7 +105,7 @@ and depend on the products from your target:
 
 1. File → Add Package Dependencies…
 2. Enter: `https://github.com/Releva-ai/sdk-swift.git`
-3. Dependency Rule: "Up to Next Major Version", starting from `2.1.0`
+3. Dependency Rule: "Up to Next Major Version", starting from `3.0.0`
 4. Add the `RelevaSDK` product to your app target
 5. In the same "Choose Package Products" dialog (or later, in your app target's
    "Frameworks, Libraries, and Embedded Content"), also add `FirebaseMessaging`

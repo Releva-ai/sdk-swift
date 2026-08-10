@@ -14,7 +14,7 @@ final class SDKVersionChangelogTests: XCTestCase {
 
         let changelog = try String(contentsOf: changelogURL, encoding: .utf8)
 
-        // The top-most heading looks like "## [2.1.0] - 2026-08-10".
+        // The top-most heading looks like "## [3.0.0] - 2026-08-10".
         guard let headingRange = changelog.range(
             of: #"## \[\d+\.\d+\.\d+\]"#,
             options: .regularExpression
