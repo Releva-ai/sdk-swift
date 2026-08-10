@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+Packaging, documentation and CI only — no API or behavior change, so
+`SDKVersion.current` and the podspec version stay at `2.0.0`.
+
+### Added
+
+- **iOS build CI.** `.github/workflows/ci.yml` runs on `macos-latest` for pull
+  requests and pushes to `master`, building both the `RelevaSDK` and
+  `RelevaNotificationExtension` products with `xcodebuild` for
+  `generic/platform=iOS` and running the test suite on an iOS simulator resolved
+  at runtime from the runner image.
+
+### Changed
+
+- **Swift Package Manager is now the recommended installation path** and is
+  documented as working. The CocoaPods instructions are kept, below SPM.
+- Firebase constraint aligned across channels: `Package.swift` now requires
+  `firebase-ios-sdk` `from: "11.15.0"`, matching the podspec's
+  `Firebase/Messaging ~> 11.15`. The Podfile examples in the README were still on
+  `~> 10.0` and are now `~> 11.15`.
+- The podspec source tag is now `v#{s.version}`, matching the repository's
+  existing `v`-prefixed tag convention.
+- `Package.resolved` is no longer committed (and is now gitignored): it is not
+  used by downstream consumers of a library package and the committed copy still
+  pinned Firebase 10.29.0.
+
+### Fixed
+
+- Corrected the repository URL in the README and the podspec: the previously
+  documented `github.com/releva-ai/releva-ios-sdk.git` does not exist, the
+  package lives at `github.com/Releva-ai/sdk-swift.git`.
+- Removed `Bash(swift build:*)` / `Bash(swift test:*)` from the `apply-fixes`
+  workflow's allowed tools; that job runs on `ubuntu-latest`, where this package
+  cannot build.
+
 ## [2.0.0] - 2026-07-17
 
 ### Changed

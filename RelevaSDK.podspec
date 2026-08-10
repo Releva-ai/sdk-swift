@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.homepage         = 'https://releva.ai'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'Releva' => 'support@releva.ai' }
-  s.source           = { :git => 'https://github.com/releva-ai/releva-ios-sdk.git', :tag => s.version.to_s }
+  s.source           = { :git => 'https://github.com/Releva-ai/sdk-swift.git', :tag => "v#{s.version}" }
 
   s.ios.deployment_target = '15.0'
   s.swift_version = '5.7'

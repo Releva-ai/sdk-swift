@@ -63,22 +63,44 @@ Native iOS SDK for integrating Releva's AI-powered e-commerce personalization pl
 
 ## Installation
 
+### Using Swift Package Manager (recommended)
+
+In Xcode:
+1. File → Add Package Dependencies
+2. Enter: `https://github.com/Releva-ai/sdk-swift.git`
+3. Select version: 2.0.0 or later
+4. Add the `RelevaSDK` library to your app target. If you also use a Notification
+   Service Extension, add the `RelevaNotificationExtension` library to that target.
+
+Or, if your app is itself a package, add the following to your `Package.swift` file:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "2.0.0")
+]
+```
+
+Firebase (`FirebaseMessaging` 11.15 or later) is resolved automatically as a
+dependency of the SDK.
+
 ### Using CocoaPods
 
-Add to your `Podfile`:
+The pod is not published to the CocoaPods trunk, so it is consumed from a local
+checkout. Clone this repository one directory outside of your application, then
+add to your `Podfile`:
 
 ```ruby
 target 'YourApp' do
   # Make sure you have cloned sdk-swift repository one directory outside of the Application - https://github.com/Releva-ai/sdk-swift
 
-  pod 'Firebase/Core', '~> 10.0'
+  pod 'Firebase/Core', '~> 11.15'
 
   # Local Releva SDK
   pod 'RelevaSDK', :path => '../sdk-swift'
 
   # For Notification Service Extension
   target 'NotificationExtension' do
-    pod 'Firebase/Messaging', '~> 10.0'
+    pod 'Firebase/Messaging', '~> 11.15'
     pod 'RelevaSDK/NotificationExtension', :path => '../sdk-swift'
   end
 end
@@ -88,21 +110,6 @@ Then run:
 ```bash
 pod install
 ```
-
-### Using Swift Package Manager (Not working currently)
-
-Add the following to your `Package.swift` file:
-
-```swift
-dependencies: [
-    .package(url: "https://github.com/releva-ai/releva-ios-sdk.git", from: "1.0.0")
-]
-```
-
-Or in Xcode:
-1. File → Add Package Dependencies
-2. Enter: `https://github.com/releva-ai/releva-ios-sdk.git`
-3. Select version: 1.0.0 or later
 
 
 ## Quick Start
@@ -272,22 +279,25 @@ func userNotificationCenter(_ center: UNUserNotificationCenter,
 4. Name it (e.g., "NotificationExtension")
 5. Click "Finish" (Activate if prompted)
 
-#### Step 2: Add SDK to Extension's Podfile
+#### Step 2: Add the SDK to the Extension Target
 
-Update your `Podfile`:
+With Swift Package Manager, select the extension target → General → Frameworks and
+Libraries → add the `RelevaNotificationExtension` library.
+
+With CocoaPods, update your `Podfile`:
 
 ```ruby
 target 'YourApp' do
   # Make sure you have cloned sdk-swift repository one directory outside of the main directory with Podfile - https://github.com/Releva-ai/sdk-swift
 
-  pod 'Firebase/Core', '~> 10.0'
+  pod 'Firebase/Core', '~> 11.15'
 
   # Local Releva SDK
   pod 'RelevaSDK', :path => '../sdk-swift'
 
   # For Notification Service Extension
   target 'NotificationExtension' do
-    pod 'Firebase/Messaging', '~> 10.0'
+    pod 'Firebase/Messaging', '~> 11.15'
     pod 'RelevaSDK/NotificationExtension', :path => '../sdk-swift'
   end
 end
@@ -1008,7 +1018,7 @@ This will show:
 ## Support
 
 For issues, questions, or feature requests:
-- GitHub Issues: https://github.com/releva-ai/releva-ios-sdk/issues
+- GitHub Issues: https://github.com/Releva-ai/sdk-swift/issues
 - Documentation: https://docs.releva.ai/ios-sdk
 - Email: support@releva.ai
 

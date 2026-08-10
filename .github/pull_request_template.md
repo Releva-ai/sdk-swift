@@ -9,7 +9,7 @@
 - [ ] Bumped `s.version` in `RelevaSDK.podspec` (patch for fixes, minor for features, major for breaking).
 - [ ] Bumped `SDKVersion.current` in `Sources/RelevaSDK/Services/NetworkService.swift` to match — it is sent as `options.client.version` / the `User-Agent` on every push, so it must move with each behavior change. (Keep it equal to the podspec version.)
 - [ ] Added a matching entry at the top of `CHANGELOG.md` (Keep a Changelog format; mark breaking changes with a migration note).
-- [ ] Tests added/updated and `swift test` passes.
+- [ ] Tests added/updated and the iOS CI workflow is green. (The package is iOS-only, so a host `swift test` cannot build it; CI runs `xcodebuild test` on a simulator.)
 
 ## Breaking changes
 
