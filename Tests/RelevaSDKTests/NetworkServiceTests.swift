@@ -103,6 +103,25 @@ final class NetworkServiceTests: XCTestCase {
         XCTAssertEqual(request.url?.absoluteString, "https://override.example.com/api/v0/appPush/tokens")
     }
 
+    func testClearingTheEndpointOverrideSendsTheNextRequestBackToTheRealm() throws {
+        // `EndpointOverrideTests.testClearEndpointOverride` already pins this at the
+        // `getBaseURL()` seam; this pins it at the wire, which is the seam a
+        // resolver-level bug wouldn't necessarily show up at.
+        StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data("{}".utf8)) }
+
+        service.setEndpointOverride("https://override.example.com")
+        service.setEndpointOverride(nil)
+
+        let done = expectation(description: "token registration completes")
+        service.registerPushToken("fcm-token", deviceType: .ios, deviceId: "device-1", profileId: "user-1") { _ in
+            done.fulfill()
+        }
+        waitForExpectations(timeout: 5)
+
+        let request = try XCTUnwrap(StubURLProtocol.receivedRequests.first)
+        XCTAssertEqual(request.url?.absoluteString, "https://us.releva.ai/api/v0/appPush/tokens")
+    }
+
     func testRegisterPushTokenPostsTheTokenPayload() throws {
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data("{}".utf8)) }
 

@@ -70,8 +70,10 @@ final class StubURLProtocol: URLProtocol {
         }
 
         lock.lock()
-        defer { lock.unlock() }
         requests.append(recorded)
+        let handler = self.handler
+        lock.unlock()
+
         guard let handler = handler else { return .failure(StubError.notStubbed(recorded)) }
         return handler(recorded)
     }
@@ -82,7 +84,7 @@ final class StubURLProtocol: URLProtocol {
 
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 4096)
-        while stream.hasBytesAvailable {
+        while true {
             let read = stream.read(&buffer, maxLength: buffer.count)
             if read <= 0 { break }
             data.append(buffer, count: read)

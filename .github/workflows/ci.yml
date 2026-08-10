@@ -103,6 +103,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
       - name: Report code coverage
+        # Runs even when the test step above failed: that's precisely when the
+        # per-test failure detail in TestResults.xcresult (uploaded below) is
+        # worth having, and the floor check gives a red run a second, more
+        # informative reason to be red instead of silently skipping.
+        if: always()
         env:
           # Deliberately conservative starting point: the real figure is not
           # known until this step runs for the first time. Raise it to just
@@ -111,46 +116,16 @@ jobs:
           MIN_LINE_COVERAGE: '15.0'
         run: |
           set -euo pipefail
-          xcrun xccov view --report --json TestResults.xcresult > coverage.json
+          bash scripts/coverage.sh TestResults.xcresult "$MIN_LINE_COVERAGE"
 
-          # -enableCodeCoverage instruments the whole build, so the raw report
-          # also lists the Firebase dependency's targets. Narrow it to this
-          # package's own products before printing or summing anything.
-          jq '[.targets[]
-               | select((.name | startswith("RelevaSDK")
-                         or startswith("RelevaNotificationExtension"))
-                        and (.name | test("Tests") | not))]' \
-            coverage.json > coverage-shipped.json
-
-          # Per-target, then per-file within each target, largest files first so
-          # the biggest untested areas are visible at the top of each block.
-          jq -r '
-            .[]
-            | "\(.name): \(.coveredLines)/\(.executableLines) lines",
-              (.files | sort_by(-.executableLines) | .[]
-                | "    \(.name): \(.coveredLines)/\(.executableLines) lines")
-          ' coverage-shipped.json
-
-          # `add` on an empty array yields null, which would break the arithmetic
-          # below, so the empty case is spelled out rather than coalesced.
-          covered=$(jq '[.[].coveredLines]
-            | if length == 0 then 0 else add end' coverage-shipped.json)
-          executable=$(jq '[.[].executableLines]
-            | if length == 0 then 0 else add end' coverage-shipped.json)
-          if [ "$executable" -eq 0 ]; then
-            echo "No shipped target reported executable lines. Targets in the report:" >&2
-            jq -r '.targets[].name' coverage.json >&2
-            exit 1
-          fi
-
-          percent=$(awk -v c="$covered" -v e="$executable" 'BEGIN { printf "%.2f", 100 * c / e }')
-          echo "Line coverage: ${percent}% (${covered}/${executable} lines), floor ${MIN_LINE_COVERAGE}%"
-          echo "Line coverage: **${percent}%** (${covered}/${executable} lines), floor ${MIN_LINE_COVERAGE}%" \
-            >> "$GITHUB_STEP_SUMMARY"
-
-          awk -v p="$percent" -v min="$MIN_LINE_COVERAGE" 'BEGIN {
-            if (p + 0 < min + 0) {
-              printf "Line coverage %s%% is below the %s%% floor\n", p, min > "/dev/stderr"
-              exit 1
-            }
-          }'
+      - name: Upload test result bundle
+        # Also runs on failure: a failed run is exactly when the per-test
+        # detail inside the bundle (not just the coverage summary above) is
+        # worth downloading. `if-no-files-found: warn` covers the case where
+        # the build failed before the test step ever produced a bundle.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults.xcresult
+          path: TestResults.xcresult
+          if-no-files-found: warn

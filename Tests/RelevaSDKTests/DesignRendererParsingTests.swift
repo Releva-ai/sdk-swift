@@ -132,7 +132,7 @@ final class DesignRendererParsingTests: XCTestCase {
     }
 
     func testParseDimensionDelegatesToTheRawParser() {
-        XCTAssertEqual(DesignRenderer.parseDimension("16px"), DesignRenderer.parseDimensionRaw("16px"))
+        XCTAssertEqual(DesignRenderer.parseDimension("16px"), 16)
         XCTAssertNil(DesignRenderer.parseDimension("auto"))
     }
 
@@ -233,7 +233,7 @@ final class DesignRendererParsingTests: XCTestCase {
     }
 
     func testAnUnknownHeadingLevelFallsBackToTheLargestSize() {
-        XCTAssertEqual(DesignRenderer.getHeadingFontSize("H1"), 32, "the mapping is case-sensitive")
+        XCTAssertEqual(DesignRenderer.getHeadingFontSize("H3"), 32, "the mapping is case-sensitive: H3 is not h3's 24")
         XCTAssertEqual(DesignRenderer.getHeadingFontSize("h7"), 32)
         XCTAssertEqual(DesignRenderer.getHeadingFontSize(""), 32)
     }

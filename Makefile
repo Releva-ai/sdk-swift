@@ -8,6 +8,9 @@
 SCHEME ?= RelevaSDK-Package
 SPM_CACHE ?= .spm
 RESULT_BUNDLE ?= TestResults.xcresult
+# Must match the MIN_LINE_COVERAGE set on the "Report code coverage" step in
+# .github/workflows/ci.yml, so a local `make test` fails exactly when CI would.
+MIN_LINE_COVERAGE ?= 15.0
 
 .PHONY: all build test lint require-macos
 
@@ -49,7 +52,7 @@ test: require-macos
 	  -enableCodeCoverage YES \
 	  -resultBundlePath $(RESULT_BUNDLE) \
 	  CODE_SIGNING_ALLOWED=NO
-	xcrun xccov view --report $(RESULT_BUNDLE)
+	bash scripts/coverage.sh $(RESULT_BUNDLE) $(MIN_LINE_COVERAGE)
 
 # Not wired into CI: the existing sources violate opt-in rules that .swiftlint.yml
 # switches on (implicit_return, for one), so this reports rather than gates.
