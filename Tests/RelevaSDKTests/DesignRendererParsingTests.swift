@@ -287,12 +287,12 @@ final class DesignRendererParsingTests: XCTestCase {
             "url": "https://cdn.example.com/bg.jpg",
             "size": "custom",
             "customSize": ["100%", "auto"]
-        ]))
+        ] as [String: Any]))
         let fixed = try XCTUnwrap(DesignRenderer.parseBackgroundImage([
             "url": "https://cdn.example.com/bg.jpg",
             "size": "custom",
             "customSize": ["100%", "50%"]
-        ]))
+        ] as [String: Any]))
 
         XCTAssertEqual(fullWidth.contentMode, .fit, "a percentage width with an automatic height is a width fit")
         XCTAssertEqual(fixed.contentMode, .fill)
@@ -335,17 +335,17 @@ final class DesignRendererParsingTests: XCTestCase {
             "url": "https://cdn.example.com/bg.jpg",
             "position": "custom",
             "customPosition": ["10%", "20%"]
-        ]))
+        ] as [String: Any]))
         let bottomTrailing = try XCTUnwrap(DesignRenderer.parseBackgroundImage([
             "url": "https://cdn.example.com/bg.jpg",
             "position": "custom",
             "customPosition": ["90%", "80%"]
-        ]))
+        ] as [String: Any]))
         let middle = try XCTUnwrap(DesignRenderer.parseBackgroundImage([
             "url": "https://cdn.example.com/bg.jpg",
             "position": "custom",
             "customPosition": ["50%", "50%"]
-        ]))
+        ] as [String: Any]))
 
         XCTAssertEqual(topLeading.alignment, .topLeading)
         XCTAssertEqual(bottomTrailing.alignment, .bottomTrailing)
@@ -367,7 +367,7 @@ final class DesignRendererParsingTests: XCTestCase {
             "body": [
                 "values": ["backgroundColor": "#ffffff", "contentWidth": "600px"],
                 "rows": [Any]()
-            ]
+            ] as [String: Any]
         ])
 
         let values = DesignRenderer.getDesignBodyValues(banner)

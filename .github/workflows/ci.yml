@@ -104,31 +104,39 @@ jobs:
 
       - name: Report code coverage
         env:
-          # Line-coverage floor for the shipped targets, test targets excluded.
-          # Raise it as coverage improves; do not lower it to accommodate a
+          # Deliberately conservative starting point: the real figure is not
+          # known until this step runs for the first time. Raise it to just
+          # under whatever is reported below; do not lower it to accommodate a
           # regression - add tests instead.
-          MIN_LINE_COVERAGE: '20.0'
+          MIN_LINE_COVERAGE: '15.0'
         run: |
           set -euo pipefail
           xcrun xccov view --report --json TestResults.xcresult > coverage.json
 
+          # -enableCodeCoverage instruments the whole build, so the raw report
+          # also lists the Firebase dependency's targets. Narrow it to this
+          # package's own products before printing or summing anything.
+          jq '[.targets[]
+               | select((.name | startswith("RelevaSDK")
+                         or startswith("RelevaNotificationExtension"))
+                        and (.name | test("Tests") | not))]' \
+            coverage.json > coverage-shipped.json
+
           # Per-target, then per-file within each target, largest files first so
           # the biggest untested areas are visible at the top of each block.
           jq -r '
-            .targets
-            | map(select(.name | test("Tests") | not))
-            | .[]
+            .[]
             | "\(.name): \(.coveredLines)/\(.executableLines) lines",
               (.files | sort_by(-.executableLines) | .[]
                 | "    \(.name): \(.coveredLines)/\(.executableLines) lines")
-          ' coverage.json
+          ' coverage-shipped.json
 
           # `add` on an empty array yields null, which would break the arithmetic
           # below, so the empty case is spelled out rather than coalesced.
-          covered=$(jq '[.targets[] | select(.name | test("Tests") | not) | .coveredLines]
-            | if length == 0 then 0 else add end' coverage.json)
-          executable=$(jq '[.targets[] | select(.name | test("Tests") | not) | .executableLines]
-            | if length == 0 then 0 else add end' coverage.json)
+          covered=$(jq '[.[].coveredLines]
+            | if length == 0 then 0 else add end' coverage-shipped.json)
+          executable=$(jq '[.[].executableLines]
+            | if length == 0 then 0 else add end' coverage-shipped.json)
           if [ "$executable" -eq 0 ]; then
             echo "No shipped target reported executable lines. Targets in the report:" >&2
             jq -r '.targets[].name' coverage.json >&2

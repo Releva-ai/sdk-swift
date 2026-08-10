@@ -52,19 +52,42 @@ final class StubURLProtocol: URLProtocol {
         requests = []
     }
 
-    /// The requests served so far, in the order they started loading.
+    /// The requests served so far, in the order they started loading, each with its
+    /// body in `httpBody`.
     static var receivedRequests: [URLRequest] {
         lock.lock()
         defer { lock.unlock() }
         return requests
     }
 
+    /// `URLSession` moves `httpBody` into `httpBodyStream` before handing the request
+    /// to a protocol, and that stream is only readable while the load is in flight, so
+    /// the body is read here and folded back into the recorded copy.
     private static func record(_ request: URLRequest) -> Stub {
+        var recorded = request
+        if recorded.httpBody == nil, let stream = request.httpBodyStream {
+            recorded.httpBody = drain(stream)
+        }
+
         lock.lock()
         defer { lock.unlock() }
-        requests.append(request)
-        guard let handler = handler else { return .failure(StubError.notStubbed(request)) }
-        return handler(request)
+        requests.append(recorded)
+        guard let handler = handler else { return .failure(StubError.notStubbed(recorded)) }
+        return handler(recorded)
+    }
+
+    private static func drain(_ stream: InputStream) -> Data {
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            if read <= 0 { break }
+            data.append(buffer, count: read)
+        }
+        return data
     }
 
     // MARK: - URLProtocol
@@ -101,33 +124,5 @@ final class StubURLProtocol: URLProtocol {
 
     override func stopLoading() {
         // Nothing to cancel: responses are delivered synchronously in startLoading().
-    }
-}
-
-extension URLRequest {
-
-    /// The request body as a `URLProtocol` sees it.
-    ///
-    /// `URLSession` moves `httpBody` into `httpBodyStream` before handing the request
-    /// to a protocol, so a stub that only reads `httpBody` always sees `nil`.
-    func stubbedHTTPBody() -> Data? {
-        if let body = httpBody {
-            return body
-        }
-
-        guard let stream = httpBodyStream else { return nil }
-
-        stream.open()
-        defer { stream.close() }
-
-        var data = Data()
-        let bufferSize = 4096
-        var buffer = [UInt8](repeating: 0, count: bufferSize)
-        while stream.hasBytesAvailable {
-            let read = stream.read(&buffer, maxLength: bufferSize)
-            if read <= 0 { break }
-            data.append(buffer, count: read)
-        }
-        return data
     }
 }

@@ -31,6 +31,10 @@ build: require-macos
 # will do.
 test: require-macos
 	@set -eu; \
+	if ! command -v jq >/dev/null 2>&1; then \
+	  echo "jq is needed to pick a simulator; install it with: brew install jq" >&2; \
+	  exit 1; \
+	fi; \
 	udid=$$(xcrun simctl list devices available --json \
 	  | jq -r 'first(.devices | to_entries[] | select(.key | contains("SimRuntime.iOS-")) | .value[] | select(.name | startswith("iPhone")) | .udid)'); \
 	if [ -z "$$udid" ]; then \
@@ -47,8 +51,8 @@ test: require-macos
 	  CODE_SIGNING_ALLOWED=NO
 	xcrun xccov view --report $(RESULT_BUNDLE)
 
-# Not wired into CI: the existing sources still trip some of the opt-in rules in
-# .swiftlint.yml, so this reports warnings rather than gating.
+# Not wired into CI: the existing sources violate opt-in rules that .swiftlint.yml
+# switches on (implicit_return, for one), so this reports rather than gates.
 lint:
 	@if ! command -v swiftlint >/dev/null 2>&1; then \
 		echo "swiftlint not found; install it with: brew install swiftlint" >&2; \

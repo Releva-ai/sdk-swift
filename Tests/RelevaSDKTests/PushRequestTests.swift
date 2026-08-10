@@ -183,7 +183,7 @@ final class PushRequestTests: XCTestCase {
         XCTAssertNoThrow(try PushRequest().validate())
     }
 
-    func testValidateRejectsAnEmptyEventsArrayThatWasExplicitlySet() {
+    func testClearingTheEventListLeavesValidateNothingToReject() {
         let request = PushRequest()
         request.addCustomEvent(CustomEvent(action: "a"))
         request.customEvents([])

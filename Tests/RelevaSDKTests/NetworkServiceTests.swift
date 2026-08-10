@@ -32,7 +32,7 @@ final class NetworkServiceTests: XCTestCase {
     }
 
     private func jsonBody(of request: URLRequest) throws -> [String: Any] {
-        let data = try XCTUnwrap(request.stubbedHTTPBody(), "request had no body")
+        let data = try XCTUnwrap(request.httpBody, "request had no body")
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
