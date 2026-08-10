@@ -37,6 +37,7 @@ included:
 excluded:
   - Carthage
   - .build
+  - .spm
 
 force_cast: warning
 force_try: warning

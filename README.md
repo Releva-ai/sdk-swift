@@ -82,7 +82,11 @@ Add the following to your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "3.0.0")
+    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "3.0.0"),
+    // Required because the push setup below calls Messaging.messaging() from
+    // your own code: SPM only lets a target use products from packages this
+    // manifest declares directly, so a transitive resolve is not enough.
+    .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "11.15.0")
 ]
 ```
 
@@ -93,8 +97,6 @@ and depend on the products from your target:
     name: "YourApp",
     dependencies: [
         .product(name: "RelevaSDK", package: "sdk-swift"),
-        // Required because the push setup below calls Messaging.messaging()
-        // from your own code, not from inside RelevaSDK.
         .product(name: "FirebaseMessaging", package: "firebase-ios-sdk"),
         .product(name: "FirebaseCore", package: "firebase-ios-sdk")
     ]
@@ -107,12 +109,12 @@ and depend on the products from your target:
 2. Enter: `https://github.com/Releva-ai/sdk-swift.git`
 3. Dependency Rule: "Up to Next Major Version", starting from `3.0.0`
 4. Add the `RelevaSDK` product to your app target
-5. In the same "Choose Package Products" dialog (or later, in your app target's
-   "Frameworks, Libraries, and Embedded Content"), also add `FirebaseMessaging`
-   and `FirebaseCore` from the `firebase-ios-sdk` package that was resolved
-   alongside it — the push-notification setup below calls
-   `Messaging.messaging()` from your own code, and Xcode does not attach
-   transitive dependencies' products to your target automatically.
+5. Add `https://github.com/firebase/firebase-ios-sdk.git` as a second package
+   dependency (Dependency Rule: "Up to Next Major Version", starting from
+   `11.15.0`) and add its `FirebaseMessaging` and `FirebaseCore` products to your
+   app target — the push-notification setup below calls `Messaging.messaging()`
+   from your own code, and the "Choose Package Products" sheet for `sdk-swift`
+   only offers this package's own products (`RelevaSDK`, `RelevaNotificationExtension`).
 6. For rich push notifications, also add the `RelevaNotificationExtension` product
    to your Notification Service Extension target — see
    [Add Notification Service Extension for Rich Notifications](#3-add-notification-service-extension-for-rich-notifications)

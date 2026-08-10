@@ -12,11 +12,18 @@ final class SDKVersionChangelogTests: XCTestCase {
             .deletingLastPathComponent() // Tests/ -> repo root
             .appendingPathComponent("CHANGELOG.md")
 
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: changelogURL.path),
+            "Expected CHANGELOG.md at \(changelogURL.path) — has this test file moved relative to the repo root?"
+        )
+
         let changelog = try String(contentsOf: changelogURL, encoding: .utf8)
 
-        // The top-most heading looks like "## [3.0.0] - 2026-08-10".
+        // The top-most heading looks like "## [3.0.0] - 2026-08-10". Anchored
+        // to the start of a line so a heading quoted mid-sentence elsewhere in
+        // the file (e.g. inside a migration note) can never be mistaken for it.
         guard let headingRange = changelog.range(
-            of: #"## \[\d+\.\d+\.\d+\]"#,
+            of: #"(?m)^## \[\d+\.\d+\.\d+\]"#,
             options: .regularExpression
         ) else {
             XCTFail("Could not find a version heading in CHANGELOG.md")

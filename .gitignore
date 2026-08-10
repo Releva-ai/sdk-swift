@@ -45,6 +45,8 @@ playground.xcworkspace
 # hence it is not needed unless you have added a package configuration file to your project
 .swiftpm
 .build/
+# CI's -clonedSourcePackagesDirPath cache directory (see .github/workflows/ci.yml).
+.spm/
 # Not committed: consumers of a library package ignore its Package.resolved, so a
 # committed one only goes stale. Anchored — an app project's own resolved file
 # (*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved) should be committed.
