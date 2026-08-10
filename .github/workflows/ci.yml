@@ -109,11 +109,12 @@ jobs:
         # informative reason to be red instead of silently skipping.
         if: always()
         env:
-          # Deliberately conservative starting point: the real figure is not
-          # known until this step runs for the first time. Raise it to just
-          # under whatever is reported below; do not lower it to accommodate a
-          # regression - add tests instead.
-          MIN_LINE_COVERAGE: '15.0'
+          # Set just under the figure this suite actually achieves, so the gate
+          # is real rather than nominal: the first run of this step measured
+          # 27.74% (2743/9889 lines), and 27.0 leaves only enough slack for
+          # run-to-run jitter. Do not lower it to accommodate a regression —
+          # add tests instead. Raise it when coverage genuinely climbs.
+          MIN_LINE_COVERAGE: '27.0'
         run: |
           set -euo pipefail
           bash scripts/coverage.sh TestResults.xcresult "$MIN_LINE_COVERAGE"
