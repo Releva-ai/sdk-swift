@@ -36,7 +36,7 @@ final class NpsManagerServiceTests: XCTestCase {
     /// This cannot outrun a trigger whose own delay is still counting down
     /// (`testDispose`'s 60s case, which deliberately does not pass 60 here — see its
     /// call site).
-    private func waitForPublishPath(of manager: NpsManagerService, delaySeconds: Int = 0) {
+    private func waitForPublishPath(of manager: NpsManagerService, delaySeconds: Int) {
         let landed = expectation(description: "the publish path drained")
         manager.drainPendingWork {
             DispatchQueue.main.async {
@@ -47,7 +47,10 @@ final class NpsManagerServiceTests: XCTestCase {
                 }
             }
         }
-        wait(for: [landed], timeout: 5)
+        // `+ 5` is slack for the queue/main hops on top of however long the marker's
+        // own timer was asked to sleep for — matching `delaySeconds` here, not a fixed
+        // budget, so a larger delay can't schedule a marker the wait can't reach.
+        wait(for: [landed], timeout: TimeInterval(delaySeconds) + 5)
     }
 
     func testInitializeWithNoCustomEventTriggersFiresImmediately() {
@@ -196,10 +199,10 @@ final class NpsManagerServiceTests: XCTestCase {
             .store(in: &cancellables)
 
         manager.initialize(nil)
-        // No config at all, so there is no `triggerDelaySeconds` to match — the default
-        // 0 marker delay is correct here, not a case the "same delay" precondition
+        // No config at all, so there is no `triggerDelaySeconds` to match — a `0`
+        // marker delay is correct here, not a case the "same delay" precondition
         // applies to.
-        waitForPublishPath(of: manager)
+        waitForPublishPath(of: manager, delaySeconds: 0)
 
         XCTAssertTrue(receivedTokens.isEmpty, "no config means nothing to show")
     }
@@ -230,7 +233,7 @@ final class NpsManagerServiceTests: XCTestCase {
         // Draining the queue and main hops both calls made is enough to observe that.
         // The 60 s timer's actual fire is out of reach of any wait here, as it was of the
         // 0.5 s inverted expectation this replaces.
-        waitForPublishPath(of: manager)
+        waitForPublishPath(of: manager, delaySeconds: 0)
 
         XCTAssertTrue(receivedTokens.isEmpty, "a disposed manager must not show its delayed survey")
     }

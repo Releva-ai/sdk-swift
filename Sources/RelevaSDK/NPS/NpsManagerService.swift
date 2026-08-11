@@ -129,7 +129,7 @@ public class NpsManagerService {
     /// without sleeping, while keeping `queue` itself private so nothing in the module
     /// can enqueue arbitrary work onto it and no caller can violate the `/// Must be
     /// called on queue` contract the private methods above rely on.
-    func drainPendingWork(_ completion: @escaping () -> Void) {
+    func drainPendingWork(_ completion: @escaping @Sendable () -> Void) {
         queue.async { completion() }
     }
 
