@@ -219,6 +219,34 @@ public class NetworkService {
         }
     }
 
+    /// Whether every engagement callback has succeeded so far.
+    ///
+    /// `URLSession` delivers the callbacks' completion handlers concurrently on its
+    /// delegate queue, so they cannot share a captured `var`: the writes would be
+    /// unsynchronised, which is undefined behaviour however benign the values look.
+    ///
+    /// `@unchecked Sendable`: every access to `succeeded` goes through `lock`, so the
+    /// class is actually safe to share across the `@Sendable` completion handler below —
+    /// this states that synchronisation, it doesn't suppress the checker in its absence
+    /// (that would be `nonisolated(unsafe)` on a bare `var`, which the fix above
+    /// deliberately avoids).
+    private final class CallbackOutcome: @unchecked Sendable {
+        private let lock = NSLock()
+        private var succeeded = true
+
+        func recordFailure() {
+            lock.lock()
+            defer { lock.unlock() }
+            succeeded = false
+        }
+
+        var allSucceeded: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return succeeded
+        }
+    }
+
     /// Send engagement events by firing each callback URL with a simple GET request.
     /// The backend registers the click when the callback URL is fetched — no JSON body needed.
     /// - Parameters:
@@ -232,7 +260,7 @@ public class NetworkService {
         let uniqueCallbackUrls = Set(events.compactMap { $0.callbackUrl })
 
         let group = DispatchGroup()
-        var allSucceeded = true
+        let outcome = CallbackOutcome()
 
         for callbackUrl in uniqueCallbackUrls {
             guard let url = URL(string: callbackUrl) else {
@@ -257,13 +285,13 @@ public class NetworkService {
                     if self?.config.enableDebugLogging == true {
                         print("RelevaSDK: Callback URL failed: \(error.localizedDescription)")
                     }
-                    allSucceeded = false
+                    outcome.recordFailure()
                 } else if let httpResponse = response as? HTTPURLResponse {
                     if self?.config.enableDebugLogging == true {
                         print("RelevaSDK: Callback URL response: \(httpResponse.statusCode)")
                     }
                     if httpResponse.statusCode >= 400 {
-                        allSucceeded = false
+                        outcome.recordFailure()
                     }
                 }
                 group.leave()
@@ -272,7 +300,7 @@ public class NetworkService {
         }
 
         group.notify(queue: .main) {
-            completion(allSucceeded ? .success(true) : .failure(.networkError("Failed to send some events")))
+            completion(outcome.allSucceeded ? .success(true) : .failure(.networkError("Failed to send some events")))
         }
     }
 
@@ -678,5 +706,5 @@ extension NetworkService {
 // MARK: - SDK Version
 
 struct SDKVersion {
-    static let current = "3.1.0"
+    static let current = "3.1.1"
 }

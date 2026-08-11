@@ -11,6 +11,48 @@ final class NpsManagerServiceTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Returns once anything the preceding calls set in motion has run to completion.
+    ///
+    /// A survey reaches `NpsDisplayController` along a fixed path: the manager's serial
+    /// `queue`, then the main queue, then the `triggerDelaySeconds` timer, then that queue
+    /// and the main queue again. Sending a marker down the same path afterwards puts it
+    /// behind every stage — each one is FIFO, and the marker's timer is scheduled later
+    /// than, so fires after, any timer the call under test scheduled with the same delay.
+    /// When the marker lands, a survey that was going to be published already has been.
+    ///
+    /// This is what the "must not fire" tests below end with instead of a sub-second
+    /// inverted expectation: an inverted wait only gets less reliable as the runner gets
+    /// slower, whereas this gets no weaker, and it costs milliseconds rather than half a
+    /// second each.
+    ///
+    /// The "same delay" precondition above is load-bearing, so `delaySeconds` is a
+    /// parameter rather than a hardcoded `0`: callers must pass the config's
+    /// `triggerDelaySeconds` explicitly, so a future test with a nonzero delay can't
+    /// silently inherit a marker that fires early and passes vacuously. `Timer` clamps
+    /// a non-positive interval to `0.0001`s, so a `0` marker still schedules a real
+    /// timer with its own later `now` — the ordering comes from run-loop fire-date
+    /// comparison, not from insertion order.
+    ///
+    /// This cannot outrun a trigger whose own delay is still counting down
+    /// (`testDispose`'s 60s case, which deliberately does not pass 60 here — see its
+    /// call site).
+    private func waitForPublishPath(of manager: NpsManagerService, delaySeconds: Int) {
+        let landed = expectation(description: "the publish path drained")
+        manager.drainPendingWork {
+            DispatchQueue.main.async {
+                _ = Timer.scheduledTimer(withTimeInterval: TimeInterval(delaySeconds), repeats: false) { _ in
+                    manager.drainPendingWork {
+                        DispatchQueue.main.async { landed.fulfill() }
+                    }
+                }
+            }
+        }
+        // `+ 5` is slack for the queue/main hops on top of however long the marker's
+        // own timer was asked to sleep for — matching `delaySeconds` here, not a fixed
+        // budget, so a larger delay can't schedule a marker the wait can't reach.
+        wait(for: [landed], timeout: TimeInterval(delaySeconds) + 5)
+    }
+
     func testInitializeWithNoCustomEventTriggersFiresImmediately() {
         let manager = NpsManagerService()
         let config = NpsConfig(
@@ -41,15 +83,15 @@ final class NpsManagerServiceTests: XCTestCase {
             triggers: [NpsTrigger(type: "customEvent", eventName: "checkout")]
         )
 
-        let expectation = expectation(description: "NPS should not fire")
-        expectation.isInverted = true
+        var receivedTokens: [String] = []
         NpsDisplayController.shared.npsPublisher
-            .sink { _ in expectation.fulfill() }
+            .sink { receivedTokens.append($0.token) }
             .store(in: &cancellables)
 
         manager.initialize(config)
+        waitForPublishPath(of: manager, delaySeconds: config.triggerDelaySeconds)
 
-        waitForExpectations(timeout: 0.5)
+        XCTAssertTrue(receivedTokens.isEmpty, "a customEvent trigger must wait for its event")
     }
 
     func testTrackEventMatchesCustomTrigger() {
@@ -82,16 +124,16 @@ final class NpsManagerServiceTests: XCTestCase {
             triggers: [NpsTrigger(type: "customEvent", eventName: "purchase")]
         )
 
-        let expectation = expectation(description: "NPS should not fire")
-        expectation.isInverted = true
+        var receivedTokens: [String] = []
         NpsDisplayController.shared.npsPublisher
-            .sink { _ in expectation.fulfill() }
+            .sink { receivedTokens.append($0.token) }
             .store(in: &cancellables)
 
         manager.initialize(config)
         manager.trackEvent("other_event")
+        waitForPublishPath(of: manager, delaySeconds: config.triggerDelaySeconds)
 
-        waitForExpectations(timeout: 0.5)
+        XCTAssertTrue(receivedTokens.isEmpty, "an unrelated event must not fire the survey")
     }
 
     func testCancelEventSuppresses() {
@@ -103,17 +145,17 @@ final class NpsManagerServiceTests: XCTestCase {
             cancelOnEvents: ["checkout_started"]
         )
 
-        let expectation = expectation(description: "NPS should not fire after cancel")
-        expectation.isInverted = true
+        var receivedTokens: [String] = []
         NpsDisplayController.shared.npsPublisher
-            .sink { _ in expectation.fulfill() }
+            .sink { receivedTokens.append($0.token) }
             .store(in: &cancellables)
 
         manager.initialize(config)
         manager.trackEvent("checkout_started") // Should suppress
         manager.trackEvent("checkout") // Should not trigger after suppression
+        waitForPublishPath(of: manager, delaySeconds: config.triggerDelaySeconds)
 
-        waitForExpectations(timeout: 0.5)
+        XCTAssertTrue(receivedTokens.isEmpty, "the trigger event must not fire a suppressed survey")
     }
 
     func testStartNewSessionResetsState() {
@@ -151,15 +193,18 @@ final class NpsManagerServiceTests: XCTestCase {
     func testInitializeWithNilConfigDoesNothing() {
         let manager = NpsManagerService()
 
-        let expectation = expectation(description: "NPS should not fire")
-        expectation.isInverted = true
+        var receivedTokens: [String] = []
         NpsDisplayController.shared.npsPublisher
-            .sink { _ in expectation.fulfill() }
+            .sink { receivedTokens.append($0.token) }
             .store(in: &cancellables)
 
         manager.initialize(nil)
+        // No config at all, so there is no `triggerDelaySeconds` to match — a `0`
+        // marker delay is correct here, not a case the "same delay" precondition
+        // applies to.
+        waitForPublishPath(of: manager, delaySeconds: 0)
 
-        waitForExpectations(timeout: 0.5)
+        XCTAssertTrue(receivedTokens.isEmpty, "no config means nothing to show")
     }
 
     func testDispose() {
@@ -171,15 +216,25 @@ final class NpsManagerServiceTests: XCTestCase {
             triggerDelaySeconds: 60
         )
 
-        let expectation = expectation(description: "NPS should not fire after dispose")
-        expectation.isInverted = true
+        var receivedTokens: [String] = []
         NpsDisplayController.shared.npsPublisher
-            .sink { _ in expectation.fulfill() }
+            .sink { receivedTokens.append($0.token) }
             .store(in: &cancellables)
 
         manager.initialize(config)
         manager.dispose()
+        // Deliberately delaySeconds: 0, not config.triggerDelaySeconds (60) — passing 60
+        // would make this test actually wait 60 real seconds, which the "same delay"
+        // precondition doesn't buy anything for here. Unlike the "must not fire" tests
+        // above, this assertion never races a fire date against the survey's timer: it
+        // relies on `dispose()`'s `queue.async` being enqueued strictly after
+        // `initialize`'s (FIFO), so its `invalidate()` on the main queue is guaranteed to
+        // run before the 60 s timer could ever fire, however long that timer's delay is.
+        // Draining the queue and main hops both calls made is enough to observe that.
+        // The 60 s timer's actual fire is out of reach of any wait here, as it was of the
+        // 0.5 s inverted expectation this replaces.
+        waitForPublishPath(of: manager, delaySeconds: 0)
 
-        waitForExpectations(timeout: 0.5)
+        XCTAssertTrue(receivedTokens.isEmpty, "a disposed manager must not show its delayed survey")
     }
 }

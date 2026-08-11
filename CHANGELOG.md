@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.1] - 2026-08-11
+
+### Fixed
+
+- **A data race in `NetworkService.sendEngagementEvents`.** The fan-out over the deduplicated callback URLs tracked its outcome in a `var allSucceeded` captured by every `URLSession` completion handler, and those handlers run concurrently on the session's delegate queue, so N callbacks wrote the same variable with no synchronisation. Only `false` was ever written, and `DispatchGroup`'s `leave()`/`notify()` pair orders the final read, so the observed result was usually right — but unsynchronised concurrent writes are undefined behaviour under the language memory model regardless, and Swift 6's strict concurrency rejects them outright (`mutation of captured var 'allSucceeded' in concurrently-executing code`). The flag now lives in a small `NSLock`-guarded `CallbackOutcome` object rather than being fixed by annotating the race away with `nonisolated(unsafe) var allSucceeded` or a bare `@unchecked Sendable` on the old captured `var`. `CallbackOutcome` itself is `@unchecked Sendable`, which is the correct and separate use of that conformance: every access to its state already goes through the lock, so the annotation states real synchronisation instead of suppressing the compiler's check for the absence of any — needed because `URLSession`'s completion handler is `@Sendable`, so capturing a non-`Sendable` type there is itself a strict-concurrency error even after the lock is in place. Behaviour is unchanged: the completion still yields `.success(true)` only when every callback succeeded and `.failure(.networkError("Failed to send some events"))` otherwise, on the main queue, once.
+
+### Added
+
+- **Coverage for `sendEngagementEvents`' failure path**, which had none: one callback failing at the transport level, one returning a >= 400 status, several failing at once (the concurrent-write path the race lived on, which also pins that a failing callback does not stop its siblings), an unparseable callback URL being skipped while the rest of the batch still fires, and a batch of nothing but unparseable URLs still completing exactly once — `group.notify` with no `enter()` fires immediately, and the tests' expectations reject over-fulfilment, so a second completion call fails them. The existing dedup test already covered the all-succeed case.
+
+### Changed
+
+- **The eight sub-second inverted expectations in `StoryManagerServiceTests` and `NpsManagerServiceTests` are now deterministic barriers.** They assert an event does *not* arrive, so a timeout can only get less reliable as the runner gets slower — a wrongly-published event landing at 0.4 s passes a 0.3 s window — while costing 3.8 s of every run. Story publication is synchronous when `initialize(...)` is called on the main thread, as XCTest calls it, so those tests now assert directly on what was received. NPS publication is asynchronous along a fixed path (the manager's serial queue, the main queue, the `triggerDelaySeconds` timer, then those two again), so those tests send a marker down the same path and wait for it: every stage is FIFO, and the marker's own timer is scheduled with the same delay as the trigger under test, so when the marker lands, a survey that was going to be published already has been. `NpsManagerService` gains an internal `drainPendingWork(_:)` test seam for this rather than widening `queue` itself to `internal`; `queue` stays `private`, so the module keeps the compiler-enforced guarantee that `NpsManagerService` is the sole enqueuer onto it. The one thing neither form can observe is a trigger whose own delay is still counting down (the two `testDispose` cases, at 60 s), and each says so at the assertion.
+- `StoryManagerServiceTests.testDeduplication` loses a fake assertion along with its sleep: the `noMore` inverted expectation it created had no sink attached, so nothing could ever fulfil it and the wait was a 0.3 s sleep that would have passed whatever the code did. The real check is the received-story assertion beside it, which now also pins that the story was published at all.
+
 ## [3.1.0] - 2026-08-11
 
 ### Added

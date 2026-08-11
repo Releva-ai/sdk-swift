@@ -11,9 +11,10 @@ import Foundation
 /// **Session-scoped suppression:** once the survey is shown or cancelled via a cancel event,
 /// it will not show again until `startNewSession()` is called.
 ///
-/// All public methods are thread-safe. Internal state is serialized on a private queue.
+/// All public methods are thread-safe. Internal state is serialized on `queue`.
 public class NpsManagerService {
 
+    /// Serializes the state below.
     private let queue = DispatchQueue(label: "com.releva.nps-manager")
 
     private var config: NpsConfig?
@@ -121,6 +122,15 @@ public class NpsManagerService {
                 self.delayTimer = nil
             }
         }
+    }
+
+    /// Calls back once everything already enqueued on `queue` has drained. Test seam
+    /// only: lets tests order themselves after `initialize` / `trackEvent`'s work
+    /// without sleeping, while keeping `queue` itself private so nothing in the module
+    /// can enqueue arbitrary work onto it and no caller can violate the `/// Must be
+    /// called on queue` contract the private methods above rely on.
+    func drainPendingWork(_ completion: @escaping @Sendable () -> Void) {
+        queue.async { completion() }
     }
 
 }
