@@ -15,11 +15,7 @@ import Foundation
 public class NpsManagerService {
 
     /// Serializes the state below.
-    ///
-    /// Internal rather than private only so the tests can put a marker behind the work
-    /// `initialize` / `trackEvent` enqueue here and assert on the outcome instead of
-    /// sleeping; it is not visible outside the module and nothing else in the SDK uses it.
-    let queue = DispatchQueue(label: "com.releva.nps-manager")
+    private let queue = DispatchQueue(label: "com.releva.nps-manager")
 
     private var config: NpsConfig?
 
@@ -126,6 +122,15 @@ public class NpsManagerService {
                 self.delayTimer = nil
             }
         }
+    }
+
+    /// Calls back once everything already enqueued on `queue` has drained. Test seam
+    /// only: lets tests order themselves after `initialize` / `trackEvent`'s work
+    /// without sleeping, while keeping `queue` itself private so nothing in the module
+    /// can enqueue arbitrary work onto it and no caller can violate the `/// Must be
+    /// called on queue` contract the private methods above rely on.
+    func drainPendingWork(_ completion: @escaping () -> Void) {
+        queue.async { completion() }
     }
 
 }

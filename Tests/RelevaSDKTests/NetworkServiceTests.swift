@@ -289,6 +289,13 @@ final class NetworkServiceTests: XCTestCase {
         assertBatchFailed(result)
     }
 
+    /// `URL(string:)` failing takes `continue` before `group.enter()`
+    /// (`NetworkService.swift:260`), so it never calls `recordFailure()`. That makes a
+    /// malformed URL indistinguishable from a fully-delivered one to the caller — both
+    /// report `.success(true)`, with only an `enableDebugLogging` `print` behind the
+    /// loss. This test pins that as the *current* behaviour, not the desired contract;
+    /// making it call `recordFailure()` instead would be a real behaviour change and
+    /// is out of scope for a race fix.
     func testEngagementEventsSkipAnUnparseableCallbackUrl() throws {
         XCTAssertNil(URL(string: Self.unparseableCallbackUrl), "the fixture must be one URL(string:) rejects")
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data()) }
@@ -308,6 +315,8 @@ final class NetworkServiceTests: XCTestCase {
 
     /// `group.notify` with no `enter()` at all fires immediately, so this pins that the
     /// caller still hears back exactly once (the helper's expectation fails on a second call).
+    /// Same caveat as the test above: a batch that delivered *nothing* still reports
+    /// `.success(true)`, pinned as current behaviour rather than endorsed as desired.
     func testEngagementEventsCompleteOnceWhenEveryCallbackUrlIsUnparseable() throws {
         XCTAssertNil(URL(string: Self.unparseableCallbackUrl), "the fixture must be one URL(string:) rejects")
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data()) }
@@ -325,8 +334,12 @@ final class NetworkServiceTests: XCTestCase {
 
     /// Sends one event per callback URL and returns the single result.
     ///
-    /// The expectation allows no over-fulfilment, so a second call to `completion` fails
-    /// the test — that is how the "completes exactly once" cases above are asserted.
+    /// `XCTestExpectation` fails on over-fulfilment, but only if the extra `fulfill()`
+    /// lands before the test method returns — `waitForExpectations` itself returns on
+    /// the first call. That's a real but narrow window, not an airtight once-only
+    /// guarantee; the actual "exactly once" evidence for the cases above is that a
+    /// second `completion` call would also overwrite `result` with a second value,
+    /// which the assertions below would then be exercising nondeterministically.
     private func sendEngagementEvents(
         callbackUrls: [String]
     ) throws -> NetworkService.NetworkResult<Bool> {

@@ -23,14 +23,25 @@ final class NpsManagerServiceTests: XCTestCase {
     /// This is what the "must not fire" tests below end with instead of a sub-second
     /// inverted expectation: an inverted wait only gets less reliable as the runner gets
     /// slower, whereas this gets no weaker, and it costs milliseconds rather than half a
-    /// second each. What it cannot outrun is a trigger whose own delay is still counting
-    /// down (`testDispose`) — neither could the wait it replaces.
-    private func waitForPublishPath(of manager: NpsManagerService) {
+    /// second each.
+    ///
+    /// The "same delay" precondition above is load-bearing, so `delaySeconds` is a
+    /// parameter rather than a hardcoded `0`: callers must pass the config's
+    /// `triggerDelaySeconds` explicitly, so a future test with a nonzero delay can't
+    /// silently inherit a marker that fires early and passes vacuously. `Timer` clamps
+    /// a non-positive interval to `0.0001`s, so a `0` marker still schedules a real
+    /// timer with its own later `now` — the ordering comes from run-loop fire-date
+    /// comparison, not from insertion order.
+    ///
+    /// This cannot outrun a trigger whose own delay is still counting down
+    /// (`testDispose`'s 60s case, which deliberately does not pass 60 here — see its
+    /// call site).
+    private func waitForPublishPath(of manager: NpsManagerService, delaySeconds: Int = 0) {
         let landed = expectation(description: "the publish path drained")
-        manager.queue.async {
+        manager.drainPendingWork {
             DispatchQueue.main.async {
-                _ = Timer.scheduledTimer(withTimeInterval: 0, repeats: false) { _ in
-                    manager.queue.async {
+                _ = Timer.scheduledTimer(withTimeInterval: TimeInterval(delaySeconds), repeats: false) { _ in
+                    manager.drainPendingWork {
                         DispatchQueue.main.async { landed.fulfill() }
                     }
                 }
@@ -75,7 +86,7 @@ final class NpsManagerServiceTests: XCTestCase {
             .store(in: &cancellables)
 
         manager.initialize(config)
-        waitForPublishPath(of: manager)
+        waitForPublishPath(of: manager, delaySeconds: config.triggerDelaySeconds)
 
         XCTAssertTrue(receivedTokens.isEmpty, "a customEvent trigger must wait for its event")
     }
@@ -117,7 +128,7 @@ final class NpsManagerServiceTests: XCTestCase {
 
         manager.initialize(config)
         manager.trackEvent("other_event")
-        waitForPublishPath(of: manager)
+        waitForPublishPath(of: manager, delaySeconds: config.triggerDelaySeconds)
 
         XCTAssertTrue(receivedTokens.isEmpty, "an unrelated event must not fire the survey")
     }
@@ -139,7 +150,7 @@ final class NpsManagerServiceTests: XCTestCase {
         manager.initialize(config)
         manager.trackEvent("checkout_started") // Should suppress
         manager.trackEvent("checkout") // Should not trigger after suppression
-        waitForPublishPath(of: manager)
+        waitForPublishPath(of: manager, delaySeconds: config.triggerDelaySeconds)
 
         XCTAssertTrue(receivedTokens.isEmpty, "the trigger event must not fire a suppressed survey")
     }
@@ -185,6 +196,9 @@ final class NpsManagerServiceTests: XCTestCase {
             .store(in: &cancellables)
 
         manager.initialize(nil)
+        // No config at all, so there is no `triggerDelaySeconds` to match — the default
+        // 0 marker delay is correct here, not a case the "same delay" precondition
+        // applies to.
         waitForPublishPath(of: manager)
 
         XCTAssertTrue(receivedTokens.isEmpty, "no config means nothing to show")
@@ -206,8 +220,16 @@ final class NpsManagerServiceTests: XCTestCase {
 
         manager.initialize(config)
         manager.dispose()
-        // Drains the queue and main hops both calls made; the 60 s trigger itself is out of
-        // reach of any wait, as it was of the 0.5 s inverted expectation this replaces.
+        // Deliberately delaySeconds: 0, not config.triggerDelaySeconds (60) — passing 60
+        // would make this test actually wait 60 real seconds, which the "same delay"
+        // precondition doesn't buy anything for here. Unlike the "must not fire" tests
+        // above, this assertion never races a fire date against the survey's timer: it
+        // relies on `dispose()`'s `queue.async` being enqueued strictly after
+        // `initialize`'s (FIFO), so its `invalidate()` on the main queue is guaranteed to
+        // run before the 60 s timer could ever fire, however long that timer's delay is.
+        // Draining the queue and main hops both calls made is enough to observe that.
+        // The 60 s timer's actual fire is out of reach of any wait here, as it was of the
+        // 0.5 s inverted expectation this replaces.
         waitForPublishPath(of: manager)
 
         XCTAssertTrue(receivedTokens.isEmpty, "a disposed manager must not show its delayed survey")

@@ -224,7 +224,13 @@ public class NetworkService {
     /// `URLSession` delivers the callbacks' completion handlers concurrently on its
     /// delegate queue, so they cannot share a captured `var`: the writes would be
     /// unsynchronised, which is undefined behaviour however benign the values look.
-    private final class CallbackOutcome {
+    ///
+    /// `@unchecked Sendable`: every access to `succeeded` goes through `lock`, so the
+    /// class is actually safe to share across the `@Sendable` completion handler below —
+    /// this states that synchronisation, it doesn't suppress the checker in its absence
+    /// (that would be `nonisolated(unsafe)` on a bare `var`, which the fix above
+    /// deliberately avoids).
+    private final class CallbackOutcome: @unchecked Sendable {
         private let lock = NSLock()
         private var succeeded = true
 
