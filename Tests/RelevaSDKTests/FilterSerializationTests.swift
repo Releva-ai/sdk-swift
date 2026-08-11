@@ -7,15 +7,14 @@ import XCTest
 /// `NetworkService` JSON-encodes the result), so these tests assert on that rather than
 /// on the `Codable` conformance.
 final class FilterSerializationTests: XCTestCase {
-
     // MARK: - Helpers
 
     private func string(_ dict: [String: Any], _ key: String) throws -> String {
-        return try XCTUnwrap(dict[key] as? String, "expected a String under \"\(key)\" in \(dict)")
+        try XCTUnwrap(dict[key] as? String, "expected a String under \"\(key)\" in \(dict)")
     }
 
     private func nested(_ dict: [String: Any]) throws -> [[String: Any]] {
-        return try XCTUnwrap(dict["nested"] as? [[String: Any]], "expected a nested array in \(dict)")
+        try XCTUnwrap(dict["nested"] as? [[String: Any]], "expected a nested array in \(dict)")
     }
 
     // MARK: - SimpleFilter encoding

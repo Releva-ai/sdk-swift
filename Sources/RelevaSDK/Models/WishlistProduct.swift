@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a product in the wishlist
 public struct WishlistProduct: Codable, Equatable, Hashable {
-
     // MARK: - Properties
 
     /// The product ID
@@ -28,7 +27,7 @@ public struct WishlistProduct: Codable, Equatable, Hashable {
     /// - Parameter custom: The custom fields to set
     /// - Returns: A new wishlist product with the custom fields
     public func withCustomFields(_ custom: CustomFields) -> WishlistProduct {
-        return WishlistProduct(id: id, custom: custom)
+        WishlistProduct(id: id, custom: custom)
     }
 
     /// Add a string custom field
@@ -65,7 +64,7 @@ public struct WishlistProduct: Codable, Equatable, Hashable {
 
     /// Convert to dictionary for API requests
     public func toDict() -> [String: Any] {
-        return [
+        [
             "id": id,
             "custom": custom.toDict()
         ]
@@ -87,50 +86,49 @@ public struct WishlistProduct: Codable, Equatable, Hashable {
     /// - Parameter other: The other product to compare
     /// - Returns: True if IDs match
     public func matches(_ other: WishlistProduct) -> Bool {
-        return id == other.id
+        id == other.id
     }
 
     /// Create from a viewed product
     /// - Parameter viewedProduct: The viewed product
     /// - Returns: A wishlist product
     public static func from(_ viewedProduct: ViewedProduct) -> WishlistProduct {
-        return WishlistProduct(id: viewedProduct.id, custom: viewedProduct.custom)
+        WishlistProduct(id: viewedProduct.id, custom: viewedProduct.custom)
     }
 
     /// Create from a cart product
     /// - Parameter cartProduct: The cart product
     /// - Returns: A wishlist product
     public static func from(_ cartProduct: CartProduct) -> WishlistProduct {
-        return WishlistProduct(id: cartProduct.id, custom: cartProduct.custom)
+        WishlistProduct(id: cartProduct.id, custom: cartProduct.custom)
     }
 }
 
 // MARK: - Array Extensions
 
 extension Array where Element == WishlistProduct {
-
     /// Convert array of wishlist products to dictionary array
     public func toDict() -> [[String: Any]] {
-        return map { $0.toDict() }
+        map { $0.toDict() }
     }
 
     /// Get unique product IDs
     public var productIds: [String] {
-        return map { $0.id }
+        map { $0.id }
     }
 
     /// Check if contains a product with the given ID
     /// - Parameter productId: The product ID to check
     /// - Returns: True if the array contains a product with the ID
     public func contains(productId: String) -> Bool {
-        return contains { $0.id == productId }
+        contains { $0.id == productId }
     }
 
     /// Find product by ID
     /// - Parameter productId: The product ID
     /// - Returns: The wishlist product if found
     public func product(withId productId: String) -> WishlistProduct? {
-        return first { $0.id == productId }
+        first { $0.id == productId }
     }
 
     /// Remove duplicates based on product ID

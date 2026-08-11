@@ -2,7 +2,6 @@ import XCTest
 @testable import RelevaSDK
 
 final class RelevaResponseTests: XCTestCase {
-
     func testParseResponseWithNpsAndStories() throws {
         let json = """
         {

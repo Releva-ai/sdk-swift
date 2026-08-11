@@ -24,11 +24,10 @@ public struct StoryDisplayModifier: ViewModifier {
                 StoryViewerView(
                     story: story.story,
                     client: client,
-                    onLinkTap: onLinkTap,
-                    onClose: {
+                    onLinkTap: onLinkTap
+                )                    {
                         viewModel.activeStory = nil
                     }
-                )
             }
             .onAppear {
                 viewModel.start(client: client)

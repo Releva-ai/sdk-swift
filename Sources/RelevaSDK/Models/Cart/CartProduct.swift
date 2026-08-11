@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a product in the shopping cart
 public struct CartProduct: Codable, Equatable, Hashable, Sendable {
-
     // MARK: - Properties
 
     /// The product ID
@@ -43,7 +42,7 @@ public struct CartProduct: Codable, Equatable, Hashable, Sendable {
     /// - Parameter price: The new price
     /// - Returns: A new cart product with the updated price
     public func withPrice(_ price: Double?) -> CartProduct {
-        return CartProduct(
+        CartProduct(
             id: self.id,
             price: price,
             quantity: self.quantity,
@@ -55,7 +54,7 @@ public struct CartProduct: Codable, Equatable, Hashable, Sendable {
     /// - Parameter quantity: The new quantity
     /// - Returns: A new cart product with the updated quantity
     public func withQuantity(_ quantity: Double?) -> CartProduct {
-        return CartProduct(
+        CartProduct(
             id: self.id,
             price: self.price,
             quantity: quantity,
@@ -67,7 +66,7 @@ public struct CartProduct: Codable, Equatable, Hashable, Sendable {
     /// - Parameter custom: The new custom fields
     /// - Returns: A new cart product with the updated custom fields
     public func withCustomFields(_ custom: CustomFields) -> CartProduct {
-        return CartProduct(
+        CartProduct(
             id: self.id,
             price: self.price,
             quantity: self.quantity,
@@ -106,12 +105,12 @@ public struct CartProduct: Codable, Equatable, Hashable, Sendable {
 
     /// Check if the product has a valid price
     public var hasPrice: Bool {
-        return (price ?? 0) > 0
+        (price ?? 0) > 0
     }
 
     /// Check if the product has a valid quantity
     public var hasQuantity: Bool {
-        return (quantity ?? 0) > 0
+        (quantity ?? 0) > 0
     }
 
     // MARK: - Validation
@@ -136,7 +135,6 @@ public struct CartProduct: Codable, Equatable, Hashable, Sendable {
 // MARK: - Convenience Initializers
 
 extension CartProduct {
-
     /// Initialize with just an ID
     /// - Parameter id: The product ID
     public init(id: String) {
@@ -165,6 +163,6 @@ extension CartProduct {
 
 extension CartProduct: Comparable {
     public static func < (lhs: CartProduct, rhs: CartProduct) -> Bool {
-        return lhs.id < rhs.id
+        lhs.id < rhs.id
     }
 }

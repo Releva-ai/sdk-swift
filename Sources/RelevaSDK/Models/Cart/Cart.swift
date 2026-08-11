@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a shopping cart with products
 public struct Cart: Codable, Equatable, Sendable {
-
     // MARK: - Properties
 
     /// The products in the cart
@@ -40,7 +39,7 @@ public struct Cart: Codable, Equatable, Sendable {
     /// - Parameter products: The products in the cart
     /// - Returns: An active cart instance
     public static func active(_ products: [CartProduct]) -> Cart {
-        return Cart(products: products)
+        Cart(products: products)
     }
 
     /// Create a paid cart
@@ -49,13 +48,13 @@ public struct Cart: Codable, Equatable, Sendable {
     ///   - orderId: The order ID
     /// - Returns: A paid cart instance
     public static func paid(_ products: [CartProduct], orderId: String) -> Cart {
-        return Cart(products: products, orderId: orderId)
+        Cart(products: products, orderId: orderId)
     }
 
     /// Create an empty cart
     /// - Returns: An empty cart instance
     public static func empty() -> Cart {
-        return Cart(products: [])
+        Cart(products: [])
     }
 
     // MARK: - Serialization
@@ -78,22 +77,22 @@ public struct Cart: Codable, Equatable, Sendable {
 
     /// Check if the cart is empty
     public var isEmpty: Bool {
-        return products.isEmpty
+        products.isEmpty
     }
 
     /// Get the total number of items in the cart
     public var itemCount: Int {
-        return products.count
+        products.count
     }
 
     /// Get the total quantity of all products
     public var totalQuantity: Double {
-        return products.reduce(0) { $0 + ($1.quantity ?? 0) }
+        products.reduce(0) { $0 + ($1.quantity ?? 0) }
     }
 
     /// Get the total price of all products
     public var totalPrice: Double {
-        return products.reduce(0) { $0 + (($1.price ?? 0) * ($1.quantity ?? 1)) }
+        products.reduce(0) { $0 + (($1.price ?? 0) * ($1.quantity ?? 1)) }
     }
 
     // MARK: - Utility Methods
@@ -102,14 +101,14 @@ public struct Cart: Codable, Equatable, Sendable {
     /// - Parameter productId: The product ID to check
     /// - Returns: True if the cart contains the product
     public func contains(productId: String) -> Bool {
-        return products.contains { $0.id == productId }
+        products.contains { $0.id == productId }
     }
 
     /// Get a product by ID
     /// - Parameter productId: The product ID
     /// - Returns: The product if found
     public func product(withId productId: String) -> CartProduct? {
-        return products.first { $0.id == productId }
+        products.first { $0.id == productId }
     }
 
     /// Create a new cart by adding a product

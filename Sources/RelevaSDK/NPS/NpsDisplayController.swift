@@ -4,7 +4,6 @@ import Combine
 /// Singleton controller that manages NPS display events.
 /// NPS configs are emitted here by NpsManagerService and consumed by NpsDisplayView.
 public class NpsDisplayController: ObservableObject {
-
     /// Shared instance
     public static let shared = NpsDisplayController()
 

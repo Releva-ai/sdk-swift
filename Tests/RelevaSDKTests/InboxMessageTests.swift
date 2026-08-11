@@ -2,7 +2,6 @@ import XCTest
 @testable import RelevaSDK
 
 final class InboxMessageTests: XCTestCase {
-
     func testInboxMessageFromDict() {
         let dict: [String: Any] = [
             "id": "msg-123",

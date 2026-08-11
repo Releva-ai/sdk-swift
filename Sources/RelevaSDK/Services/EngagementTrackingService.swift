@@ -2,7 +2,6 @@ import Foundation
 
 /// Service for tracking push notification engagement events with batching
 public class EngagementTrackingService {
-
     // MARK: - Properties
 
     /// Storage service
@@ -246,7 +245,6 @@ public class EngagementTrackingService {
 // MARK: - Statistics
 
 extension EngagementTrackingService {
-
     /// Get engagement statistics
     public func getStatistics(completion: @escaping ([String: Any]) -> Void) {
         queue.async {
@@ -256,7 +254,7 @@ extension EngagementTrackingService {
                 "isSending": self.isSending,
                 "batchSize": self.config.engagementBatchSize,
                 "batchInterval": self.config.engagementBatchInterval,
-                "eventTypes": Dictionary(grouping: self.pendingEvents, by: { $0.type.rawValue })
+                "eventTypes": Dictionary(grouping: self.pendingEvents) { $0.type.rawValue }
                     .mapValues { $0.count }
             ]
             completion(stats)

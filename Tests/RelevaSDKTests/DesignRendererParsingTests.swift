@@ -9,7 +9,6 @@ import UIKit
 /// View rendering itself is out of scope — these are the value conversions that decide what a
 /// banner ends up looking like, and they are the part that can be pinned without a host view.
 final class DesignRendererParsingTests: XCTestCase {
-
     // MARK: - Helpers
 
     /// A named type rather than a 4-member tuple, so the members stay labelled at the

@@ -7,11 +7,10 @@ import XCTest
 /// `PushPayloadIdentityTests` owns the identity/merge contract at the `buildPushPayload`
 /// seam; this suite covers the builder side of it.
 final class PushRequestTests: XCTestCase {
-
     // MARK: - Helpers
 
     private func pageContext(_ request: PushRequest) throws -> [String: Any] {
-        return try XCTUnwrap(request.toDict()["page"] as? [String: Any], "expected a page dictionary")
+        try XCTUnwrap(request.toDict()["page"] as? [String: Any], "expected a page dictionary")
     }
 
     // MARK: - Page context

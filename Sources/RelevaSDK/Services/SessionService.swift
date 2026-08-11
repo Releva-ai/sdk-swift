@@ -13,7 +13,6 @@ import UIKit
 /// are expected to invoke this service from the main thread as well.
 @MainActor
 class SessionService {
-
     static let shared = SessionService()
 
     /// Minimum background duration (ms) before a new session is counted.

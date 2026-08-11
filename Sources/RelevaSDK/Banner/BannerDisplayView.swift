@@ -70,10 +70,10 @@ public struct BannerDisplayModifier: ViewModifier {
     @ViewBuilder
     private func bannerContentView(for banner: BannerResponse) -> some View {
         if let design = banner.design {
-            DesignRenderer.render(design: design, maxWidth: UIScreen.main.bounds.width, onLinkTap: { url in
+            DesignRenderer.render(design: design, maxWidth: UIScreen.main.bounds.width) { url in
                 viewModel.trackClick(banner)
                 onLinkTap(url)
-            })
+            }
         }
     }
 
@@ -91,12 +91,11 @@ public struct BannerDisplayModifier: ViewModifier {
                     if let design = banner.design {
                         DesignRenderer.render(
                             design: design,
-                            maxWidth: UIScreen.main.bounds.width - 32,
-                            onLinkTap: { url in
+                            maxWidth: UIScreen.main.bounds.width - 32
+                        )                            { url in
                                 viewModel.trackClick(banner)
                                 onLinkTap(url)
                             }
-                        )
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                         .padding(isBottom ? .bottom : .top,
@@ -142,13 +141,12 @@ public struct BannerDisplayModifier: ViewModifier {
                         if let design = banner.design {
                             DesignRenderer.render(
                                 design: design,
-                                maxWidth: screenWidth,
-                                onLinkTap: { url in
+                                maxWidth: screenWidth
+                            )                                { url in
                                     viewModel.dismissPopup(banner, track: false)
                                     viewModel.trackClick(banner)
                                     onLinkTap(url)
                                 }
-                            )
                         }
                     }
                     .frame(minHeight: geometry.size.height)
@@ -210,13 +208,12 @@ public struct BannerDisplayModifier: ViewModifier {
                             DesignRenderer.render(
                                 design: design,
                                 maxWidth: flyoutWidth,
-                                transparentBody: hasBodyBgImage,
-                                onLinkTap: { url in
+                                transparentBody: hasBodyBgImage
+                            )                                { url in
                                     viewModel.dismissFlyout(banner, track: false)
                                     viewModel.trackClick(banner)
                                     onLinkTap(url)
                                 }
-                            )
                         }
                     }
                 }
@@ -278,7 +275,6 @@ public struct BannerDisplayModifier: ViewModifier {
         if let color = DesignRenderer.parseColor(banner.cssStyles["overlayColor"]) { return color }
         return Color.black.opacity(0.5)
     }
-
 }
 
 // MARK: - View Extension

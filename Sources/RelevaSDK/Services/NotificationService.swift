@@ -6,7 +6,6 @@ import UIKit
 
 /// Service for handling local notifications
 public class NotificationService: NSObject {
-
     // MARK: - Properties
 
     /// Configuration
@@ -230,7 +229,6 @@ public class NotificationService: NSObject {
 // MARK: - UNUserNotificationCenterDelegate
 
 extension NotificationService: UNUserNotificationCenterDelegate {
-
     /// Handle notification when app is in foreground
     public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -509,12 +507,10 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 print("RelevaSDK: Navigating to inbox")
             }
             navigateToInbox(parameters: data["navigate_to_parameters"] as? String)
-
-        default:
+            default:
             if config.enableDebugLogging {
                 print("RelevaSDK: ⚠️ Unknown target type: \(target)")
             }
-            break
         }
     }
 

@@ -13,7 +13,6 @@ import Foundation
 ///
 /// All public methods are thread-safe. Internal state is serialized on `queue`.
 public class NpsManagerService {
-
     /// Serializes the state below.
     private let queue = DispatchQueue(label: "com.releva.nps-manager")
 
@@ -132,5 +131,4 @@ public class NpsManagerService {
     func drainPendingWork(_ completion: @escaping @Sendable () -> Void) {
         queue.async { completion() }
     }
-
 }

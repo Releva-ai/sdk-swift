@@ -4,7 +4,6 @@ import UIKit
 /// Main SDK client for Releva integration
 @MainActor
 public class RelevaClient {
-
     // MARK: - Singleton
 
     /// Shared instance (optional - can also create custom instances)
@@ -165,7 +164,7 @@ public class RelevaClient {
 
     /// Get current device ID
     public func getDeviceId() -> String? {
-        return deviceId
+        deviceId
     }
 
     /// Set profile ID
@@ -208,7 +207,7 @@ public class RelevaClient {
 
     /// Get current profile ID
     public func getProfileId() -> String? {
-        return profileId
+        profileId
     }
 
     // MARK: - Configuration
@@ -280,7 +279,7 @@ public class RelevaClient {
 
     /// Get current cart
     public func getCart() -> Cart? {
-        return cart
+        cart
     }
 
     /// Clear cart storage
@@ -342,7 +341,7 @@ public class RelevaClient {
 
     /// Get current wishlist
     public func getWishlist() -> [WishlistProduct]? {
-        return wishlist
+        wishlist
     }
 
     /// Clear wishlist storage
@@ -898,7 +897,7 @@ public class RelevaClient {
 
     /// Access the inbox service
     public var inbox: InboxService {
-        return InboxService.shared
+        InboxService.shared
     }
 
     /// Initialize the inbox service. Call after setProfileId().
@@ -1009,13 +1008,12 @@ public class RelevaClient {
 
 @available(iOS 15.0, *)
 extension RelevaClient {
-
     /// Send push request using async/await
     ///
     /// See the completion-handler `push(_:completion:)` for why this takes
     /// `any PushRequestConvertible` rather than a generic parameter.
     public func push(_ request: any PushRequestConvertible) async throws -> RelevaResponse {
-        return try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
             push(request) { result in
                 continuation.resume(with: result)
             }
@@ -1029,7 +1027,7 @@ extension RelevaClient {
         categories: [String]? = nil,
         filter: AbstractFilter? = nil
     ) async throws -> RelevaResponse {
-        return try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
             trackScreenView(
                 screenToken: screenToken,
                 productIds: productIds,
@@ -1043,7 +1041,7 @@ extension RelevaClient {
 
     /// Register push token using async/await
     public func registerPushToken(_ token: String, deviceType: DeviceType = .current) async throws -> Bool {
-        return try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
             registerPushToken(token, deviceType: deviceType) { result in
                 continuation.resume(with: result)
             }

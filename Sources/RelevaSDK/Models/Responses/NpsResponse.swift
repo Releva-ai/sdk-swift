@@ -47,7 +47,7 @@ public struct NpsConfig: Sendable {
     }
 
     public static func from(dict: [String: Any]) -> NpsConfig {
-        return NpsConfig(
+        NpsConfig(
             token: dict["token"] as? String ?? "",
             question: dict["question"] as? String ?? "",
             scaleLowLabel: dict["scaleLowLabel"] as? String,
@@ -85,7 +85,7 @@ public struct NpsFollowUp: Sendable {
     }
 
     public static func from(dict: [String: Any]) -> NpsFollowUp {
-        return NpsFollowUp(
+        NpsFollowUp(
             promoter: dict["promoter"] as? String,
             passive: dict["passive"] as? String,
             detractor: dict["detractor"] as? String
@@ -113,7 +113,7 @@ public struct NpsThankYou: Sendable {
     }
 
     public static func from(dict: [String: Any]) -> NpsThankYou {
-        return NpsThankYou(
+        NpsThankYou(
             promoter: dict["promoter"] as? String,
             passive: dict["passive"] as? String,
             detractor: dict["detractor"] as? String
@@ -150,11 +150,11 @@ public struct NpsAppearance: Sendable {
     }
 
     public static func defaults() -> NpsAppearance {
-        return NpsAppearance()
+        NpsAppearance()
     }
 
     public static func from(dict: [String: Any]) -> NpsAppearance {
-        return NpsAppearance(
+        NpsAppearance(
             primaryColor: dict["primaryColor"] as? String ?? "#6C3FC4",
             backgroundColor: dict["backgroundColor"] as? String ?? "#FFFFFF",
             textColor: dict["textColor"] as? String ?? "#1A1A1A",
@@ -179,7 +179,7 @@ public struct NpsAppearanceDark: Sendable {
     }
 
     public static func from(dict: [String: Any]) -> NpsAppearanceDark {
-        return NpsAppearanceDark(
+        NpsAppearanceDark(
             primaryColor: dict["primaryColor"] as? String,
             backgroundColor: dict["backgroundColor"] as? String,
             textColor: dict["textColor"] as? String
@@ -200,7 +200,7 @@ public struct NpsTrigger: Sendable {
     }
 
     public static func from(dict: [String: Any]) -> NpsTrigger {
-        return NpsTrigger(
+        NpsTrigger(
             type: dict["type"] as? String ?? "",
             eventName: dict["eventName"] as? String,
             minSessions: (dict["minSessions"] as? NSNumber)?.intValue

@@ -3,7 +3,6 @@ import Foundation
 /// Manages story trigger logic and lifecycle.
 /// Handles trigger types: immediately, delaySeconds, scrollPercentage, cartChanged, wishlistChanged.
 public class StoryManagerService {
-
     private var stories: [StoryResponse] = []
     private var displayedStories = Set<String>()
     private var delayTimers: [Timer] = []
@@ -140,5 +139,4 @@ public class StoryManagerService {
         }
         if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
-
 }

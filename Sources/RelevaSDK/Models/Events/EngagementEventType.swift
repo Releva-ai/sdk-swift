@@ -2,7 +2,6 @@ import Foundation
 
 /// Types of engagement events for push notifications
 public enum EngagementEventType: String, CaseIterable, Codable {
-
     /// Notification was delivered to the device
     case delivered = "delivered"
 

@@ -56,7 +56,7 @@ public struct InboxMessage: Identifiable, Sendable {
 
     /// Serialize to dictionary for cache persistence
     public func toDict() -> [String: Any] {
-        return [
+        [
             "id": id,
             "title": title,
             "design": design.anyValue,

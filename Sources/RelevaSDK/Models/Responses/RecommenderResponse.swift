@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a recommender response containing product recommendations
 public struct RecommenderResponse: Codable, Equatable, Sendable {
-
     // MARK: - Properties
 
     /// Recommender token identifier
@@ -33,27 +32,27 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
 
     /// Check if recommender has products
     public var hasProducts: Bool {
-        return !response.isEmpty
+        !response.isEmpty
     }
 
     /// Get the number of products
     public var productCount: Int {
-        return response.count
+        response.count
     }
 
     /// Check if recommender has tags
     public var hasTags: Bool {
-        return !(tags ?? []).isEmpty
+        !(tags ?? []).isEmpty
     }
 
     /// Check if recommender has a template
     public var hasTemplate: Bool {
-        return template != nil
+        template != nil
     }
 
     /// Get all product IDs
     public var productIds: [String] {
-        return response.map { $0.id }
+        response.map { $0.id }
     }
 
     // MARK: - Codable
@@ -71,7 +70,7 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
 
         // `meta` is open-ended, so a value of the wrong shape degrades to `nil` rather than
         // failing the whole response (matching `RelevaResponse.decodeObjects`).
-        meta = (try? container.decodeIfPresent([String: JSONValue].self, forKey: .meta)) ?? nil
+        meta = (try? container.decodeIfPresent([String: JSONValue].self, forKey: .meta))
 
         tags = try container.decodeIfPresent([String].self, forKey: .tags)
         cssSelector = try container.decodeIfPresent(String.self, forKey: .cssSelector)
@@ -98,7 +97,7 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
     // MARK: - Equatable
 
     public static func == (lhs: RecommenderResponse, rhs: RecommenderResponse) -> Bool {
-        return lhs.token == rhs.token && lhs.name == rhs.name
+        lhs.token == rhs.token && lhs.name == rhs.name
     }
 
     // MARK: - Public Methods
@@ -106,14 +105,14 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
     /// Filter products by availability
     /// - Returns: Available products only
     public func availableProducts() -> [ProductRecommendation] {
-        return response.filter { $0.available }
+        response.filter { $0.available }
     }
 
     /// Check if recommender has a specific tag
     /// - Parameter tag: The tag to check
     /// - Returns: True if the recommender has the tag
     public func hasTag(_ tag: String) -> Bool {
-        return tags?.contains(tag) ?? false
+        tags?.contains(tag) ?? false
     }
 
     /// Get products matching specific IDs
@@ -130,7 +129,7 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
     ///   - maxPrice: Maximum price
     /// - Returns: Products within the price range
     public func products(inPriceRange minPrice: Double, maxPrice: Double) -> [ProductRecommendation] {
-        return response.filter { product in
+        response.filter { product in
             let price = product.bestPrice
             return price >= minPrice && price <= maxPrice
         }
@@ -139,7 +138,7 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
     /// Get products with discounts
     /// - Returns: Products that have discounts
     public func discountedProducts() -> [ProductRecommendation] {
-        return response.filter { $0.hasDiscount }
+        response.filter { $0.hasDiscount }
     }
 
     /// Sort products by a given criteria
@@ -173,12 +172,12 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
                 return discount1 > discount2
             }
         case .newest:
-            return response.sorted { (p1, p2) in
+            return response.sorted { p1, p2 in
                 guard let date1 = p1.publishedAt, let date2 = p2.publishedAt else { return false }
                 return date1 > date2
             }
         case .oldest:
-            return response.sorted { (p1, p2) in
+            return response.sorted { p1, p2 in
                 guard let date1 = p1.publishedAt, let date2 = p2.publishedAt else { return false }
                 return date1 < date2
             }
@@ -189,26 +188,25 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
 // MARK: - Array Extensions
 
 extension Array where Element == RecommenderResponse {
-
     /// Get recommenders by tag
     /// - Parameter tag: The tag to filter by
     /// - Returns: Recommenders containing the specified tag
     public func withTag(_ tag: String) -> [RecommenderResponse] {
-        return filter { $0.hasTag(tag) }
+        filter { $0.hasTag(tag) }
     }
 
     /// Find recommender by token
     /// - Parameter token: The recommender token
     /// - Returns: The recommender with the specified token
     public func withToken(_ token: String) -> RecommenderResponse? {
-        return first { $0.token == token }
+        first { $0.token == token }
     }
 
     /// Find recommender by name
     /// - Parameter name: The recommender name
     /// - Returns: The recommender with the specified name
     public func withName(_ name: String) -> RecommenderResponse? {
-        return first { $0.name == name }
+        first { $0.name == name }
     }
 
     /// Get all unique tags from all recommenders
@@ -226,6 +224,6 @@ extension Array where Element == RecommenderResponse {
     /// Get total product count across all recommenders
     /// - Returns: Total number of products
     public var totalProductCount: Int {
-        return reduce(0) { $0 + $1.productCount }
+        reduce(0) { $0 + $1.productCount }
     }
 }

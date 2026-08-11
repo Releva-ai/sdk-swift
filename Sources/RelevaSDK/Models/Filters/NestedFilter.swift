@@ -2,7 +2,6 @@ import Foundation
 
 /// A nested filter that combines multiple filters with AND/OR operations
 public struct NestedFilter: AbstractFilter {
-
     // MARK: - Properties
 
     /// The operation to apply to nested filters
@@ -28,28 +27,28 @@ public struct NestedFilter: AbstractFilter {
     /// - Parameter filters: The filters to combine with AND
     /// - Returns: A nested filter with AND operation
     public static func and(_ filters: [AbstractFilter]) -> NestedFilter {
-        return NestedFilter(operation: .and, nested: filters)
+        NestedFilter(operation: .and, nested: filters)
     }
 
     /// Create an AND filter with variadic parameters
     /// - Parameter filters: The filters to combine with AND
     /// - Returns: A nested filter with AND operation
     public static func and(_ filters: AbstractFilter...) -> NestedFilter {
-        return NestedFilter(operation: .and, nested: filters)
+        NestedFilter(operation: .and, nested: filters)
     }
 
     /// Create an OR filter (at least one condition must match)
     /// - Parameter filters: The filters to combine with OR
     /// - Returns: A nested filter with OR operation
     public static func or(_ filters: [AbstractFilter]) -> NestedFilter {
-        return NestedFilter(operation: .or, nested: filters)
+        NestedFilter(operation: .or, nested: filters)
     }
 
     /// Create an OR filter with variadic parameters
     /// - Parameter filters: The filters to combine with OR
     /// - Returns: A nested filter with OR operation
     public static func or(_ filters: AbstractFilter...) -> NestedFilter {
-        return NestedFilter(operation: .or, nested: filters)
+        NestedFilter(operation: .or, nested: filters)
     }
 
     // MARK: - Builder Methods
@@ -86,7 +85,7 @@ public struct NestedFilter: AbstractFilter {
         brand: String,
         action: FilterAction = .include
     ) -> NestedFilter {
-        return .and(
+        .and(
             SimpleFilter.priceRange(minPrice: minPrice, maxPrice: maxPrice, action: action),
             SimpleFilter.brand(brand, action: action)
         )
@@ -165,7 +164,7 @@ public struct NestedFilter: AbstractFilter {
 
     /// Convert to dictionary for API requests
     public func toDict() -> [String: Any] {
-        return [
+        [
             "operator": operation.value,
             "nested": nested.map { $0.toDict() }
         ]
@@ -207,7 +206,7 @@ public struct NestedFilter: AbstractFilter {
 
     /// Check if the filter is empty
     public var isEmpty: Bool {
-        return nested.isEmpty
+        nested.isEmpty
     }
 
     /// Get the depth of nesting
@@ -225,7 +224,6 @@ public struct NestedFilter: AbstractFilter {
 // MARK: - Codable Implementation
 
 extension NestedFilter {
-
     enum CodingKeys: String, CodingKey {
         case operation = "operator"
         case nested

@@ -2,7 +2,6 @@ import Foundation
 
 /// Types of mobile devices for push notification registration
 public enum DeviceType: String, CaseIterable, Codable {
-
     /// Android device
     case android = "android"
 
@@ -33,7 +32,7 @@ public enum DeviceType: String, CaseIterable, Codable {
 
     /// Check if this is an Apple device
     public var isAppleDevice: Bool {
-        return self == .ios
+        self == .ios
     }
 
     /// Check if this device type supports Firebase

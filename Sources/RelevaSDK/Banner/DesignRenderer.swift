@@ -2,7 +2,6 @@ import SwiftUI
 
 /// Renders an Unlayer design JSON (body > rows > columns > contents) as native SwiftUI views.
 public struct DesignRenderer {
-
     /// Render a full design JSON into a SwiftUI view
     /// - Parameters:
     ///   - design: The Unlayer design JSON dictionary
@@ -171,7 +170,7 @@ public struct DesignRenderer {
             let imageView = AsyncImage(url: imageUrl) { phase in
                 switch phase {
                 case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fit)
+                    image.resizable().scaledToFit()
                 case .failure:
                     EmptyView()
                 default:
@@ -240,7 +239,7 @@ public struct DesignRenderer {
             let url = hrefValues["href"]?.stringValue ?? ""
 
             let buttonColors = values["buttonColors"]?.objectValue ?? [:]
-            let bgColor = parseColor(buttonColors["backgroundColor"]) ?? Color(red: 58/255, green: 174/255, blue: 224/255)
+            let bgColor = parseColor(buttonColors["backgroundColor"]) ?? Color(red: 58 / 255, green: 174 / 255, blue: 224 / 255)
             let textColor = parseColor(buttonColors["color"]) ?? .white
 
             let fontSize = parseDimensionRaw(values["fontSize"]) ?? 14
@@ -357,7 +356,7 @@ public struct DesignRenderer {
 
     /// Parse a colour out of a design JSON value. Anything that is not a string is not a colour.
     public static func parseColor(_ value: JSONValue?) -> Color? {
-        return parseColor(css: value?.stringValue)
+        parseColor(css: value?.stringValue)
     }
 
     /// Parse a CSS colour string: `#rgb`, `#rrggbb`, `#rrggbbaa`, or `rgba(r, g, b, a)`.
@@ -423,7 +422,7 @@ public struct DesignRenderer {
     }
 
     static func parseDimension(_ value: JSONValue?) -> CGFloat? {
-        return parseDimensionRaw(value)
+        parseDimensionRaw(value)
     }
 
     static func parseEdgeInsets(_ value: JSONValue?) -> EdgeInsets? {
@@ -590,7 +589,7 @@ struct CarouselView: View {
             let imageView = AsyncImage(url: imageUrl) { phase in
                 switch phase {
                 case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
+                    image.resizable().scaledToFill()
                 case .failure:
                     Color.gray.opacity(0.3)
                         .overlay(Image(systemName: "photo").foregroundColor(.gray))
@@ -631,7 +630,7 @@ struct CarouselView: View {
                         AsyncImage(url: imageUrl) { phase in
                             switch phase {
                             case .success(let img):
-                                img.resizable().aspectRatio(contentMode: .fill)
+                                img.resizable().scaledToFill()
                             default:
                                 Color.gray.opacity(0.3)
                             }
@@ -689,4 +688,3 @@ struct CarouselView: View {
         startAutoplayIfNeeded()
     }
 }
-

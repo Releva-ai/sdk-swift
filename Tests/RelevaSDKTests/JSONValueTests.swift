@@ -6,7 +6,6 @@ import XCTest
 /// `custom`/`data`). It sits between the network and every model, so this suite pins the two
 /// things the rest of the SDK relies on: number fidelity and the Foundation bridge.
 final class JSONValueTests: XCTestCase {
-
     // MARK: - Number fidelity
 
     /// `.int` and `.double` are separate cases precisely so that a JSON integer does not come back

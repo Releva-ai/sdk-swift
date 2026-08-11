@@ -7,7 +7,6 @@ import XCTest
 /// from what the tracking surface sends, is invisible until App Store review —
 /// the worst possible moment to find out.
 final class PrivacyManifestTests: XCTestCase {
-
     private var manifest: [String: Any]!
 
     override func setUpWithError() throws {

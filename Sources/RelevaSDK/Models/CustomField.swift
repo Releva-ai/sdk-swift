@@ -2,7 +2,6 @@ import Foundation
 
 /// A custom field with a key and list of values
 public struct CustomField<T: Codable & Equatable & Hashable>: Codable, Equatable, Hashable {
-
     // MARK: - Properties
 
     /// The field key
@@ -57,7 +56,6 @@ extension CustomField: Sendable where T: Sendable {}
 
 /// A collection of custom fields organized by type
 public struct CustomFields: Codable, Equatable, Hashable, Sendable {
-
     // MARK: - Properties
 
     /// String custom fields
@@ -97,7 +95,7 @@ public struct CustomFields: Codable, Equatable, Hashable, Sendable {
 
     /// Convert to dictionary for API requests
     public func toDict() -> [String: Any] {
-        return [
+        [
             "string": string.map { $0.toDict() },
             "numeric": numeric.map { $0.toDict() },
             "date": date.map { $0.toDict() }
@@ -131,11 +129,11 @@ public struct CustomFields: Codable, Equatable, Hashable, Sendable {
 
     /// Check if fields are empty
     public var isEmpty: Bool {
-        return string.isEmpty && numeric.isEmpty && date.isEmpty
+        string.isEmpty && numeric.isEmpty && date.isEmpty
     }
 
     /// Get total number of fields
     public var count: Int {
-        return string.count + numeric.count + date.count
+        string.count + numeric.count + date.count
     }
 }

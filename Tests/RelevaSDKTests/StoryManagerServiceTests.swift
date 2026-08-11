@@ -9,7 +9,6 @@ import Combine
 /// these tests assert on what was received rather than waiting out an inverted expectation:
 /// instant, and it cannot be weakened by a slow runner.
 final class StoryManagerServiceTests: XCTestCase {
-
     private var cancellables = Set<AnyCancellable>()
 
     override func tearDown() {

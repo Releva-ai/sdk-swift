@@ -42,7 +42,7 @@ public enum FilterOperator: String, CaseIterable, Codable, Sendable {
 
     /// Get the API value for the operator
     public var value: String {
-        return self.rawValue
+        self.rawValue
     }
 
     /// Human-readable description
@@ -98,7 +98,7 @@ public enum FilterAction: String, CaseIterable, Codable, Sendable {
 
     /// Get the API value for the action
     public var value: String {
-        return self.rawValue
+        self.rawValue
     }
 
     /// Human-readable description
@@ -138,7 +138,7 @@ public enum NestedFilterOperation: String, CaseIterable, Codable, Sendable {
 
     /// Get the API value for the operation
     public var value: String {
-        return self.rawValue
+        self.rawValue
     }
 
     /// Human-readable description

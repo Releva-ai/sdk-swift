@@ -2,7 +2,6 @@ import Foundation
 
 /// Service for handling network requests
 public class NetworkService {
-
     // MARK: - Types
 
     /// HTTP methods
@@ -38,12 +37,12 @@ public class NetworkService {
 
     /// Maximum number of retry attempts
     private var maxRetryAttempts: Int {
-        return config.maxRetryAttempts
+        config.maxRetryAttempts
     }
 
     /// Request timeout interval
     private var requestTimeout: TimeInterval {
-        return config.requestTimeoutInterval
+        config.requestTimeoutInterval
     }
 
     // MARK: - Initializers
@@ -517,7 +516,7 @@ public class NetworkService {
         completion: @escaping CompletionHandler<Data>
     ) {
         do {
-            var requestBody: Data? = nil
+            var requestBody: Data?
             if let body = body {
                 requestBody = try JSONSerialization.data(withJSONObject: body, options: [])
             }
@@ -536,7 +535,6 @@ public class NetworkService {
             }
 
             executeRequest(request, retryAttempts: retryAttempts, completion: completion)
-
         } catch {
             completion(.failure(.networkError(error.localizedDescription)))
         }
@@ -666,13 +664,12 @@ public class NetworkService {
 
 @available(iOS 15.0, *)
 extension NetworkService {
-
     /// Send push request using async/await
     public func sendPushRequest(
         _ request: [String: Any],
         context: [String: Any]
     ) async throws -> RelevaResponse {
-        return try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
             sendPushRequest(request, context: context) { result in
                 continuation.resume(with: result)
             }
@@ -686,7 +683,7 @@ extension NetworkService {
         deviceId: String,
         profileId: String?
     ) async throws -> Bool {
-        return try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
             registerPushToken(token, deviceType: deviceType, deviceId: deviceId, profileId: profileId) { result in
                 continuation.resume(with: result)
             }
@@ -695,7 +692,7 @@ extension NetworkService {
 
     /// Send engagement events using async/await
     public func sendEngagementEvents(_ events: [EngagementEvent]) async throws -> Bool {
-        return try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
             sendEngagementEvents(events) { result in
                 continuation.resume(with: result)
             }

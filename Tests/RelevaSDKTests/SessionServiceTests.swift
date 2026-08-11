@@ -9,7 +9,6 @@ import UIKit
 /// matching the thread that UIApplication lifecycle notifications are delivered on.
 @MainActor
 final class SessionServiceTests: XCTestCase {
-
     private var storage: StorageService!
 
     override func setUpWithError() throws {

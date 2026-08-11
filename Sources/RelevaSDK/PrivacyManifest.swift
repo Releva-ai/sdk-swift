@@ -9,7 +9,6 @@ import Foundation
 /// compiled into. This accessor exists so `PrivacyManifestTests` can read the
 /// manifest out of the bundle it actually ships in.
 enum PrivacyManifest {
-
     /// The bundled manifest, or `nil` if the resource bundle exists but does
     /// not contain it.
     ///
