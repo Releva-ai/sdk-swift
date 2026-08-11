@@ -16,9 +16,14 @@ extension XCTestCase {
     @MainActor
     func makeVisibleWindow(rootViewController: UIViewController) -> UIWindow {
         let window = UIWindow(frame: UIScreen.main.bounds)
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            window.windowScene = scene
-        }
+        // SPM test bundles run under xcodebuild's generated host, so a window scene is expected
+        // here, but it is not guaranteed by the platform. Without it the window is never
+        // attached to a real hierarchy and presentation may or may not complete — the symptom
+        // would be `waitUntil` burning its timeout and failing with a message that reads like a
+        // presenter bug rather than a harness one, so make the assumption explicit instead.
+        let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+        XCTAssertNotNil(scene, "these tests need a window scene to present from")
+        window.windowScene = scene
         window.rootViewController = rootViewController
         window.makeKeyAndVisible()
         return window

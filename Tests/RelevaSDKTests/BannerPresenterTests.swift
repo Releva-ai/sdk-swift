@@ -59,6 +59,33 @@ final class BannerPresenterTests: XCTestCase {
     }
 
     @MainActor
+    func testPopupIsPresentedOverAnExistingModalRatherThanFailing() {
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+
+        // The app already has something up before a banner arrives — the case
+        // `topMostPresentedViewController` exists for.
+        let existingModal = UIViewController()
+        fixture.host.present(existingModal, animated: false)
+        waitUntil("the existing modal is presented") { fixture.host.presentedViewController != nil }
+
+        fixture.presenter.start()
+        BannerDisplayController.shared.showBanner(banner("popup-1", displayType: "popup"))
+        drainMainQueue()
+
+        XCTAssertEqual(fixture.tracker.impressions, ["popup-1"])
+        waitUntil("the overlay is presented over the existing modal") {
+            existingModal.presentedViewController != nil
+        }
+        XCTAssertTrue(
+            existingModal.presentedViewController is UIHostingController<BannerOverlayView>,
+            "the overlay must land on top of the existing modal, not fail silently"
+        )
+        // And not stacked directly on the host, underneath the existing modal.
+        XCTAssertTrue(fixture.host.presentedViewController === existingModal)
+    }
+
+    @MainActor
     func testPopupAndFlyoutArrivingTogetherShareOneOverlay() {
         let fixture = makeFixture()
         defer { takeDown(fixture) }
@@ -126,6 +153,64 @@ final class BannerPresenterTests: XCTestCase {
 
         XCTAssertEqual(fixture.tracker.actions, ["popup-1:bannerClose"])
         waitUntil("the overlay is dismissed") { fixture.host.presentedViewController == nil }
+    }
+
+    @MainActor
+    func testANewPopupAfterDismissalIsPresentedAgain() {
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+
+        let first = banner("popup-1", displayType: "popup")
+        fixture.presenter.start()
+        BannerDisplayController.shared.showBanner(first)
+        drainMainQueue()
+        waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
+
+        fixture.presenter.viewModel.dismissPopup(first)
+        drainMainQueue()
+        waitUntil("the overlay is dismissed") { fixture.host.presentedViewController == nil }
+
+        // This is the path `isDismissingOverlay` guards: if dismissal never cleared the flag,
+        // this banner would be silently dropped and never reach the screen.
+        BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
+        drainMainQueue()
+
+        XCTAssertEqual(fixture.tracker.impressions, ["popup-1", "popup-2"])
+        waitUntil("the overlay is presented again") { fixture.host.presentedViewController != nil }
+    }
+
+    @MainActor
+    func testDismissingTheFlyoutReportsTheCloseWithoutTheWrongActionString() {
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+
+        let flyout = banner("flyout-1", displayType: "flyout")
+        fixture.presenter.start()
+        BannerDisplayController.shared.showBanner(flyout)
+        drainMainQueue()
+        waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
+
+        fixture.presenter.viewModel.dismissFlyout(flyout)
+        drainMainQueue()
+
+        XCTAssertEqual(fixture.tracker.actions, ["flyout-1:bannerClose"])
+        waitUntil("the overlay is dismissed") { fixture.host.presentedViewController == nil }
+    }
+
+    @MainActor
+    func testDismissingABarReportsTheCloseAndTakesItOutOfTheStack() {
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+
+        let bar = banner("bar-1", displayType: "bar")
+        fixture.presenter.start()
+        BannerDisplayController.shared.showBanner(bar)
+        drainMainQueue()
+
+        fixture.presenter.viewModel.dismissBar(bar)
+        drainMainQueue()
+
+        XCTAssertEqual(fixture.tracker.actions, ["bar-1:bannerClose"])
     }
 
     @MainActor

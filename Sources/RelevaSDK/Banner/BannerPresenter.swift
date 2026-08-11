@@ -91,6 +91,17 @@ public final class BannerPresenter {
 
     /// Stop listening and take down anything on screen. Dismissals are not tracked, matching
     /// the SwiftUI modifier's `onDisappear`: the banner was not closed, the screen went away.
+    ///
+    /// The view model's banner state is untouched, so a later `start()` re-presents whatever
+    /// was on screen — without a second impression, since `trackImpression` only runs when a
+    /// banner first arrives. That mirrors the modifier's own `@StateObject` surviving
+    /// `onDisappear`, but it means a host bouncing between tabs sees the same popup again each
+    /// time it comes back.
+    ///
+    /// This does not run on `deinit`. A presenter released while started (the host deallocated
+    /// without a matching `viewWillDisappear`, or an app that simply forgets to call `stop()`)
+    /// leaves any presented overlay on screen with nothing left to dismiss it — bracket `start()`
+    /// / `stop()` with the host's appearance callbacks as shown above to avoid that.
     public func stop() {
         cancellable?.cancel()
         cancellable = nil
@@ -119,6 +130,15 @@ public final class BannerPresenter {
 
     private func syncOverlay(isNeeded: Bool) {
         if isNeeded {
+            if let existing = overlayController, existing.presentingViewController == nil {
+                // The last attempt never took: `topMostPresentedViewController` can hand back a
+                // controller whose own dismissal was still in flight, in which case `present`
+                // logged "already presenting" and did nothing — or something else (an app modal
+                // above the overlay, say) already dismissed it. Either way there is nothing to
+                // reuse; drop it so the block below tries again instead of no-oping forever on
+                // the `overlayController == nil` guard.
+                overlayController = nil
+            }
             guard overlayController == nil, !isDismissingOverlay, let host = host else { return }
 
             let controller = UIHostingController(
@@ -129,14 +149,26 @@ public final class BannerPresenter {
             controller.modalTransitionStyle = .crossDissolve
             overlayController = controller
             // Present from whatever is frontmost so a banner is not lost behind a modal the
-            // host already had up, and so the banner itself can be covered by a later one.
+            // host already had up, and so the banner itself can be covered by a later one. This
+            // also means dismissing the overlay later takes down anything the app itself
+            // presented above it in the meantime — the usual trade-off of dismissing via
+            // `presentingViewController` rather than tracking the exact controller to close.
             host.topMostPresentedViewController.present(controller, animated: true)
         } else {
             guard let controller = overlayController else { return }
 
+            // If the presentation above never took, or something else already took the overlay
+            // down, there is nothing to dismiss — and the completion below would never run,
+            // latching `isDismissingOverlay` on and silently blocking every later popup/flyout
+            // until a `stop()` / `start()` cycle.
+            guard let presenting = controller.presentingViewController else {
+                overlayController = nil
+                return
+            }
+
             overlayController = nil
             isDismissingOverlay = true
-            controller.presentingViewController?.dismiss(animated: true) { [weak self] in
+            presenting.dismiss(animated: true) { [weak self] in
                 // `cancellable` is the started flag: a completion that lands after `stop()`
                 // must not put a banner back up.
                 guard let self = self, self.cancellable != nil else { return }
@@ -199,9 +231,21 @@ public final class BannerPresenter {
     /// Below iOS 16 the bar's height has to be measured, because `sizingOptions` is
     /// unavailable and nothing else invalidates the hosting view's size when its content
     /// changes. A no-op from iOS 16 up.
+    ///
+    /// Forces layout first and bails out on a zero width rather than measuring against it: this
+    /// can run from `start()`'s first reconcile, one main-queue hop after `viewWillAppear`,
+    /// which may be before the host's first layout pass — and a `stop()` / `start()` round trip
+    /// can leave `barBanners` already populated when that happens. A skipped measurement here is
+    /// caught by the next reconcile once layout has happened.
+    ///
+    /// Known gap, not fixable without a simulator to observe: `sizeThatFits(in:)` is called in
+    /// the same run-loop turn the `@Published` banner change was observed, so whether it sees
+    /// the new content or the previous turn's has not been verified here.
     private func measureBars() {
         guard let host = host else { return }
+        host.view.layoutIfNeeded()
         let width = host.view.safeAreaLayoutGuide.layoutFrame.width
+        guard width > 0 else { return }
 
         for slot in barSlots {
             guard let heightConstraint = slot.heightConstraint else { continue }

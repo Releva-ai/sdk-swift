@@ -8,6 +8,11 @@ import SwiftUI
 /// UIKit-native renderer that would drift from the SwiftUI one. Every gesture routes back
 /// through `BannerDisplayViewModel`, which is the single place that reports impressions,
 /// clicks and dismissals to `RelevaClient`.
+///
+/// `@MainActor` because `BannerDisplayModifier` — a `ViewModifier`, which is `@MainActor` by
+/// protocol — used to provide that isolation for free. A bare `enum` gets no such inference,
+/// and the closures below call main-actor-isolated `BannerDisplayViewModel` methods.
+@MainActor
 enum BannerChrome {
 
     // MARK: - Popup Banner
