@@ -41,10 +41,14 @@ jobs:
           curl --fail --silent --show-error --location \
             --output "$RUNNER_TEMP/SwiftLint.pkg" \
             https://github.com/realm/SwiftLint/releases/download/0.65.0/SwiftLint.pkg
-          # Pins the download to the release's published asset digest (`gh release
-          # view 0.65.0 --repo realm/SwiftLint --json assets`), not just the version
-          # number - an unverified `sudo installer` run on whatever the URL served
-          # is the thing worth closing here.
+          # Pins the download to the release's published asset digest, not just the
+          # version number - an unverified `sudo installer` run on whatever the URL
+          # served is the thing worth closing here. Bump the digest in the same
+          # commit as the version, re-deriving it from (strip the `sha256:` prefix):
+          #   gh api repos/realm/SwiftLint/releases/tags/0.65.0 \
+          #     --jq '.assets[] | select(.name == "SwiftLint.pkg") | .digest'
+          # (`gh release view --json assets` looks like the obvious command, but its
+          # ReleaseAsset schema has no digest field - only the REST API exposes it.)
           echo "825e687d618e17d24bd5fad6d2cf98d4c32a157940ad5b7ce8ae4d722d6afb3a  $RUNNER_TEMP/SwiftLint.pkg" | shasum -a 256 -c
           sudo installer -pkg "$RUNNER_TEMP/SwiftLint.pkg" -target /
           swiftlint version

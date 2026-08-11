@@ -12,19 +12,19 @@ public protocol AbstractFilter: Codable, Sendable {
 /// Operators for filter conditions
 public enum FilterOperator: String, CaseIterable, Codable, Sendable {
     /// Equal to
-    case eq
+    case eq = "eq"
 
     /// Less than
-    case lt
+    case lt = "lt"
 
     /// Greater than
-    case gt
+    case gt = "gt"
 
     /// Less than or equal to
-    case lte
+    case lte = "lte"
 
     /// Greater than or equal to
-    case gte
+    case gte = "gte"
 
     /// Greater than or equal to AND less than or equal to
     case gteLte = "gte,lte"

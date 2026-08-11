@@ -297,10 +297,8 @@ public struct DesignRenderer {
     /// - Parameters:
     ///   - value: The backgroundImage dictionary from Unlayer JSON
     ///   - forceCover: When true, always use .fill content mode
-    /// - Returns: Tuple of (URL, ContentMode, Alignment) or nil if no valid URL
-    ///
-    /// The labelled 3-tuple is `large_tuple`; swapping it for a named struct would change a
-    /// public signature, which this release rules out, so it waits for the next major.
+    /// - Returns: A labelled 3-tuple of (URL, ContentMode, Alignment), or nil if no valid URL.
+    ///   A named type is deferred to the next major, since this is public API.
     public static func parseBackgroundImage(_ value: JSONValue?, forceCover: Bool = false) -> (url: URL, contentMode: ContentMode, alignment: Alignment)? { // swiftlint:disable:this large_tuple
         guard let bgImage = value?.objectValue,
               let urlStr = bgImage["url"]?.stringValue, !urlStr.isEmpty,
