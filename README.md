@@ -218,6 +218,13 @@ ContentView()
     .task { try? await client.trackScreenView(screenToken: "home") }
 ```
 
+> **Note:** `.task { }` ties the call's lifetime to the view — SwiftUI cancels it when
+> the view disappears, and `URLSession` honours that cancellation. In 4.x the underlying
+> `URLSessionDataTask` was not tied to the view and delivered regardless. For an event
+> that must be delivered even if the user navigates away quickly, use an unstructured
+> `Task { try? await client.trackScreenView(screenToken: "home") }` instead — it has no
+> parent to be cancelled by.
+
 Push-token registration. `registerPushToken` used to report a `Bool`; that flag was
 `true` on every path that reached the handler, so `throws` already carries
 everything it carried:
@@ -1483,8 +1490,12 @@ let config = RelevaConfig(
 
 ### RelevaClient
 
-`RelevaClient` is `@MainActor`-isolated. Everything that waits on the network is
-`async throws`; everything else is synchronous. Nothing takes a completion handler.
+`RelevaClient` is `@MainActor`-isolated. A method is `async throws` when the caller
+needs the result or the failure back; a `sync` row below is fire-and-forget instead
+— several of them (`setCart`, `setWishlist`, `refreshPushToken`, the banner/story
+trackers) still reach the network, from a `Task` started internally rather than one
+the caller awaits. See "What did *not* change" above for why. Nothing takes a
+completion handler.
 
 | Method | Kind | Description |
 |---|---|---|

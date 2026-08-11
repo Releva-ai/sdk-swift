@@ -262,8 +262,15 @@ public class RelevaClient {
 
         // Automatically sync cart changes to backend (skip on first initialization).
         // Uses incrementViews: false so cart updates don't inflate the page-view counter.
+        //
+        // The cart is snapshotted into the request *here*, synchronously, rather than read
+        // from `self.cart` once the `Task` runs. Two `setCart` calls in the same turn each
+        // open their own `Task`, and both would otherwise read whatever `self.cart` holds by
+        // the time either runs — the *final* cart, twice, with the first call's cart never
+        // reported. Pinning it to the request makes each push carry the cart that was
+        // current when that specific call was made, matching the synchronous 4.x behaviour.
         if !isFirstInitialization && cartChanged && config.enableTracking {
-            let request = ScreenViewRequest(screenToken: nil, productIds: nil, categories: nil, filter: nil)
+            let request = PushRequest().setCart(cart)
             Task { [weak self] in
                 guard let self = self else { return }
                 do {
@@ -327,8 +334,10 @@ public class RelevaClient {
 
         // Automatically sync wishlist changes to backend (skip on first initialization).
         // Uses incrementViews: false so wishlist updates don't inflate the page-view counter.
+        // Snapshotted into the request for the same reason `setCart` snapshots the cart:
+        // see the comment there.
         if !isFirstInitialization && wishlistChanged && config.enableTracking {
-            let request = ScreenViewRequest(screenToken: nil, productIds: nil, categories: nil, filter: nil)
+            let request = PushRequest().setWishlist(products)
             Task { [weak self] in
                 guard let self = self else { return }
                 do {
@@ -794,8 +803,10 @@ public class RelevaClient {
 
     /// Submit an NPS survey response.
     ///
-    /// Retried once on failure. The survey UI shows its thank-you screen regardless, so a
-    /// caller that does not care about delivery can `try?` this.
+    /// Retried once on failure here, on top of the one retry `NetworkService` already gives
+    /// every 5xx — so a persistent server error produces up to four requests over roughly
+    /// 4 seconds of combined backoff before this throws. The survey UI shows its thank-you
+    /// screen regardless, so a caller that does not care about delivery can `try?` this.
     public func submitNpsResponse(token: String, score: Int, comment: String? = nil) async throws {
         guard (0...10).contains(score) else {
             throw RelevaError.invalidConfiguration("NPS score must be between 0 and 10")
@@ -919,9 +930,10 @@ public class RelevaClient {
         }
 
         // Wishlist
-        if let wishlist = wishlist {
+        let wishlistToUse = request.wishlist ?? wishlist
+        if let wishlist = wishlistToUse {
             context["wishlist"] = ["products": wishlist.map { $0.toDict() }]
-            context["wishlistChanged"] = wishlistChanged
+            context["wishlistChanged"] = wishlistChanged || request.wishlist != nil
         }
 
         // Merge profile IDs

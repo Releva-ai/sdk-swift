@@ -49,7 +49,7 @@ public class NotificationService: NSObject {
         notificationCenter.getNotificationSettings { settings in
             guard settings.authorizationStatus == .notDetermined else { return }
             Task {
-                _ = await self.requestAuthorization()
+                await self.requestAuthorization()
             }
         }
 
@@ -64,6 +64,7 @@ public class NotificationService: NSObject {
     /// Request notification authorization
     /// - Returns: Whether the user granted it. A thrown authorization error counts as denied,
     ///   which is how the 4.x completion handler reported it too.
+    @discardableResult
     public func requestAuthorization() async -> Bool {
         let options: UNAuthorizationOptions = [.alert, .badge, .sound]
 

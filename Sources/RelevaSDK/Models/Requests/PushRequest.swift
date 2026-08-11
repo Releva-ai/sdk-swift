@@ -26,6 +26,11 @@ public struct PushRequest: PushRequestConvertible {
     /// Optional cart for checkout success
     public var cart: Cart?
 
+    /// Optional wishlist snapshot, held aside the same way `cart` is. Lets a caller pin
+    /// the wishlist that was current *when the request was built* rather than whatever
+    /// `RelevaClient` holds when the context is actually assembled.
+    public var wishlist: [WishlistProduct]?
+
     // MARK: - Initializers
 
     /// Initialize an empty push request
@@ -121,6 +126,15 @@ public struct PushRequest: PushRequestConvertible {
     public func setCart(_ cart: Cart) -> PushRequest {
         var copy = self
         copy.cart = cart
+        return copy
+    }
+
+    /// Set wishlist explicitly, snapshotting it at build time rather than at send time.
+    /// - Parameter wishlist: The wishlist products to set
+    /// - Returns: A copy with the wishlist applied
+    public func setWishlist(_ wishlist: [WishlistProduct]) -> PushRequest {
+        var copy = self
+        copy.wishlist = wishlist
         return copy
     }
 

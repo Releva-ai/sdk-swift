@@ -186,6 +186,17 @@ final class PushRequestTests: XCTestCase {
         XCTAssertNil(request.toDict()["cart"], "the cart is not part of the request payload")
     }
 
+    // MARK: - Wishlist
+
+    func testWishlistIsHeldAsideRatherThanEncodedIntoThePayload() {
+        let wishlist = [WishlistProduct(id: "p1")]
+
+        let request = PushRequest().setWishlist(wishlist)
+
+        XCTAssertEqual(request.wishlist, wishlist, "the client reads .wishlist and sends it via the context builder")
+        XCTAssertNil(request.toDict()["wishlist"], "the wishlist is not part of the request payload")
+    }
+
     // MARK: - Validation
 
     func testValidateAcceptsAnEmptyRequest() {

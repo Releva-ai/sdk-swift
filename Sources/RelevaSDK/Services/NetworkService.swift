@@ -403,7 +403,9 @@ public class NetworkService {
         } catch {
             // Serialization and URL-building failures have always surfaced as `.networkError`,
             // including the `.invalidConfiguration` that `buildRequest` throws. Preserved rather
-            // than corrected, because callers switch on the kind.
+            // than corrected: it flattens the original kind, which is a real cost to a caller
+            // switching on it, but changing it now would be a second, unrelated breaking change
+            // riding along with this migration.
             throw RelevaError.networkError(error.localizedDescription)
         }
 
@@ -451,7 +453,14 @@ public class NetworkService {
             }
 
             attemptsLeft -= 1
-            try await Task.sleep(nanoseconds: retryDelayNanoseconds)
+            do {
+                try await Task.sleep(nanoseconds: retryDelayNanoseconds)
+            } catch {
+                // `Task.sleep` throws a bare `CancellationError` on cancellation, not a
+                // `RelevaError`. Every other exit from this function maps onto `RelevaError`
+                // (the README promises callers exactly that), so this one has to as well.
+                throw RelevaError.networkError(error.localizedDescription)
+            }
         }
     }
 

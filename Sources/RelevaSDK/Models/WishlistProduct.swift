@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a product in the wishlist
-public struct WishlistProduct: Codable, Equatable, Hashable {
+public struct WishlistProduct: Codable, Equatable, Hashable, Sendable {
     // MARK: - Properties
 
     /// The product ID

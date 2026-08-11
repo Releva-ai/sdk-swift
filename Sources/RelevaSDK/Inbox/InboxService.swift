@@ -79,7 +79,13 @@ public class InboxService: ObservableObject {
     /// Fetch first page of messages + unread count in parallel.
     public func refresh() {
         Task { @MainActor [weak self] in
-            guard let self = self, self.initialized,
+            // `loadMore` has always guarded on `!self.state.isLoading`; `refresh` gets the
+            // same guard now. Under the old `DispatchGroup` an overlapping `refresh()` had
+            // the same race, but `async` widens the window from "two callbacks" to "two
+            // whole suspended `Task`s" — without this, whichever response lands second wins
+            // `state.messages` even if it started first, and the loser's `isLoading = false`
+            // can unblock `loadMore()` against a cursor the other call is about to replace.
+            guard let self = self, self.initialized, !self.state.isLoading,
                   let userId = self.profileId,
                   let network = self.networkService else { return }
 
@@ -89,6 +95,9 @@ public class InboxService: ObservableObject {
             async let messagesJson = network.fetchInboxMessages(userId: userId)
             async let unreadCount = network.fetchInboxUnreadCount(userId: userId)
 
+            // `try?` discards the error rather than surfacing it — matches 4.x, which read
+            // `if case .success` with no `else`, so a 401 and an empty inbox were already
+            // indistinguishable to the host. `state` has no error field to put it in.
             let json = try? await messagesJson
             let unread = try? await unreadCount
 
