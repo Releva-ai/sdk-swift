@@ -28,7 +28,6 @@ final class BannerTrackerSpy: BannerTracker {
 /// Shared by `BannerPresenterTests` and `NpsPresenterTests`: both drive a presenter through the
 /// display-controller singleton it subscribes to, then look at what the host has on screen.
 extension XCTestCase {
-
     /// A window holding `rootViewController`, made visible.
     ///
     /// Visible because a view controller in no on-screen hierarchy cannot reliably present.

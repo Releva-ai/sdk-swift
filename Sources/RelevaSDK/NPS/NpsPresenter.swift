@@ -32,7 +32,6 @@ import UIKit
 /// ```
 @MainActor
 public final class NpsPresenter {
-
     private weak var host: UIViewController?
     private let onSubmit: (String, Int, String?) -> Void
     private let onSkip: (() -> Void)?
@@ -93,9 +92,8 @@ public final class NpsPresenter {
             rootView: NpsSurveyView(
                 config: IdentifiableNpsConfig(config: config),
                 onSubmit: onSubmit,
-                onSkip: onSkip,
-                onClose: { [weak self] in self?.close(animated: true) }
-            )
+                onSkip: onSkip
+            ) { [weak self] in self?.close(animated: true) }
         )
         controller.modalPresentationStyle = .pageSheet
         controller.sheetPresentationController?.detents = [.medium(), .large()]

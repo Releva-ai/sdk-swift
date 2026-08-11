@@ -37,7 +37,6 @@ import UIKit
 /// impression tracking — and remain the SwiftUI modifier's job.
 @MainActor
 public final class BannerPresenter {
-
     private weak var host: UIViewController?
     private let tracker: BannerTracker
     private let onLinkTap: (String) -> Void

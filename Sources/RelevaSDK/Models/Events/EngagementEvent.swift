@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a push notification engagement event
 public struct EngagementEvent: Codable, Equatable {
-
     // MARK: - Properties
 
     /// The type of engagement event
@@ -89,38 +88,37 @@ public struct EngagementEvent: Codable, Equatable {
 
     /// Get the age of the event in seconds
     public var ageInSeconds: TimeInterval {
-        return Date().timeIntervalSince(timestamp)
+        Date().timeIntervalSince(timestamp)
     }
 
     /// Check if the event should be sent immediately (high priority)
     public var shouldSendImmediately: Bool {
-        return type == .clicked || type == .opened
+        type == .clicked || type == .opened
     }
 }
 
 // MARK: - Batch Processing
 
 extension EngagementEvent {
-
     /// Group events by callback URL for batch processing
     /// - Parameter events: Array of engagement events
     /// - Returns: Dictionary grouped by callback URL
     public static func groupByCallbackUrl(_ events: [EngagementEvent]) -> [String: [EngagementEvent]] {
-        return Dictionary(grouping: events) { $0.callbackUrl }
+        Dictionary(grouping: events) { $0.callbackUrl }
     }
 
     /// Filter out expired events
     /// - Parameter events: Array of engagement events
     /// - Returns: Array of non-expired events
     public static func filterExpired(_ events: [EngagementEvent]) -> [EngagementEvent] {
-        return events.filter { !$0.isExpired }
+        events.filter { !$0.isExpired }
     }
 
     /// Sort events by priority and timestamp
     /// - Parameter events: Array of engagement events
     /// - Returns: Sorted array of events
     public static func sortByPriority(_ events: [EngagementEvent]) -> [EngagementEvent] {
-        return events.sorted { lhs, rhs in
+        events.sorted { lhs, rhs in
             // First sort by priority
             if lhs.type.priority != rhs.type.priority {
                 return lhs.type.priority > rhs.type.priority
@@ -134,14 +132,13 @@ extension EngagementEvent {
 // MARK: - Persistence
 
 extension EngagementEvent {
-
     /// Create from notification payload
     /// - Parameter userInfo: The notification payload
     /// - Returns: An engagement event if the payload is valid
     public static func fromNotificationPayload(_ userInfo: [AnyHashable: Any]) -> EngagementEvent? {
         // Firebase iOS puts custom data at root level, not in "data" wrapper
         // Try to extract data from either format
-        var data: [String: Any]? = nil
+        var data: [String: Any]?
 
         // Check "data" wrapper first (cross-platform format)
         if let wrappedData = userInfo["data"] as? [String: Any] {

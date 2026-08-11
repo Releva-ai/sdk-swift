@@ -16,6 +16,56 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # A separate job rather than a step inside `ios`, for two reasons: a lint
+  # failure and a compile failure can never be mistaken for one another at a
+  # glance, and neither one hides the other — both signals are reported even
+  # when one is red. It deliberately neither touches the .spm cache nor resolves
+  # the package graph; swiftlint parses sources and needs neither.
+  lint:
+    name: SwiftLint
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Pinned on purpose. SwiftLint is *not* preinstalled on the macos-latest
+      # runner image, and installing "whatever is newest" would let a SwiftLint
+      # release turn an unrelated PR red: a new rule, or a tightened existing
+      # one, would land as a CI failure in whichever PR happened to run next.
+      # Bump this deliberately, in its own PR, so the new violations are
+      # attributable to the bump.
+      - name: Install SwiftLint 0.65.0
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --output "$RUNNER_TEMP/SwiftLint.pkg" \
+            https://github.com/realm/SwiftLint/releases/download/0.65.0/SwiftLint.pkg
+          # Pins the download to the release's published asset digest, not just the
+          # version number - an unverified `sudo installer` run on whatever the URL
+          # served is the thing worth closing here. Bump the digest in the same
+          # commit as the version, re-deriving it from (strip the `sha256:` prefix):
+          #   gh api repos/realm/SwiftLint/releases/tags/0.65.0 \
+          #     --jq '.assets[] | select(.name == "SwiftLint.pkg") | .digest'
+          # (`gh release view --json assets` looks like the obvious command, but its
+          # ReleaseAsset schema has no digest field - only the REST API exposes it.)
+          echo "825e687d618e17d24bd5fad6d2cf98d4c32a157940ad5b7ce8ae4d722d6afb3a  $RUNNER_TEMP/SwiftLint.pkg" | shasum -a 256 -c
+          sudo installer -pkg "$RUNNER_TEMP/SwiftLint.pkg" -target /
+          swiftlint version
+
+      # Gating, not advisory: `strict: true` in .swiftlint.yml promotes every
+      # warning to an error, so any violation fails this job. The strictness
+      # lives in the config rather than in a --strict flag here, so `make lint`
+      # cannot drift into being more lenient than CI.
+      #
+      # `github-actions-logging` emits ::error/::warning workflow commands so
+      # violations are annotated on the diff, not just buried in the raw log -
+      # it still exits non-zero on violations, so the gate is unchanged.
+      - name: Lint
+        run: |
+          set -euo pipefail
+          swiftlint lint --reporter github-actions-logging
+
   ios:
     name: iOS build and test
     runs-on: macos-latest

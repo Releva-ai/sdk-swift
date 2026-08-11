@@ -2,7 +2,6 @@ import Foundation
 
 /// Request for tracking search events
 public struct SearchRequest: PushRequestConvertible {
-
     // MARK: - Properties
 
     /// The screen identifier token
@@ -78,7 +77,7 @@ public struct SearchRequest: PushRequestConvertible {
         query: String,
         resultCount: Int? = nil
     ) -> SearchRequest {
-        return SearchRequest(
+        SearchRequest(
             screenToken: nil,
             query: query
         )
@@ -95,7 +94,7 @@ public struct SearchRequest: PushRequestConvertible {
         resultProductIds: [String],
         filter: AbstractFilter? = nil
     ) -> SearchRequest {
-        return SearchRequest(
+        SearchRequest(
             screenToken: nil,
             query: query,
             resultProductIds: resultProductIds,
@@ -107,7 +106,7 @@ public struct SearchRequest: PushRequestConvertible {
     /// - Parameter query: The search query that returned no results
     /// - Returns: A configured search request
     public static func emptySearch(query: String) -> SearchRequest {
-        return SearchRequest(
+        SearchRequest(
             screenToken: nil,
             query: query,
             resultProductIds: []
@@ -125,7 +124,7 @@ public struct SearchRequest: PushRequestConvertible {
         filter: AbstractFilter,
         resultProductIds: [String]
     ) -> SearchRequest {
-        return SearchRequest(
+        SearchRequest(
             screenToken: nil,
             query: query,
             resultProductIds: resultProductIds,
@@ -142,7 +141,7 @@ public struct SearchRequest: PushRequestConvertible {
         query: String,
         suggestionProductIds: [String]
     ) -> SearchRequest {
-        return SearchRequest(
+        SearchRequest(
             screenToken: nil,
             query: query,
             resultProductIds: suggestionProductIds
@@ -153,17 +152,17 @@ public struct SearchRequest: PushRequestConvertible {
 
     /// Check if the search has results
     public var hasResults: Bool {
-        return resultProductIds != nil && !resultProductIds!.isEmpty
+        !(resultProductIds ?? []).isEmpty
     }
 
     /// Get the number of results
     public var resultCount: Int {
-        return resultProductIds?.count ?? 0
+        resultProductIds?.count ?? 0
     }
 
     /// Check if a filter is applied
     public var hasFilter: Bool {
-        return filter != nil
+        filter != nil
     }
 
     // MARK: - Copy Method
@@ -183,7 +182,7 @@ public struct SearchRequest: PushRequestConvertible {
         filter: AbstractFilter? = nil,
         blocks: [String: [String]]? = nil
     ) -> SearchRequest {
-        return SearchRequest(
+        SearchRequest(
             screenToken: screenToken ?? self.screenToken,
             query: query ?? self.query,
             resultProductIds: resultProductIds ?? self.resultProductIds,
@@ -202,7 +201,7 @@ public struct SearchRequest: PushRequestConvertible {
         // `PushRequest.validate()` grows a check that isn't cart-specific — this bypasses it.
 
         // Search requests should have at least a query
-        if query == nil || query!.isEmpty {
+        if (query ?? "").isEmpty {
             throw RelevaError.missingRequiredField("Search query cannot be empty")
         }
     }

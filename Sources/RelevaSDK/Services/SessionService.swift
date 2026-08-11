@@ -13,7 +13,6 @@ import UIKit
 /// are expected to invoke this service from the main thread as well.
 @MainActor
 class SessionService {
-
     static let shared = SessionService()
 
     /// Minimum background duration (ms) before a new session is counted.
@@ -111,7 +110,13 @@ class SessionService {
     }
 
     func dispose() {
-        NotificationCenter.default.removeObserver(self)
+        // Name-scoped removals mirroring the two addObserver registrations in
+        // initialize(), rather than the bare removeObserver(self) form: this is a
+        // singleton (private init() + static let shared) so deinit never runs and
+        // dispose() is the only teardown path, but the bare form would also detach
+        // any observation this type didn't register. There are only ever these two.
+        NotificationCenter.default.removeObserver(self, name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
         initialized = false
         storage = nil
         npsManager = nil

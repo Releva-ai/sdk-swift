@@ -2,7 +2,6 @@ import Foundation
 
 /// Configuration options for the Releva SDK
 public struct RelevaConfig {
-
     // MARK: - Properties
 
     /// Enable tracking of user interactions and events
@@ -66,7 +65,7 @@ public struct RelevaConfig {
 
     /// Full configuration with all features enabled (default)
     public static func full() -> RelevaConfig {
-        return RelevaConfig(
+        RelevaConfig(
             enableTracking: true,
             enableScreenTracking: true,
             enablePushNotifications: true,
@@ -76,7 +75,7 @@ public struct RelevaConfig {
 
     /// Configuration for tracking only (no push notifications)
     public static func trackingOnly() -> RelevaConfig {
-        return RelevaConfig(
+        RelevaConfig(
             enableTracking: true,
             enableScreenTracking: true,
             enablePushNotifications: false,
@@ -86,7 +85,7 @@ public struct RelevaConfig {
 
     /// Configuration for push notifications only (no tracking)
     public static func pushOnly() -> RelevaConfig {
-        return RelevaConfig(
+        RelevaConfig(
             enableTracking: false,
             enableScreenTracking: false,
             enablePushNotifications: true,
@@ -96,7 +95,7 @@ public struct RelevaConfig {
 
     /// Minimal configuration with only essential features
     public static func minimal() -> RelevaConfig {
-        return RelevaConfig(
+        RelevaConfig(
             enableTracking: true,
             enableScreenTracking: false,
             enablePushNotifications: true,
@@ -106,7 +105,7 @@ public struct RelevaConfig {
 
     /// Debug configuration with logging enabled
     public static func debug() -> RelevaConfig {
-        return RelevaConfig(
+        RelevaConfig(
             enableTracking: true,
             enableScreenTracking: true,
             enablePushNotifications: true,
@@ -119,7 +118,6 @@ public struct RelevaConfig {
 // MARK: - Configuration Validation
 
 extension RelevaConfig {
-
     /// Validate the configuration
     func validate() throws {
         if requestTimeoutInterval <= 0 {

@@ -2,7 +2,6 @@ import XCTest
 @testable import RelevaSDK
 
 final class EndpointOverrideTests: XCTestCase {
-
     func testDefaultBaseURLWithRealm() {
         let service = NetworkService(realm: "us", accessToken: "token", config: .full())
         XCTAssertEqual(service.getBaseURL(), "https://us.releva.ai")

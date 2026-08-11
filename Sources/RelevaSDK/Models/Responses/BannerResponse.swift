@@ -2,7 +2,6 @@ import Foundation
 
 /// Banner response from Releva API
 public struct BannerResponse: Sendable {
-
     // MARK: - Properties
 
     /// Unique identifier for this banner display
@@ -120,7 +119,7 @@ public struct BannerResponse: Sendable {
 
     /// Create from dictionary (parsed JSON)
     public static func from(dict: [String: Any]) -> BannerResponse {
-        return BannerResponse(
+        BannerResponse(
             token: dict["token"] as? String ?? "",
             bannerId: (dict["bannerId"] as? NSNumber)?.intValue ?? 0,
             segmentId: (dict["segmentId"] as? NSNumber)?.intValue ?? 0,
@@ -152,7 +151,7 @@ public struct BannerResponse: Sendable {
             "bannerId": bannerId,
             "segmentId": segmentId,
             "name": name,
-            "html": html,
+            "html": html
         ]
         if let tags = tags { dict["tags"] = tags }
         if let mergeContext = mergeContext { dict["mergeContext"] = mergeContext }

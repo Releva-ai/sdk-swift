@@ -12,7 +12,6 @@ import XCTest
 /// As in `BannerPresenterTests`, the assertions are on what the presenter did, not on UIKit
 /// having finished a transition — see `PresentationTestSupport.makeVisibleWindow`.
 final class NpsPresenterTests: XCTestCase {
-
     @MainActor
     func testSurveyIsPresentedAsASheet() {
         let host = UIViewController()

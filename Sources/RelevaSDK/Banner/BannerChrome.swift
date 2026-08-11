@@ -14,7 +14,6 @@ import SwiftUI
 /// and the closures below call main-actor-isolated `BannerDisplayViewModel` methods.
 @MainActor
 enum BannerChrome {
-
     // MARK: - Popup Banner
 
     @ViewBuilder
@@ -42,13 +41,12 @@ enum BannerChrome {
                         if let design = banner.design {
                             DesignRenderer.render(
                                 design: design,
-                                maxWidth: screenWidth,
-                                onLinkTap: { url in
+                                maxWidth: screenWidth
+                            ) { url in
                                     viewModel.dismissPopup(banner, track: false)
                                     viewModel.trackClick(banner)
                                     onLinkTap(url)
                                 }
-                            )
                         }
                     }
                     .frame(minHeight: geometry.size.height)
@@ -114,13 +112,12 @@ enum BannerChrome {
                             DesignRenderer.render(
                                 design: design,
                                 maxWidth: flyoutWidth,
-                                transparentBody: hasBodyBgImage,
-                                onLinkTap: { url in
+                                transparentBody: hasBodyBgImage
+                            ) { url in
                                     viewModel.dismissFlyout(banner, track: false)
                                     viewModel.trackClick(banner)
                                     onLinkTap(url)
                                 }
-                            )
                         }
                     }
                 }
@@ -166,12 +163,11 @@ enum BannerChrome {
             if let design = banner.design {
                 DesignRenderer.render(
                     design: design,
-                    maxWidth: UIScreen.main.bounds.width - 32,
-                    onLinkTap: { url in
+                    maxWidth: UIScreen.main.bounds.width - 32
+                ) { url in
                         viewModel.trackClick(banner)
                         onLinkTap(url)
                     }
-                )
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .padding(isBottom ? .bottom : .top, safeAreaInset)

@@ -6,7 +6,6 @@ import Foundation
 /// `RelevaClient.setProfileId(_:)` (sent as `context.profile.id`). Contact details
 /// and other profile attributes are never accepted or sent from the client.
 public struct CheckoutSuccessRequest: PushRequestConvertible {
-
     // MARK: - Properties
 
     /// The screen identifier token
@@ -66,17 +65,17 @@ public struct CheckoutSuccessRequest: PushRequestConvertible {
 
     /// Get the order ID
     public var orderId: String? {
-        return orderedCart.orderId
+        orderedCart.orderId
     }
 
     /// Get the total order value
     public var orderValue: Double {
-        return orderedCart.totalPrice
+        orderedCart.totalPrice
     }
 
     /// Get the number of items in the order
     public var itemCount: Int {
-        return orderedCart.itemCount
+        orderedCart.itemCount
     }
 
     // MARK: - Copy Method
@@ -90,7 +89,7 @@ public struct CheckoutSuccessRequest: PushRequestConvertible {
         screenToken: String? = nil,
         orderedCart: Cart? = nil
     ) -> CheckoutSuccessRequest {
-        return CheckoutSuccessRequest(
+        CheckoutSuccessRequest(
             screenToken: screenToken ?? self.screenToken,
             orderedCart: orderedCart ?? self.orderedCart
         )
@@ -114,7 +113,7 @@ public struct CheckoutSuccessRequest: PushRequestConvertible {
         }
 
         // Validate order ID exists
-        if orderedCart.orderId == nil || orderedCart.orderId!.isEmpty {
+        if (orderedCart.orderId ?? "").isEmpty {
             throw RelevaError.missingRequiredField("Order ID is required for checkout success")
         }
 

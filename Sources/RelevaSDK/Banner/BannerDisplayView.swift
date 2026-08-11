@@ -70,10 +70,10 @@ public struct BannerDisplayModifier: ViewModifier {
     @ViewBuilder
     private func bannerContentView(for banner: BannerResponse) -> some View {
         if let design = banner.design {
-            DesignRenderer.render(design: design, maxWidth: UIScreen.main.bounds.width, onLinkTap: { url in
+            DesignRenderer.render(design: design, maxWidth: UIScreen.main.bounds.width) { url in
                 viewModel.trackClick(banner)
                 onLinkTap(url)
-            })
+            }
         }
     }
 
@@ -100,7 +100,6 @@ public struct BannerDisplayModifier: ViewModifier {
         }
         .edgesIgnoringSafeArea(isBottom ? .bottom : .top)
     }
-
 }
 
 // MARK: - View Extension

@@ -22,9 +22,8 @@ public struct NpsDisplayModifier: ViewModifier {
                 NpsSurveyView(
                     config: config,
                     onSubmit: onSubmit,
-                    onSkip: onSkip,
-                    onClose: { viewModel.activeConfig = nil }
-                )
+                    onSkip: onSkip
+                ) { viewModel.activeConfig = nil }
                 .modifier(PresentationDetentsModifier())
             }
     }
@@ -92,9 +91,9 @@ struct NpsSurveyView: View {
     private var primaryColor: Color {
         let isDark = colorScheme == .dark
         if isDark, let darkColor = nps.appearance.dark?.primaryColor {
-            return DesignRenderer.parseColor(css: darkColor) ?? DesignRenderer.parseColor(css: nps.appearance.primaryColor) ?? Color(red: 108/255, green: 63/255, blue: 196/255)
+            return DesignRenderer.parseColor(css: darkColor) ?? DesignRenderer.parseColor(css: nps.appearance.primaryColor) ?? Color(red: 108 / 255, green: 63 / 255, blue: 196 / 255)
         }
-        return DesignRenderer.parseColor(css: nps.appearance.primaryColor) ?? Color(red: 108/255, green: 63/255, blue: 196/255)
+        return DesignRenderer.parseColor(css: nps.appearance.primaryColor) ?? Color(red: 108 / 255, green: 63 / 255, blue: 196 / 255)
     }
 
     private var bgColor: Color {
@@ -146,7 +145,7 @@ struct NpsSurveyView: View {
                 HStack {
                     Spacer()
                     AsyncImage(url: url) { image in
-                        image.resizable().aspectRatio(contentMode: .fit)
+                        image.resizable().scaledToFit()
                     } placeholder: {
                         EmptyView()
                     }
@@ -325,7 +324,6 @@ struct NpsSurveyView: View {
         default: return 0
         }
     }
-
 }
 
 // MARK: - Types

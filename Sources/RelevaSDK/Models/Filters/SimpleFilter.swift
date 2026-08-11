@@ -2,7 +2,6 @@ import Foundation
 
 /// A simple filter with a single condition
 public struct SimpleFilter: AbstractFilter {
-
     // MARK: - Properties
 
     /// The field key to filter on
@@ -59,7 +58,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return SimpleFilter(
+        SimpleFilter(
             key: fieldName,
             operator: `operator`,
             value: value,
@@ -82,7 +81,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return SimpleFilter(
+        SimpleFilter(
             key: "custom.string.\(fieldName)",
             operator: `operator`,
             value: value,
@@ -105,7 +104,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return SimpleFilter(
+        SimpleFilter(
             key: "custom.numeric.\(fieldName)",
             operator: `operator`,
             value: value,
@@ -128,7 +127,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return SimpleFilter(
+        SimpleFilter(
             key: "custom.date.\(fieldName)",
             operator: `operator`,
             value: value,
@@ -151,7 +150,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction = .include,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return SimpleFilter(
+        SimpleFilter(
             key: "price",
             operator: .gteLte,
             value: "\(minPrice),\(maxPrice)",
@@ -170,7 +169,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction = .include,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return SimpleFilter(
+        SimpleFilter(
             key: "price",
             operator: .gte,
             value: "\(minPrice)",
@@ -189,7 +188,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction = .include,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return SimpleFilter(
+        SimpleFilter(
             key: "price",
             operator: .lte,
             value: "\(maxPrice)",
@@ -208,7 +207,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction = .include,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return customString(
+        customString(
             fieldName: "size",
             operator: .eq,
             value: size,
@@ -227,7 +226,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction = .include,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return customString(
+        customString(
             fieldName: "brand",
             operator: .eq,
             value: brand,
@@ -246,7 +245,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction = .include,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return customString(
+        customString(
             fieldName: "color",
             operator: .eq,
             value: color,
@@ -265,7 +264,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction = .include,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return customString(
+        customString(
             fieldName: "category",
             operator: .eq,
             value: category,
@@ -284,7 +283,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction = .include,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return customString(
+        customString(
             fieldName: "availability",
             operator: .eq,
             value: inStock ? "in_stock" : "out_of_stock",
@@ -303,7 +302,7 @@ public struct SimpleFilter: AbstractFilter {
         action: FilterAction = .include,
         weight: Int? = nil
     ) -> SimpleFilter {
-        return customNumeric(
+        customNumeric(
             fieldName: "rating",
             operator: .gte,
             value: "\(minRating)",

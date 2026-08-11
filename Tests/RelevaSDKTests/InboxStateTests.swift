@@ -2,7 +2,6 @@ import XCTest
 @testable import RelevaSDK
 
 final class InboxStateTests: XCTestCase {
-
     func testIsStaleWhenNoLastFetch() {
         let state = InboxState()
         XCTAssertTrue(state.isStale)

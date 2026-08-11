@@ -22,7 +22,6 @@ private struct BannerFixture {
 /// presentation or a dismissal: transitions do not complete in this test host, and
 /// `PresentationTestSupport.makeVisibleWindow` records exactly what that does and does not cost.
 final class BannerPresenterTests: XCTestCase {
-
     // MARK: - Presenting
 
     @MainActor

@@ -8,11 +8,10 @@ import XCTest
 /// `init`, so these assertions pin the payload they produce across the move to value types —
 /// the client reads nothing off them but `pushRequest`.
 final class TrackingRequestConversionTests: XCTestCase {
-
     // MARK: - Helpers
 
     private func pageContext(_ request: any PushRequestConvertible) throws -> [String: Any] {
-        return try XCTUnwrap(request.pushRequest.toDict()["page"] as? [String: Any], "expected a page dictionary")
+        try XCTUnwrap(request.pushRequest.toDict()["page"] as? [String: Any], "expected a page dictionary")
     }
 
     // MARK: - Screen view

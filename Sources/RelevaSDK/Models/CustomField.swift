@@ -2,7 +2,6 @@ import Foundation
 
 /// A custom field with a key and list of values
 public struct CustomField<T: Codable & Equatable & Hashable>: Codable, Equatable, Hashable {
-
     // MARK: - Properties
 
     /// The field key
@@ -37,10 +36,14 @@ public struct CustomField<T: Codable & Equatable & Hashable>: Codable, Equatable
     public func toDict() -> [String: Any] {
         var dict: [String: Any] = ["key": key]
 
-        if T.self == Date.self {
-            // Convert dates to ISO8601 strings
-            let dateValues = values as! [Date]
-            dict["values"] = dateValues.map { ISO8601DateFormatter().string(from: $0) }
+        // No force cast: the `T.self == Date.self` test still selects the branch, and the
+        // conditional cast is what unwraps it. The type test is not redundant — an *empty*
+        // `[T]` casts to `[Date]` for any `T`, because array casts are element-wise.
+        if T.self == Date.self, let dateValues = values as? [Date] {
+            // Convert dates to ISO8601 strings. One formatter for the whole array rather than
+            // one per element - ISO8601DateFormatter initialisation is not cheap.
+            let formatter = ISO8601DateFormatter()
+            dict["values"] = dateValues.map { formatter.string(from: $0) }
         } else {
             dict["values"] = values
         }
@@ -55,7 +58,6 @@ extension CustomField: Sendable where T: Sendable {}
 
 /// A collection of custom fields organized by type
 public struct CustomFields: Codable, Equatable, Hashable, Sendable {
-
     // MARK: - Properties
 
     /// String custom fields
@@ -95,7 +97,7 @@ public struct CustomFields: Codable, Equatable, Hashable, Sendable {
 
     /// Convert to dictionary for API requests
     public func toDict() -> [String: Any] {
-        return [
+        [
             "string": string.map { $0.toDict() },
             "numeric": numeric.map { $0.toDict() },
             "date": date.map { $0.toDict() }
@@ -129,11 +131,11 @@ public struct CustomFields: Codable, Equatable, Hashable, Sendable {
 
     /// Check if fields are empty
     public var isEmpty: Bool {
-        return string.isEmpty && numeric.isEmpty && date.isEmpty
+        string.isEmpty && numeric.isEmpty && date.isEmpty
     }
 
     /// Get total number of fields
     public var count: Int {
-        return string.count + numeric.count + date.count
+        string.count + numeric.count + date.count
     }
 }

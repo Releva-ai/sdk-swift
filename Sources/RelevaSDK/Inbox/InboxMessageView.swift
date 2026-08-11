@@ -14,9 +14,9 @@ public struct InboxMessageView: View {
     }
 
     public var body: some View {
-        DesignRenderer.render(design: message.design, onLinkTap: { url in
+        DesignRenderer.render(design: message.design) { url in
             InboxService.shared.trackAction(message.id)
             onLinkTap(url)
-        })
+        }
     }
 }

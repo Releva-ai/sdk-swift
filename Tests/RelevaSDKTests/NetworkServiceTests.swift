@@ -5,7 +5,6 @@ import XCTest
 /// what goes on the wire (URL, method, headers, body) and how every response
 /// class comes back out (success decode, 401, non-2xx, transport failure, retry).
 final class NetworkServiceTests: XCTestCase {
-
     private var session: URLSession!
 
     /// Held for the lifetime of the test: `NetworkService` captures itself weakly in its
@@ -35,7 +34,7 @@ final class NetworkServiceTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeService(config: RelevaConfig = RelevaConfig()) -> NetworkService {
-        return NetworkService(realm: "us", accessToken: "test-token", config: config, session: session)
+        NetworkService(realm: "us", accessToken: "test-token", config: config, session: session)
     }
 
     private func jsonBody(of request: URLRequest) throws -> [String: Any] {
@@ -44,7 +43,7 @@ final class NetworkServiceTests: XCTestCase {
     }
 
     private func json(_ string: String) throws -> Data {
-        return try XCTUnwrap(string.data(using: .utf8))
+        try XCTUnwrap(string.data(using: .utf8))
     }
 
     // MARK: - Request shape
@@ -197,7 +196,7 @@ final class NetworkServiceTests: XCTestCase {
         let events = [
             EngagementEvent(type: .clicked, callbackUrl: "https://example.com/cb/1", notificationId: "n1"),
             EngagementEvent(type: .opened, callbackUrl: "https://example.com/cb/1", notificationId: "n2"),
-            EngagementEvent(type: .delivered, callbackUrl: "https://example.com/cb/2", notificationId: "n3"),
+            EngagementEvent(type: .delivered, callbackUrl: "https://example.com/cb/2", notificationId: "n3")
         ]
 
         let done = expectation(description: "engagement events complete")
@@ -238,7 +237,7 @@ final class NetworkServiceTests: XCTestCase {
 
         let result = try sendEngagementEvents(callbackUrls: [
             "https://example.com/cb/1",
-            "https://example.com/cb/2",
+            "https://example.com/cb/2"
         ])
 
         XCTAssertEqual(StubURLProtocol.receivedRequests.count, 2, "a failing callback must not stop the others")
@@ -255,7 +254,7 @@ final class NetworkServiceTests: XCTestCase {
 
         let result = try sendEngagementEvents(callbackUrls: [
             "https://example.com/cb/1",
-            "https://example.com/cb/2",
+            "https://example.com/cb/2"
         ])
 
         XCTAssertEqual(StubURLProtocol.receivedRequests.count, 2)
@@ -282,7 +281,7 @@ final class NetworkServiceTests: XCTestCase {
             "https://example.com/cb/1",
             "https://example.com/cb/2",
             "https://example.com/cb/3",
-            "https://example.com/cb/4",
+            "https://example.com/cb/4"
         ])
 
         XCTAssertEqual(StubURLProtocol.receivedRequests.count, 4)
@@ -302,7 +301,7 @@ final class NetworkServiceTests: XCTestCase {
 
         let result = try sendEngagementEvents(callbackUrls: [
             Self.unparseableCallbackUrl,
-            "https://example.com/cb/1",
+            "https://example.com/cb/1"
         ])
 
         XCTAssertEqual(

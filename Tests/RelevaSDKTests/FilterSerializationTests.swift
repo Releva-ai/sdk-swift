@@ -7,15 +7,14 @@ import XCTest
 /// `NetworkService` JSON-encodes the result), so these tests assert on that rather than
 /// on the `Codable` conformance.
 final class FilterSerializationTests: XCTestCase {
-
     // MARK: - Helpers
 
     private func string(_ dict: [String: Any], _ key: String) throws -> String {
-        return try XCTUnwrap(dict[key] as? String, "expected a String under \"\(key)\" in \(dict)")
+        try XCTUnwrap(dict[key] as? String, "expected a String under \"\(key)\" in \(dict)")
     }
 
     private func nested(_ dict: [String: Any]) throws -> [[String: Any]] {
-        return try XCTUnwrap(dict["nested"] as? [[String: Any]], "expected a nested array in \(dict)")
+        try XCTUnwrap(dict["nested"] as? [[String: Any]], "expected a nested array in \(dict)")
     }
 
     // MARK: - SimpleFilter encoding
@@ -242,10 +241,11 @@ final class FilterSerializationTests: XCTestCase {
     }
 
     func testNestedFilterEncodesChildrenInOrder() throws {
-        let dict = NestedFilter.and([
+        let filter = NestedFilter.and([
             SimpleFilter.priceRange(minPrice: 10, maxPrice: 20),
             SimpleFilter.brand("Acme")
-        ]).toDict()
+        ])
+        let dict = filter.toDict()
 
         let children = try nested(dict)
         XCTAssertEqual(children.count, 2)
@@ -355,12 +355,13 @@ final class FilterSerializationTests: XCTestCase {
     }
 
     func testPriceWithBrandsOrCategoriesGroupsBothListsIntoOneOrNode() throws {
-        let dict = NestedFilter.priceWithBrandsOrCategories(
+        let filter = NestedFilter.priceWithBrandsOrCategories(
             minPrice: 10,
             maxPrice: 20,
             brands: ["Acme"],
             categories: ["shoes", "boots"]
-        ).toDict()
+        )
+        let dict = filter.toDict()
 
         let children = try nested(dict)
         XCTAssertEqual(children.count, 2, "price, plus a single OR node for brands and categories")
@@ -385,12 +386,13 @@ final class FilterSerializationTests: XCTestCase {
     // MARK: - JSON-serializability of the encoded form
 
     func testEncodedFilterTreeIsJsonSerializable() throws {
-        let dict = NestedFilter.priceWithBrandsOrCategories(
+        let filter = NestedFilter.priceWithBrandsOrCategories(
             minPrice: 10,
             maxPrice: 20,
             brands: ["Acme"],
             categories: ["shoes"]
-        ).toDict()
+        )
+        let dict = filter.toDict()
 
         XCTAssertTrue(
             JSONSerialization.isValidJSONObject(dict),

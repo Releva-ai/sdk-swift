@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a custom tracking event
 public struct CustomEvent: Codable, Equatable, Sendable {
-
     // MARK: - Properties
 
     /// The event action name
@@ -59,7 +58,7 @@ public struct CustomEvent: Codable, Equatable, Sendable {
     ///   - quantity: The product quantity (optional)
     /// - Returns: A new event with the added product
     public func withProduct(id: String, quantity: Double? = nil) -> CustomEvent {
-        return withProduct(CustomEventProduct(id: id, quantity: quantity))
+        withProduct(CustomEventProduct(id: id, quantity: quantity))
     }
 
     /// Add multiple products to the event
@@ -108,7 +107,7 @@ public struct CustomEvent: Codable, Equatable, Sendable {
     /// - Parameter custom: The custom fields
     /// - Returns: A new event with the custom fields
     public func withCustomFields(_ custom: CustomFields) -> CustomEvent {
-        return CustomEvent(
+        CustomEvent(
             action: action,
             products: products,
             tags: tags,
@@ -120,7 +119,7 @@ public struct CustomEvent: Codable, Equatable, Sendable {
 
     /// Convert to dictionary for API requests
     public func toDict() -> [String: Any] {
-        return [
+        [
             "action": action,
             "tags": tags,
             "products": products.map { $0.toDict() },
@@ -146,29 +145,28 @@ public struct CustomEvent: Codable, Equatable, Sendable {
 
     /// Check if the event has products
     public var hasProducts: Bool {
-        return !products.isEmpty
+        !products.isEmpty
     }
 
     /// Check if the event has tags
     public var hasTags: Bool {
-        return !tags.isEmpty
+        !tags.isEmpty
     }
 
     /// Check if the event has custom fields
     public var hasCustomFields: Bool {
-        return !custom.isEmpty
+        !custom.isEmpty
     }
 
     /// Get product IDs
     public var productIds: [String] {
-        return products.map { $0.id }
+        products.map { $0.id }
     }
 }
 
 // MARK: - Common Event Actions
 
 extension CustomEvent {
-
     /// Predefined common event actions
     public struct Actions {
         public static let addToCart = "add_to_cart"

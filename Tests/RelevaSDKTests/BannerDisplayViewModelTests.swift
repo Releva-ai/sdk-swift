@@ -7,7 +7,6 @@ import XCTest
 /// directly, with no window and no presenter — in particular `overlayOnly`, the one branch of
 /// `shouldDisplay` this PR added, which until now was pinned by nothing but reading.
 final class BannerDisplayViewModelTests: XCTestCase {
-
     @MainActor
     private func banner(
         _ token: String,

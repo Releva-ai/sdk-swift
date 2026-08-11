@@ -2,7 +2,6 @@ import Foundation
 
 /// Manages user session with 24-hour expiration
 public class Session {
-
     // MARK: - Properties
 
     /// Session ID
@@ -61,13 +60,13 @@ public class Session {
     /// Get the age of the session in seconds
     /// - Returns: Session age in seconds
     public func ageInSeconds() -> TimeInterval {
-        return Date().timeIntervalSince(timestamp)
+        Date().timeIntervalSince(timestamp)
     }
 
     /// Get the age of the session in hours
     /// - Returns: Session age in hours
     public func ageInHours() -> Double {
-        return ageInSeconds() / 3600
+        ageInSeconds() / 3600
     }
 
     /// Get remaining time until expiration
@@ -101,7 +100,7 @@ public class Session {
     /// Generate a new session ID
     /// - Returns: UUID-based session ID
     private static func generateSessionId() -> String {
-        return UUID().uuidString.lowercased()
+        UUID().uuidString.lowercased()
     }
 
     /// Create or restore a session from storage
@@ -124,7 +123,7 @@ public class Session {
 
     /// Convert to dictionary for storage
     public func toDict() -> [String: Any] {
-        return [
+        [
             "sessionId": sessionId,
             "timestamp": timestamp.timeIntervalSince1970
         ]
@@ -148,7 +147,7 @@ public class Session {
 
 extension Session: Equatable {
     public static func == (lhs: Session, rhs: Session) -> Bool {
-        return lhs.sessionId == rhs.sessionId
+        lhs.sessionId == rhs.sessionId
     }
 }
 
@@ -156,7 +155,7 @@ extension Session: Equatable {
 
 extension Session: CustomStringConvertible {
     public var description: String {
-        return "Session(id: \(sessionId), age: \(ageInHours())h, expired: \(isExpired()))"
+        "Session(id: \(sessionId), age: \(ageInHours())h, expired: \(isExpired()))"
     }
 }
 
@@ -164,7 +163,6 @@ extension Session: CustomStringConvertible {
 
 /// Manages session lifecycle and persistence
 public class SessionManager {
-
     // MARK: - Properties
 
     /// Current session
@@ -232,12 +230,12 @@ public class SessionManager {
     /// Get session age in hours
     /// - Returns: Session age or nil if no session
     public func getSessionAge() -> Double? {
-        return currentSession?.ageInHours()
+        currentSession?.ageInHours()
     }
 
     /// Check if session is expired
     /// - Returns: True if expired or no session exists
     public func isSessionExpired() -> Bool {
-        return currentSession?.isExpired() ?? true
+        currentSession?.isExpired() ?? true
     }
 }

@@ -9,7 +9,6 @@ import UIKit
 /// Observe `state` (via Combine) for reactive UI updates.
 /// Use `InboxService.shared` singleton after calling `initialize()`.
 public class InboxService: ObservableObject {
-
     /// Shared singleton instance
     public static let shared = InboxService()
 
@@ -259,7 +258,7 @@ public class InboxService: ObservableObject {
 
     /// Look up an inbox message by its `inboxMessageId`.
     public func getMessageById(_ inboxMessageId: Int) -> InboxMessage? {
-        return state.messages.first { $0.inboxMessageId == inboxMessageId }
+        state.messages.first { $0.inboxMessageId == inboxMessageId }
     }
 
     /// Handle silent push sync signal - re-fetch first page + unread count.
