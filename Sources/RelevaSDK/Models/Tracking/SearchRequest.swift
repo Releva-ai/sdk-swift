@@ -197,7 +197,8 @@ public struct SearchRequest: PushRequestConvertible {
     /// Validate the search request
     /// - Throws: RelevaError if validation fails
     public func validate() throws {
-        try pushRequest.validate()
+        // No cart to check here: `pushRequest` never carries one for a search, so there is
+        // nothing `PushRequest.validate()` would add over the query check below.
 
         // Search requests should have at least a query
         if query == nil || query!.isEmpty {

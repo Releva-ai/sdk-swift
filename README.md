@@ -186,6 +186,30 @@ If you subclassed `PushRequest`, conform to `PushRequestConvertible` instead:
 supply a `pushRequest` that builds the request you want, and implement
 `validate()` only if you have rules of your own beyond the cart checks.
 
+`ScreenViewRequest` and `SearchRequest` no longer have a `cart` property. They
+used to inherit `public var cart: Cart?` from `PushRequest`, so this compiled:
+
+```swift
+// 3.x — compiled, and made buildContext prefer this cart over the client's stored one
+let request = ScreenViewRequest(screenToken: "cart")
+request.cart = snapshot
+client.push(request)
+```
+
+In 4.0.0 there is no `cart` on the tracking requests and no `PushRequestConvertible`
+member replaces it; build a `PushRequest` and set the cart on that instead:
+
+```swift
+// 4.0.0
+let request = PushRequest().screenView("cart").setCart(snapshot)
+client.push(request)
+```
+
+`RelevaClient` is a non-final `public class`, so making `push(_:completion:)` and
+`push(_:) async` generic over `PushRequestConvertible` also changes the signature
+a subclass override has to match. If you subclass `RelevaClient` and override
+either `push` method, update the override to the new generic signature.
+
 Everything the requests hold is `Sendable` too — `Cart`, `CartProduct`,
 `ViewedProduct`, `CustomEvent`, `CustomEventProduct`, `CustomFields`,
 `CustomField` (where its values are), and the `AbstractFilter` protocol along with

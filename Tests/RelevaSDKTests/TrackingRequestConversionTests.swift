@@ -50,6 +50,15 @@ final class TrackingRequestConversionTests: XCTestCase {
         XCTAssertEqual(page["ids"] as? [String], ["p1"])
     }
 
+    func testAScreenViewRequestWithAnEmptyProductIdsArrayOmitsTheIds() throws {
+        // Different branch than the `nil` case above: `!ids.isEmpty` must still guard an
+        // explicitly empty array, not just a missing one.
+        let page = try pageContext(ScreenViewRequest(screenToken: "x", productIds: []))
+
+        XCTAssertEqual(page["token"] as? String, "x")
+        XCTAssertNil(page["ids"] as? [String], "an empty product ID array must not send an empty ids array")
+    }
+
     // MARK: - Search
 
     func testSearchRequestCarriesTheQueryAndResultIds() throws {
@@ -64,6 +73,20 @@ final class TrackingRequestConversionTests: XCTestCase {
 
         XCTAssertEqual(page["query"] as? String, "nothing")
         XCTAssertNil(page["ids"] as? [String], "no results must not send an empty ids array")
+    }
+
+    func testASearchRequestPutsTheFilterAndBlocksUnderPage() throws {
+        let request = SearchRequest(
+            screenToken: "search",
+            query: "shoes",
+            resultProductIds: ["p1"],
+            filter: SimpleFilter.priceRange(minPrice: 10, maxPrice: 20),
+            blocks: ["tags": ["hero"]]
+        )
+
+        let page = try pageContext(request)
+        XCTAssertEqual((page["filter"] as? [String: Any])?["key"] as? String, "price")
+        XCTAssertEqual((page["blocks"] as? [String: Any])?["tags"] as? [String], ["hero"])
     }
 
     // MARK: - Checkout success

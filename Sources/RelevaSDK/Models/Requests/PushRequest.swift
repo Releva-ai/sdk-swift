@@ -91,7 +91,10 @@ public struct PushRequest: PushRequestConvertible {
     /// - Parameter productIds: Array of product IDs
     /// - Returns: A copy with the product IDs applied
     public func pageProductIds(_ productIds: [String]) -> PushRequest {
-        return setting("ids", productIds.isEmpty ? nil : JSONValue.array(productIds.map { JSONValue.string($0) }))
+        return setting(
+            "ids",
+            productIds.isEmpty ? nil : JSONValue.array(productIds.map { JSONValue.string($0) })
+        )
     }
 
     /// Set categories visible on the page
@@ -144,13 +147,6 @@ public struct PushRequest: PushRequestConvertible {
         return copy
     }
 
-    /// Return a copy with `key` set under `page`, or removed from it when `value` is nil.
-    private func setting(_ key: String, _ value: JSONValue?) -> PushRequest {
-        var copy = self
-        copy.page[key] = value
-        return copy
-    }
-
     // MARK: - PushRequestConvertible
 
     /// `PushRequest` is already the form the client sends.
@@ -184,8 +180,8 @@ public struct PushRequest: PushRequestConvertible {
 
     /// Validate the request
     ///
-    /// Only the cart is checked: `customEvents([])` omits the key rather than storing an
-    /// empty list, so the payload can never carry an empty events array to reject.
+    /// Only the cart is checked: `toDict()` omits an empty `events` list rather than
+    /// emitting one, so the payload can never carry an empty events array to reject.
     /// - Throws: RelevaError if validation fails
     public func validate() throws {
         if let cart = cart {
@@ -275,5 +271,14 @@ public struct PushRequest: PushRequestConvertible {
         }
 
         return request
+    }
+
+    // MARK: - Private
+
+    /// Return a copy with `key` set under `page`, or removed from it when `value` is nil.
+    private func setting(_ key: String, _ value: JSONValue?) -> PushRequest {
+        var copy = self
+        copy.page[key] = value
+        return copy
     }
 }

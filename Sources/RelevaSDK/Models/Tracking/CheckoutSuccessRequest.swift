@@ -101,7 +101,9 @@ public struct CheckoutSuccessRequest: PushRequestConvertible {
     /// Validate the checkout success request
     /// - Throws: RelevaError if validation fails
     public func validate() throws {
-        try pushRequest.validate()
+        for product in orderedCart.products {
+            try product.validate()
+        }
 
         // Validate the cart is paid
         if !orderedCart.cartPaid {
