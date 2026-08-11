@@ -2,7 +2,6 @@ import XCTest
 @testable import RelevaSDK
 
 final class RelevaResponseTests: XCTestCase {
-
     func testParseResponseWithNpsAndStories() throws {
         let json = """
         {
@@ -31,7 +30,7 @@ final class RelevaResponseTests: XCTestCase {
         }
         """
 
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
         let response = try RelevaResponse.from(jsonData: data)
 
         // Stories
@@ -97,7 +96,7 @@ final class RelevaResponseTests: XCTestCase {
         }
         """
 
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
         let response = try RelevaResponse.from(jsonData: data)
 
         XCTAssertFalse(response.hasStories)

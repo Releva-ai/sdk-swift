@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.0] - 2026-08-11
+
+### Added
+
+- **SwiftLint now runs in CI, as a gate.** `.swiftlint.yml` has switched on 22 opt-in rules for a long time, but nothing ever executed it — `make lint` needs macOS and the workflow never called it. A new `SwiftLint` job in `.github/workflows/ci.yml` installs a pinned SwiftLint (0.65.0) from its GitHub release and runs `swiftlint lint`. It is a separate job from `iOS build and test`, so a lint failure and a compile failure can never be mistaken for one another and neither hides the other, and it touches neither the `.spm` package cache nor the package graph. `strict: true` is now set in `.swiftlint.yml` rather than passed as a `--strict` flag, so `make lint` cannot drift into being more lenient than CI. SwiftLint is *not* preinstalled on the `macos-latest` runner image, hence the explicit pinned install rather than relying on the image.
+
+### Fixed
+
+- **Every force-unwrap and force-cast in `Sources/` is gone.** All twelve force-unwraps were the `x != nil && x!` shape — the bang guarded by a `!= nil` test in the same short-circuiting expression, so none of them could actually trap — and they are now the `??` idiom this codebase already used elsewhere: `(price ?? 0) > 0`, `!(imageUrl ?? "").isEmpty`, `(query ?? "").isEmpty`. `NpsManagerService.initialize` needed more than a substitution: `if self.suppressedThisSession || config == nil { return }` followed by `config!` became a single `guard !self.suppressedThisSession, let config = config else { return }`, the shape already used twice in that file. `CustomField.toDict()`'s `values as! [Date]` is now a conditional cast kept alongside its `T.self == Date.self` type test — the test still matters because array casts are element-wise, so an empty `[T]` casts to `[Date]` for any `T`, not just `T == Date`. No public signature changed and no payload changed.
+- **`DesignRendererParsingTests`' 4-member helper tuple is a named `RGBAComponents` struct**, clearing the one `large_tuple` violation SwiftLint reports at error severity. The `components.red` / `.green` / `.blue` / `.alpha` call sites are unchanged. `DesignRenderer.parseBackgroundImage`'s 3-member return tuple is also a `large_tuple` violation, but it is public API, which this release does not change; it carries a targeted `swiftlint:disable:this` recording that reason.
+- **The three force-unwraps in `Tests/` use `try XCTUnwrap`**, which this suite already prefers: `json.data(using: .utf8)!` in two `RelevaResponseTests` cases, and `SessionServiceTests`' `UserDefaults(suiteName:)!`, whose `setUp` becomes the `setUpWithError() throws` that `StorageServiceTests` and `SessionTests` already use for exactly this construction.
+
 ## [4.0.0] - 2026-08-11
 
 ### Changed

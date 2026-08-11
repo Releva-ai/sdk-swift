@@ -2,7 +2,6 @@ import XCTest
 @testable import RelevaSDK
 
 final class NpsResponseTests: XCTestCase {
-
     func testNpsConfigFromDict() {
         let dict: [String: Any] = [
             "token": "nps-123",

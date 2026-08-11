@@ -8,7 +8,6 @@ import XCTest
 /// covers what the recommender and product decoders make of realistic payloads, including the
 /// open-ended JSON they now keep and the timestamp formats they silently refuse.
 final class RecommenderResponseTests: XCTestCase {
-
     // MARK: - Fixtures
 
     /// Shaped after a real recommender block: mixed availability, one discounted product,
@@ -77,11 +76,11 @@ final class RecommenderResponseTests: XCTestCase {
     // MARK: - Helpers
 
     private func decodeRecommender(_ json: String) throws -> RecommenderResponse {
-        return try JSONDecoder().decode(RecommenderResponse.self, from: Data(json.utf8))
+        try JSONDecoder().decode(RecommenderResponse.self, from: Data(json.utf8))
     }
 
     private func decodeProduct(_ json: String) throws -> ProductRecommendation {
-        return try JSONDecoder().decode(ProductRecommendation.self, from: Data(json.utf8))
+        try JSONDecoder().decode(ProductRecommendation.self, from: Data(json.utf8))
     }
 
     /// A product carrying the three required fields (`price` is 10.0) plus `extraFields`.

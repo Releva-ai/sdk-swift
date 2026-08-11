@@ -6,7 +6,6 @@ import XCTest
 /// profile attributes into `context.profile`, and `context.profile.id` must survive.
 /// Guards against anyone re-widening the merge whitelist to include "profile".
 final class PushPayloadIdentityTests: XCTestCase {
-
     func testProfileMergeKeepsOnlyIdentity() {
         let service = NetworkService(realm: "us", accessToken: "token", config: .full())
 
@@ -16,7 +15,7 @@ final class PushPayloadIdentityTests: XCTestCase {
         // A (hypothetical) request tries to smuggle profile attributes plus a legit page.
         let request: [String: Any] = [
             "profile": ["email": "x@y.com", "phoneNumber": "+1"],
-            "page": ["url": "https://example.com"],
+            "page": ["url": "https://example.com"]
         ]
 
         let payload = service.buildPushPayload(request: request, context: context)

@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a product associated with a custom event
 public struct CustomEventProduct: Codable, Equatable, Hashable, Sendable {
-
     // MARK: - Properties
 
     /// The product ID
@@ -53,16 +52,15 @@ public struct CustomEventProduct: Codable, Equatable, Hashable, Sendable {
 // MARK: - Convenience Methods
 
 extension CustomEventProduct {
-
     /// Check if the product has a valid quantity
     public var hasQuantity: Bool {
-        return quantity != nil && quantity! > 0
+        (quantity ?? 0) > 0
     }
 
     /// Create a new product with updated quantity
     /// - Parameter quantity: The new quantity
     /// - Returns: A new custom event product with the updated quantity
     public func withQuantity(_ quantity: Double?) -> CustomEventProduct {
-        return CustomEventProduct(id: self.id, quantity: quantity)
+        CustomEventProduct(id: self.id, quantity: quantity)
     }
 }

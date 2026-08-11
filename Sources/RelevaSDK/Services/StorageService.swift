@@ -2,7 +2,6 @@ import Foundation
 
 /// Service for managing persistent storage using UserDefaults
 public class StorageService {
-
     // MARK: - Storage Keys
 
     enum StorageKey: String {
@@ -72,7 +71,7 @@ public class StorageService {
 
     /// Get device ID
     public func getDeviceId() -> String? {
-        return userDefaults.string(forKey: StorageKey.deviceId.rawValue)
+        userDefaults.string(forKey: StorageKey.deviceId.rawValue)
     }
 
     /// Save profile ID
@@ -82,7 +81,7 @@ public class StorageService {
 
     /// Get profile ID
     public func getProfileId() -> String? {
-        return userDefaults.string(forKey: StorageKey.profileId.rawValue)
+        userDefaults.string(forKey: StorageKey.profileId.rawValue)
     }
 
     /// Clear user identifiers
@@ -141,7 +140,7 @@ public class StorageService {
 
     /// Check if cart was initialized
     public func isCartInitialized() -> Bool {
-        return userDefaults.bool(forKey: StorageKey.cartInitialized.rawValue)
+        userDefaults.bool(forKey: StorageKey.cartInitialized.rawValue)
     }
 
     /// Mark cart as initialized
@@ -174,7 +173,7 @@ public class StorageService {
 
     /// Check if wishlist was initialized
     public func isWishlistInitialized() -> Bool {
-        return userDefaults.bool(forKey: StorageKey.wishlistInitialized.rawValue)
+        userDefaults.bool(forKey: StorageKey.wishlistInitialized.rawValue)
     }
 
     /// Mark wishlist as initialized
@@ -272,7 +271,7 @@ public class StorageService {
 
     /// Get merge profile IDs
     public func getMergeProfileIds() -> [String] {
-        return userDefaults.stringArray(forKey: StorageKey.mergeProfileIds.rawValue) ?? []
+        userDefaults.stringArray(forKey: StorageKey.mergeProfileIds.rawValue) ?? []
     }
 
     /// Add merge profile ID
@@ -298,7 +297,7 @@ public class StorageService {
 
     /// Get inbox messages JSON string
     public func getInboxMessages() -> String? {
-        return userDefaults.string(forKey: StorageKey.inboxMessages.rawValue)
+        userDefaults.string(forKey: StorageKey.inboxMessages.rawValue)
     }
 
     /// Save inbox unread count
@@ -308,7 +307,7 @@ public class StorageService {
 
     /// Get inbox unread count
     public func getInboxUnreadCount() -> Int {
-        return userDefaults.integer(forKey: StorageKey.inboxUnreadCount.rawValue)
+        userDefaults.integer(forKey: StorageKey.inboxUnreadCount.rawValue)
     }
 
     /// Save inbox next cursor
@@ -322,7 +321,7 @@ public class StorageService {
 
     /// Get inbox next cursor
     public func getInboxNextCursor() -> String? {
-        return userDefaults.string(forKey: StorageKey.inboxNextCursor.rawValue)
+        userDefaults.string(forKey: StorageKey.inboxNextCursor.rawValue)
     }
 
     /// Save inbox last fetch timestamp
@@ -353,7 +352,7 @@ public class StorageService {
 
     /// Get device session count
     public func getDeviceSessionCount() -> Int {
-        return userDefaults.integer(forKey: StorageKey.deviceSessionCount.rawValue)
+        userDefaults.integer(forKey: StorageKey.deviceSessionCount.rawValue)
     }
 
     /// Save device first seen date (ISO 8601)
@@ -363,7 +362,7 @@ public class StorageService {
 
     /// Get device first seen date (ISO 8601)
     public func getDeviceFirstSeenAt() -> String? {
-        return userDefaults.string(forKey: StorageKey.deviceFirstSeenAt.rawValue)
+        userDefaults.string(forKey: StorageKey.deviceFirstSeenAt.rawValue)
     }
 
     /// Save device last session timestamp (milliseconds since epoch)
@@ -385,7 +384,7 @@ public class StorageService {
 
     /// Get device views count
     public func getDeviceViewsCount() -> Int {
-        return userDefaults.integer(forKey: StorageKey.deviceViewsCount.rawValue)
+        userDefaults.integer(forKey: StorageKey.deviceViewsCount.rawValue)
     }
 
     // MARK: - Sync Management
@@ -467,10 +466,9 @@ extension StorageService.StorageKey: CaseIterable {}
 // MARK: - Storage Statistics
 
 extension StorageService {
-
     /// Get storage statistics
     public func getStorageStats() -> [String: Any] {
-        return [
+        [
             "hasDeviceId": getDeviceId() != nil,
             "hasProfileId": getProfileId() != nil,
             "hasSession": getSession() != nil,

@@ -8,7 +8,6 @@ import Foundation
 /// `RelevaResponse`; if a consumer does (for example to cache one in `UserDefaults` or a file), a
 /// `decode → encode → decode` round trip silently drops those three fields.
 public struct RelevaResponse: Codable, Equatable, Sendable {
-
     // NOTE: the /api/v0/push response also carries a top-level `userId` (the backend's resolved
     // canonical id). We intentionally do NOT decode or persist it. Identity is client-owned: the SDK
     // always sends its profileId, and under the userId-only contract the backend returns the same id
@@ -54,42 +53,42 @@ public struct RelevaResponse: Codable, Equatable, Sendable {
 
     /// Check if there are any recommenders available
     public var hasRecommenders: Bool {
-        return !recommenders.isEmpty
+        !recommenders.isEmpty
     }
 
     /// Check if there are any banners available
     public var hasBanners: Bool {
-        return !banners.isEmpty
+        !banners.isEmpty
     }
 
     /// Check if there are any stories available
     public var hasStories: Bool {
-        return !stories.isEmpty
+        !stories.isEmpty
     }
 
     /// Check if NPS config is available
     public var hasNps: Bool {
-        return nps != nil
+        nps != nil
     }
 
     /// Check if push configuration is available
     public var hasPushInfo: Bool {
-        return push != nil
+        push != nil
     }
 
     /// Get total number of recommenders
     public var recommenderCount: Int {
-        return recommenders.count
+        recommenders.count
     }
 
     /// Get all products from all recommenders
     public var allProducts: [ProductRecommendation] {
-        return recommenders.flatMap { $0.response }
+        recommenders.flatMap { $0.response }
     }
 
     /// Get total product count across all recommenders
     public var totalProductCount: Int {
-        return recommenders.reduce(0) { $0 + $1.productCount }
+        recommenders.reduce(0) { $0 + $1.productCount }
     }
 
     // MARK: - Public Methods
@@ -98,21 +97,21 @@ public struct RelevaResponse: Codable, Equatable, Sendable {
     /// - Parameter tag: The tag to filter by
     /// - Returns: Recommenders containing the specified tag
     public func getRecommendersByTag(_ tag: String) -> [RecommenderResponse] {
-        return recommenders.filter { $0.hasTag(tag) }
+        recommenders.filter { $0.hasTag(tag) }
     }
 
     /// Get recommender by token
     /// - Parameter token: The recommender token
     /// - Returns: The recommender with the specified token
     public func getRecommenderByToken(_ token: String) -> RecommenderResponse? {
-        return recommenders.first { $0.token == token }
+        recommenders.first { $0.token == token }
     }
 
     /// Get recommender by name
     /// - Parameter name: The recommender name
     /// - Returns: The recommender with the specified name
     public func getRecommenderByName(_ name: String) -> RecommenderResponse? {
-        return recommenders.first { $0.name == name }
+        recommenders.first { $0.name == name }
     }
 
     /// Get all unique product IDs
@@ -141,19 +140,19 @@ public struct RelevaResponse: Codable, Equatable, Sendable {
     /// - Parameter category: The category to filter by
     /// - Returns: Products in the specified category
     public func getProductsByCategory(_ category: String) -> [ProductRecommendation] {
-        return allProducts.filter { $0.categories?.contains(category) ?? false }
+        allProducts.filter { $0.categories?.contains(category) ?? false }
     }
 
     /// Get available products from all recommenders
     /// - Returns: Only available products
     public func getAvailableProducts() -> [ProductRecommendation] {
-        return allProducts.filter { $0.available }
+        allProducts.filter { $0.available }
     }
 
     /// Get discounted products from all recommenders
     /// - Returns: Only discounted products
     public func getDiscountedProducts() -> [ProductRecommendation] {
-        return allProducts.filter { $0.hasDiscount }
+        allProducts.filter { $0.hasDiscount }
     }
 
     // MARK: - Codable
@@ -207,7 +206,7 @@ public struct RelevaResponse: Codable, Equatable, Sendable {
     // MARK: - Equatable
 
     public static func == (lhs: RelevaResponse, rhs: RelevaResponse) -> Bool {
-        return lhs.recommenders == rhs.recommenders
+        lhs.recommenders == rhs.recommenders
             && lhs.push == rhs.push
             && lhs.banners.count == rhs.banners.count
             && lhs.stories.count == rhs.stories.count
@@ -221,7 +220,7 @@ public struct RelevaResponse: Codable, Equatable, Sendable {
     /// - Returns: RelevaResponse instance
     /// - Throws: Decoding error if JSON is invalid
     public static func from(jsonData data: Data) throws -> RelevaResponse {
-        return try JSONDecoder().decode(RelevaResponse.self, from: data)
+        try JSONDecoder().decode(RelevaResponse.self, from: data)
     }
 
     /// Create from JSON string
@@ -238,13 +237,12 @@ public struct RelevaResponse: Codable, Equatable, Sendable {
     /// Create an empty response
     /// - Returns: Empty RelevaResponse instance
     public static func empty() -> RelevaResponse {
-        return RelevaResponse(recommenders: [], banners: [], stories: [], nps: nil, push: nil)
+        RelevaResponse(recommenders: [], banners: [], stories: [], nps: nil, push: nil)
     }
 }
 
 /// Push notification configuration info
 public struct PushInfo: Codable, Equatable, Sendable {
-
     // MARK: - Properties
 
     /// VAPID public key for web push
@@ -262,7 +260,7 @@ public struct PushInfo: Codable, Equatable, Sendable {
 
     /// Check if VAPID key is available
     public var hasVapidKey: Bool {
-        return vapidPublicKey != nil && !vapidPublicKey!.isEmpty
+        !(vapidPublicKey ?? "").isEmpty
     }
 
     // MARK: - Serialization
@@ -290,7 +288,6 @@ public struct PushInfo: Codable, Equatable, Sendable {
 // MARK: - Response Helpers
 
 extension RelevaResponse {
-
     /// Merge multiple responses
     /// - Parameter responses: Array of responses to merge
     /// - Returns: Merged response

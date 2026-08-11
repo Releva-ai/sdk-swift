@@ -30,7 +30,6 @@ public enum JSONValue: Hashable, Sendable {
 // MARK: - Accessors
 
 extension JSONValue {
-
     /// The wrapped string, or `nil` if this is not a `.string`.
     public var stringValue: String? {
         guard case .string(let value) = self else { return nil }
@@ -101,7 +100,6 @@ extension JSONValue {
 // MARK: - Codable
 
 extension JSONValue: Codable {
-
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
 
@@ -145,7 +143,6 @@ extension JSONValue: Codable {
 // MARK: - Foundation bridging
 
 extension JSONValue {
-
     /// Wrap a Foundation JSON object of the kind `JSONSerialization` produces.
     ///
     /// Anything that is not a JSON value — which `JSONSerialization` cannot produce — becomes `.null`.
@@ -202,7 +199,6 @@ extension JSONValue {
 }
 
 extension Dictionary where Key == String, Value == JSONValue {
-
     /// Wrap a Foundation JSON dictionary.
     public init(any dictionary: [String: Any]) {
         self = dictionary.mapValues { JSONValue(any: $0) }
@@ -238,6 +234,6 @@ extension JSONValue: ExpressibleByArrayLiteral {
 
 extension JSONValue: ExpressibleByDictionaryLiteral {
     public init(dictionaryLiteral elements: (String, JSONValue)...) {
-        self = .object(Dictionary(elements, uniquingKeysWith: { _, last in last }))
+        self = .object(Dictionary(elements) { _, last in last })
     }
 }

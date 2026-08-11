@@ -29,7 +29,7 @@ public struct StorySlideResponse: Sendable {
     }
 
     public static func from(dict: [String: Any]) -> StorySlideResponse {
-        return StorySlideResponse(
+        StorySlideResponse(
             id: "\(dict["id"] ?? "")",
             html: dict["html"] as? String,
             design: (dict["design"] as? [String: Any]).map { [String: JSONValue](any: $0) },

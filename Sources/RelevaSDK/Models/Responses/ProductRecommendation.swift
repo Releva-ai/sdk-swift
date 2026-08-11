@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a recommended product from the API
 public struct ProductRecommendation: Codable, Equatable, Sendable {
-
     // MARK: - Properties
 
     /// Whether the product is available
@@ -69,7 +68,7 @@ public struct ProductRecommendation: Codable, Equatable, Sendable {
 
     /// Check if product has a discount
     public var hasDiscount: Bool {
-        return discount != nil && discount! > 0
+        (discount ?? 0) > 0
     }
 
     /// Calculate the actual discount percentage if not provided
@@ -81,17 +80,17 @@ public struct ProductRecommendation: Codable, Equatable, Sendable {
 
     /// Get the best available price (discounted or regular)
     public var bestPrice: Double {
-        return discountPrice ?? price
+        discountPrice ?? price
     }
 
     /// Check if product has an image
     public var hasImage: Bool {
-        return imageUrl != nil && !imageUrl!.isEmpty
+        !(imageUrl ?? "").isEmpty
     }
 
     /// Check if product has a URL
     public var hasUrl: Bool {
-        return url != nil && !url!.isEmpty
+        !(url ?? "").isEmpty
     }
 
     // MARK: - Codable
@@ -121,8 +120,8 @@ public struct ProductRecommendation: Codable, Equatable, Sendable {
 
         // `custom` and `data` are open-ended, so a value of the wrong shape degrades to `nil`
         // rather than failing the whole response (matching `RelevaResponse.decodeObjects`).
-        custom = (try? container.decodeIfPresent([String: JSONValue].self, forKey: .custom)) ?? nil
-        data = (try? container.decodeIfPresent([String: JSONValue].self, forKey: .data)) ?? nil
+        custom = (try? container.decodeIfPresent([String: JSONValue].self, forKey: .custom))
+        data = (try? container.decodeIfPresent([String: JSONValue].self, forKey: .data))
 
         description = try container.decodeIfPresent(String.self, forKey: .description)
         discount = try container.decodeIfPresent(Double.self, forKey: .discount)
@@ -229,32 +228,31 @@ public struct ProductRecommendation: Codable, Equatable, Sendable {
     // MARK: - Equatable
 
     public static func == (lhs: ProductRecommendation, rhs: ProductRecommendation) -> Bool {
-        return lhs.id == rhs.id
+        lhs.id == rhs.id
     }
 }
 
 // MARK: - Array Extensions
 
 extension Array where Element == ProductRecommendation {
-
     /// Filter available products
     public var available: [ProductRecommendation] {
-        return filter { $0.available }
+        filter { $0.available }
     }
 
     /// Filter products with discounts
     public var discounted: [ProductRecommendation] {
-        return filter { $0.hasDiscount }
+        filter { $0.hasDiscount }
     }
 
     /// Sort by price (ascending)
     public func sortedByPrice(ascending: Bool = true) -> [ProductRecommendation] {
-        return sorted { ascending ? $0.price < $1.price : $0.price > $1.price }
+        sorted { ascending ? $0.price < $1.price : $0.price > $1.price }
     }
 
     /// Sort by discount percentage (highest first)
     public func sortedByDiscount() -> [ProductRecommendation] {
-        return sorted {
+        sorted {
             let discount1 = $0.calculatedDiscountPercent ?? 0
             let discount2 = $1.calculatedDiscountPercent ?? 0
             return discount1 > discount2
@@ -263,12 +261,12 @@ extension Array where Element == ProductRecommendation {
 
     /// Get products in a specific category
     public func inCategory(_ category: String) -> [ProductRecommendation] {
-        return filter { $0.categories?.contains(category) ?? false }
+        filter { $0.categories?.contains(category) ?? false }
     }
 
     /// Get products within a price range
     public func inPriceRange(min: Double, max: Double) -> [ProductRecommendation] {
-        return filter { $0.bestPrice >= min && $0.bestPrice <= max }
+        filter { $0.bestPrice >= min && $0.bestPrice <= max }
     }
 }
 

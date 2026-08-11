@@ -42,7 +42,7 @@ public enum FilterOperator: String, CaseIterable, Codable, Sendable {
 
     /// Get the API value for the operator
     public var value: String {
-        return self.rawValue
+        self.rawValue
     }
 
     /// Human-readable description
@@ -83,22 +83,22 @@ public enum FilterOperator: String, CaseIterable, Codable, Sendable {
 /// Actions for filter application
 public enum FilterAction: String, CaseIterable, Codable, Sendable {
     /// Include only products that match the condition
-    case include = "include"
+    case include
 
     /// Exclude products that match the condition
-    case exclude = "exclude"
+    case exclude
 
     /// Make products appear at bottom if they match
-    case bury = "bury"
+    case bury
 
     /// Make products appear at top if they match
-    case boost = "boost"
+    case boost
 
     // MARK: - Properties
 
     /// Get the API value for the action
     public var value: String {
-        return self.rawValue
+        self.rawValue
     }
 
     /// Human-readable description
@@ -129,16 +129,16 @@ public enum FilterAction: String, CaseIterable, Codable, Sendable {
 /// Operation types for nested filters
 public enum NestedFilterOperation: String, CaseIterable, Codable, Sendable {
     /// All conditions must be met
-    case and = "and"
+    case and
 
     /// At least one condition must be met
-    case or = "or"
+    case or
 
     // MARK: - Properties
 
     /// Get the API value for the operation
     public var value: String {
-        return self.rawValue
+        self.rawValue
     }
 
     /// Human-readable description

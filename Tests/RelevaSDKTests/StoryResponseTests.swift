@@ -2,7 +2,6 @@ import XCTest
 @testable import RelevaSDK
 
 final class StoryResponseTests: XCTestCase {
-
     func testStoryResponseFromDict() {
         let dict: [String: Any] = [
             "token": "story-abc",

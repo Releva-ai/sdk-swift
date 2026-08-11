@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a product being viewed
 public struct ViewedProduct: Codable, Equatable, Sendable {
-
     // MARK: - Properties
 
     /// The product ID
@@ -28,7 +27,7 @@ public struct ViewedProduct: Codable, Equatable, Sendable {
     /// - Parameter custom: The custom fields to set
     /// - Returns: A new viewed product with the custom fields
     public func withCustomFields(_ custom: CustomFields) -> ViewedProduct {
-        return ViewedProduct(id: id, custom: custom)
+        ViewedProduct(id: id, custom: custom)
     }
 
     /// Add a string custom field
@@ -65,7 +64,7 @@ public struct ViewedProduct: Codable, Equatable, Sendable {
 
     /// Convert to dictionary for API requests
     public func toDict() -> [String: Any] {
-        return [
+        [
             "id": id,
             "custom": custom.toDict()
         ]

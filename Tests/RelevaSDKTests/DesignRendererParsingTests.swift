@@ -9,15 +9,23 @@ import UIKit
 /// View rendering itself is out of scope — these are the value conversions that decide what a
 /// banner ends up looking like, and they are the part that can be pinned without a host view.
 final class DesignRendererParsingTests: XCTestCase {
-
     // MARK: - Helpers
+
+    /// A named type rather than a 4-member tuple, so the members stay labelled at the
+    /// call site without tripping `large_tuple`.
+    private struct RGBAComponents {
+        let red: Double
+        let green: Double
+        let blue: Double
+        let alpha: Double
+    }
 
     /// The sRGB components of a colour, so assertions do not depend on `Color`'s own equality.
     private func rgba(
         _ color: Color?,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) throws -> (red: Double, green: Double, blue: Double, alpha: Double) {
+    ) throws -> RGBAComponents {
         let resolved = try XCTUnwrap(color, "expected a colour", file: file, line: line)
         var red: CGFloat = 0
         var green: CGFloat = 0
@@ -29,7 +37,12 @@ final class DesignRendererParsingTests: XCTestCase {
             file: file,
             line: line
         )
-        return (Double(red), Double(green), Double(blue), Double(alpha))
+        return RGBAComponents(
+            red: Double(red),
+            green: Double(green),
+            blue: Double(blue),
+            alpha: Double(alpha)
+        )
     }
 
     private func assertColor(

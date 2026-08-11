@@ -10,7 +10,6 @@ import XCTest
 /// Every session here is built with an explicit timestamp, so nothing depends on how long
 /// the test itself takes; assertions on "now" are given hour-scale or 5-second tolerances.
 final class SessionTests: XCTestCase {
-
     // MARK: - Fixtures
 
     private static let expirationInterval: TimeInterval = 24 * 60 * 60
@@ -38,7 +37,7 @@ final class SessionTests: XCTestCase {
 
     /// A session whose timestamp is `age` seconds in the past.
     private func makeSession(age: TimeInterval, id: String = "fixed-session-id") -> Session {
-        return Session(sessionId: id, timestamp: Date().addingTimeInterval(-age))
+        Session(sessionId: id, timestamp: Date().addingTimeInterval(-age))
     }
 
     // MARK: - New sessions

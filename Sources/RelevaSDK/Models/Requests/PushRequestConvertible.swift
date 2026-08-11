@@ -7,7 +7,6 @@ import Foundation
 /// before 4.0.0 they inherited from `PushRequest` instead, which is what forced it to be a
 /// non-final class and therefore kept it from being `Sendable`.
 public protocol PushRequestConvertible: Sendable {
-
     /// The request in the form the client sends.
     var pushRequest: PushRequest { get }
 
@@ -22,7 +21,6 @@ public protocol PushRequestConvertible: Sendable {
 }
 
 extension PushRequestConvertible {
-
     /// Validates whatever the request converts to.
     ///
     /// A conforming type with no rules beyond the cart checks needs nothing more than this.

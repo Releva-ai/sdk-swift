@@ -2,7 +2,6 @@ import Foundation
 
 /// Represents a display template for recommendations
 public struct Template: Codable, Equatable, Sendable {
-
     // MARK: - Properties
 
     /// Template ID
@@ -26,19 +25,19 @@ public struct Template: Codable, Equatable, Sendable {
 
     /// Check if template has content
     public var hasContent: Bool {
-        return !body.isEmpty
+        !body.isEmpty
     }
 
     /// Get the template body length
     public var contentLength: Int {
-        return body.count
+        body.count
     }
 
     // MARK: - Serialization
 
     /// Convert to dictionary for API responses
     public func toDict() -> [String: Any] {
-        return [
+        [
             "id": id,
             "body": body
         ]

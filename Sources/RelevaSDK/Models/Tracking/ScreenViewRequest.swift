@@ -2,7 +2,6 @@ import Foundation
 
 /// Request for tracking screen view events
 public struct ScreenViewRequest: PushRequestConvertible {
-
     // MARK: - Properties
 
     /// The screen identifier token
@@ -80,7 +79,7 @@ public struct ScreenViewRequest: PushRequestConvertible {
         productIds: [String],
         filter: AbstractFilter? = nil
     ) -> ScreenViewRequest {
-        return ScreenViewRequest(
+        ScreenViewRequest(
             screenToken: screenToken,
             productIds: productIds,
             filter: filter
@@ -98,7 +97,7 @@ public struct ScreenViewRequest: PushRequestConvertible {
         categories: [String],
         productIds: [String] = []
     ) -> ScreenViewRequest {
-        return ScreenViewRequest(
+        ScreenViewRequest(
             screenToken: screenToken,
             productIds: productIds.isEmpty ? nil : productIds,
             categories: categories
@@ -114,7 +113,7 @@ public struct ScreenViewRequest: PushRequestConvertible {
         screenToken: String,
         blocks: [String: [String]]? = nil
     ) -> ScreenViewRequest {
-        return ScreenViewRequest(
+        ScreenViewRequest(
             screenToken: screenToken,
             blocks: blocks
         )
@@ -124,14 +123,14 @@ public struct ScreenViewRequest: PushRequestConvertible {
     /// - Parameter screenToken: The screen identifier (defaults to "cart")
     /// - Returns: A configured screen view request
     public static func cartPage(screenToken: String) -> ScreenViewRequest {
-        return ScreenViewRequest(screenToken: screenToken)
+        ScreenViewRequest(screenToken: screenToken)
     }
 
     /// Create a screen view request for a checkout page
     /// - Parameter screenToken: The screen identifier (defaults to "checkout")
     /// - Returns: A configured screen view request
     public static func checkoutPage(screenToken: String) -> ScreenViewRequest {
-        return ScreenViewRequest(screenToken: screenToken)
+        ScreenViewRequest(screenToken: screenToken)
     }
 
     // MARK: - Copy Method
@@ -151,7 +150,7 @@ public struct ScreenViewRequest: PushRequestConvertible {
         filter: AbstractFilter? = nil,
         blocks: [String: [String]]? = nil
     ) -> ScreenViewRequest {
-        return ScreenViewRequest(
+        ScreenViewRequest(
             screenToken: screenToken ?? self.screenToken,
             productIds: productIds ?? self.productIds,
             categories: categories ?? self.categories,

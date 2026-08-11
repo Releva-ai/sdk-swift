@@ -3,7 +3,6 @@ import Combine
 @testable import RelevaSDK
 
 final class NpsManagerServiceTests: XCTestCase {
-
     private var cancellables = Set<AnyCancellable>()
 
     override func tearDown() {

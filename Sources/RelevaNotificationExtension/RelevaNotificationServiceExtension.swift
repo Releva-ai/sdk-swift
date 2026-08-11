@@ -4,7 +4,6 @@ import FirebaseMessaging
 /// Notification Service Extension for rich push notifications
 /// Inherit from this class in your Notification Service Extension to enable rich notifications
 open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
-
     open var contentHandler: ((UNNotificationContent) -> Void)?
     open var bestAttemptContent: UNMutableNotificationContent?
 
@@ -25,7 +24,7 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
 
         // Check if this is a Releva notification
         // Firebase iOS puts custom data at root level, not in "data" wrapper
-        var relevaData: [String: Any]? = nil
+        var relevaData: [String: Any]?
         var isReleva = false
 
         // Check root level first (iOS format)
@@ -72,7 +71,6 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
 
     /// Process Releva notification
     private func processRelevaNotification(_ content: UNMutableNotificationContent, data: [String: Any], completion: @escaping (UNNotificationContent) -> Void) {
-
         // Set title and body from data if available
         if let title = data["title"] as? String {
             content.title = title
@@ -217,7 +215,6 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
 // MARK: - Releva Message Detection
 
 extension RelevaNotificationServiceExtension {
-
     /// Check if notification is from Releva
     public static func isRelevaMessage(_ userInfo: [AnyHashable: Any]) -> Bool {
         // Firebase iOS puts custom data at root level (iOS format)

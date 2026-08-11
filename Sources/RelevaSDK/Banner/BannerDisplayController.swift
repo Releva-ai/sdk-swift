@@ -4,7 +4,6 @@ import Combine
 /// Singleton controller that manages banner display events.
 /// Banners are emitted here by BannerManagerService and consumed by BannerDisplayView.
 public class BannerDisplayController: ObservableObject {
-
     /// Shared instance
     public static let shared = BannerDisplayController()
 

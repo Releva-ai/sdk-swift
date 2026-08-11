@@ -6,7 +6,6 @@ import XCTest
 /// Every test gets its own `UserDefaults` suite, removed again in `tearDown`, so nothing
 /// touches `UserDefaults.standard` and no test depends on another's leftovers.
 final class StorageServiceTests: XCTestCase {
-
     private var suiteName: String!
     private var defaults: UserDefaults!
     private var storage: StorageService!

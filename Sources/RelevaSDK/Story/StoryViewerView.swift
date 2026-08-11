@@ -74,12 +74,11 @@ public struct StoryViewerView: View {
                             ScrollView {
                                 DesignRenderer.render(
                                     design: design,
-                                    maxWidth: geometry.size.width,
-                                    onLinkTap: { url in
-                                        trackSlideClick()
-                                        onLinkTap(url)
-                                    }
-                                )
+                                    maxWidth: geometry.size.width
+                                ) { url in
+                                    trackSlideClick()
+                                    onLinkTap(url)
+                                }
                             }
                         }
 

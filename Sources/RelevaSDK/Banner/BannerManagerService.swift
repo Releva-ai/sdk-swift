@@ -3,7 +3,6 @@ import Foundation
 /// Manages banner trigger logic and lifecycle.
 /// Handles trigger types: immediately, delaySeconds, scrollPercentage, cartChanged, wishlistChanged.
 public class BannerManagerService {
-
     private var banners: [BannerResponse] = []
     private var displayedBanners = Set<String>()
     private var delayTimers: [Timer] = []

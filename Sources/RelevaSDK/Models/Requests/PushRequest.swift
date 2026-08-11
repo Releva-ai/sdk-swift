@@ -7,7 +7,6 @@ import Foundation
 /// with value semantics a discarded result is an edit that was silently dropped, and the
 /// missing attribute turns such a call site into a compiler diagnostic instead.
 public struct PushRequest: PushRequestConvertible {
-
     // MARK: - Properties
 
     /// Page context, serialized under `page`. Holds only strings, string arrays and the
@@ -38,35 +37,35 @@ public struct PushRequest: PushRequestConvertible {
     /// - Parameter pageToken: The page identifier token
     /// - Returns: A copy with the token applied
     public func screenView(_ pageToken: String) -> PushRequest {
-        return setting("token", .string(pageToken))
+        setting("token", .string(pageToken))
     }
 
     /// Set the page URL
     /// - Parameter url: The page URL
     /// - Returns: A copy with the URL applied
     public func pageUrl(_ url: String) -> PushRequest {
-        return setting("url", .string(url))
+        setting("url", .string(url))
     }
 
     /// Set the locale
     /// - Parameter locale: The locale identifier (e.g., "en_US")
     /// - Returns: A copy with the locale applied
     public func locale(_ locale: String) -> PushRequest {
-        return setting("locale", .string(locale))
+        setting("locale", .string(locale))
     }
 
     /// Set the search query
     /// - Parameter query: The search query string
     /// - Returns: A copy with the query applied
     public func search(_ query: String) -> PushRequest {
-        return setting("query", .string(query))
+        setting("query", .string(query))
     }
 
     /// Set the currency
     /// - Parameter currency: The currency code (e.g., "USD")
     /// - Returns: A copy with the currency applied
     public func currency(_ currency: String) -> PushRequest {
-        return setting("currency", .string(currency))
+        setting("currency", .string(currency))
     }
 
     /// Set the product being viewed
@@ -91,7 +90,7 @@ public struct PushRequest: PushRequestConvertible {
     /// - Parameter productIds: Array of product IDs
     /// - Returns: A copy with the product IDs applied
     public func pageProductIds(_ productIds: [String]) -> PushRequest {
-        return setting(
+        setting(
             "ids",
             productIds.isEmpty ? nil : JSONValue.array(productIds.map { JSONValue.string($0) })
         )
@@ -101,7 +100,7 @@ public struct PushRequest: PushRequestConvertible {
     /// - Parameter categories: Array of category names
     /// - Returns: A copy with the categories applied
     public func pageCategories(_ categories: [String]) -> PushRequest {
-        return setting(
+        setting(
             "categories",
             categories.isEmpty ? nil : JSONValue.array(categories.map { JSONValue.string($0) })
         )
@@ -131,7 +130,7 @@ public struct PushRequest: PushRequestConvertible {
     /// - Parameter tags: Array of tag strings
     /// - Returns: A copy with the blocks applied
     public func pageBlocks(tags: [String]) -> PushRequest {
-        return setting("blocks", JSONValue.object(["tags": JSONValue.array(tags.map { JSONValue.string($0) })]))
+        setting("blocks", JSONValue.object(["tags": JSONValue.array(tags.map { JSONValue.string($0) })]))
     }
 
     // NOTE: a `profile(email:phoneNumber:firstName:lastName:registeredAt:)` builder was removed.
@@ -151,7 +150,7 @@ public struct PushRequest: PushRequestConvertible {
 
     /// `PushRequest` is already the form the client sends.
     public var pushRequest: PushRequest {
-        return self
+        self
     }
 
     // MARK: - Serialization
@@ -197,7 +196,7 @@ public struct PushRequest: PushRequestConvertible {
     /// - Parameter screenToken: The screen identifier
     /// - Returns: A configured PushRequest
     public static func forScreenView(_ screenToken: String) -> PushRequest {
-        return PushRequest().screenView(screenToken)
+        PushRequest().screenView(screenToken)
     }
 
     /// Create a request for product view tracking
