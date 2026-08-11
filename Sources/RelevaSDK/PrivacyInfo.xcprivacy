@@ -6,6 +6,15 @@
 	     see PrivacyManifestTests, which pins the entries this file must and must
 	     not contain. When you add a tracking call or a new field to the push
 	     payload, update this file in the same commit. -->
+	<!-- false, signed off by Releva (2026-08-11) and not a placeholder. The
+	     collected data is used for first-party personalisation and measurement
+	     within the integrating app; server-side conversion forwarding to ad
+	     platforms is treated as the integrator's own measurement rather than
+	     Apple-defined tracking (linking with third-party data for targeted
+	     advertising, or sharing with a data broker). Revisit if the SDK itself
+	     ever starts sending to an ad network, or if data is shared onward in a
+	     way that meets that definition — and note that flipping this to true
+	     also means flipping the per-datatype Tracking flags below. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<!-- Deliberately empty, and it must stay empty unless someone accepts the
@@ -17,16 +26,20 @@
 	     hosts (see NetworkService.getBaseURL()). -->
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
-	<!-- Purposes below are ProductPersonalization + AppFunctionality only.
-	     Flagged for the same human/product sign-off as NSPrivacyTracking above:
-	     buildContext() (RelevaClient.swift) labels its own device block "with
-	     analytics" and sends session count, view count and first-seen date on
-	     every request, alongside the identifiers and events below. Whether that
-	     is Apple's Analytics purpose ("evaluating user behavior ... to plan new
-	     features, or measure audience size or characteristics") depends on how
-	     Releva's backend uses it, which is not visible from this repository —
-	     do not add NSPrivacyCollectedDataTypePurposeAnalytics without that
-	     answer, and do not assume its absence is settled either. -->
+	<!-- Purposes: ProductPersonalization + AppFunctionality + Analytics.
+	     Analytics was signed off by Releva (2026-08-11) and is not provisional:
+	     the platform's Customer Insights features — RFM scoring, cohort
+	     analysis, funnels and audience performance — are built on exactly the
+	     identifiers and events declared below, which is Apple's Analytics
+	     purpose ("evaluating user behavior ... to measure audience size or
+	     characteristics"). buildContext() (RelevaClient.swift) also sends
+	     session count, view count and first-seen date on every request.
+
+	     One deliberate exception: the NPS free-text comment at the bottom of
+	     this list stays AppFunctionality-only. It is read individually by a
+	     marketer rather than aggregated into an audience measure, so Analytics
+	     is not justifiable for it on the same reasoning. Revisit if that
+	     changes. -->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
 		<!-- The `profileId` the integrator sets via RelevaClient.setProfileId(_:),
@@ -42,6 +55,7 @@
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
 		</dict>
 		<!-- The `deviceId` the integrator sets via RelevaClient.setDeviceId(_:),
@@ -60,6 +74,7 @@
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
 		</dict>
 		<!-- Screen and product views, cart and wishlist contents, custom events,
@@ -75,6 +90,7 @@
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
 		</dict>
 		<!-- The verbatim query string passed to
@@ -90,6 +106,7 @@
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
 		</dict>
 		<!-- Order ID, ordered products, quantities, prices and total from
@@ -105,6 +122,7 @@
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
 		</dict>
 		<!-- The optional free-text `comment` on
