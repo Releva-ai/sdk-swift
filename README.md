@@ -156,7 +156,9 @@ four are now `Sendable` structs. The payload on the wire is unchanged.
 `PushRequest`, `ScreenViewRequest`, `SearchRequest` and `CheckoutSuccessRequest`
 are structs. The three tracking requests no longer inherit from `PushRequest`;
 they conform to the new `PushRequestConvertible` protocol, which `client.push(...)`
-is generic over, so every existing `push` call site compiles unchanged.
+takes as `any PushRequestConvertible`, so every existing `push` call site compiles
+unchanged — including one built against a value held as the protocol type, such
+as a request queue or a `-> PushRequest` factory.
 
 Chained builder calls are also unchanged — each one returns a copy where it used
 to return the same instance, which reads identically in a chain:
@@ -186,29 +188,43 @@ If you subclassed `PushRequest`, conform to `PushRequestConvertible` instead:
 supply a `pushRequest` that builds the request you want, and implement
 `validate()` only if you have rules of your own beyond the cart checks.
 
-`ScreenViewRequest` and `SearchRequest` no longer have a `cart` property. They
-used to inherit `public var cart: Cart?` from `PushRequest`, so this compiled:
+As `PushRequest` subclasses, `ScreenViewRequest`, `SearchRequest` and
+`CheckoutSuccessRequest` used to inherit every `public` member of `PushRequest` —
+not just `cart`, but `toDict()` and all thirteen fluent builders too, since the
+builders returned `self` typed as the base class. `PushRequestConvertible`
+exposes only `pushRequest` and `validate()`, so none of that inherited surface
+is there anymore. Reach it through `.pushRequest` first:
 
 ```swift
-// 3.x — compiled, and made buildContext prefer this cart over the client's stored one
+// 3.x — compiled: cart, toDict() and every builder were inherited
 let request = ScreenViewRequest(screenToken: "cart")
 request.cart = snapshot
+let payload = request.toDict()
+let localized = request.locale("en_US")
 client.push(request)
 ```
-
-In 4.0.0 there is no `cart` on the tracking requests and no `PushRequestConvertible`
-member replaces it; build a `PushRequest` and set the cart on that instead:
 
 ```swift
-// 4.0.0
-let request = PushRequest().screenView("cart").setCart(snapshot)
-client.push(request)
+// 4.0.0 — go through .pushRequest for anything beyond pushRequest/validate()
+let request = ScreenViewRequest(screenToken: "cart")
+let withCart = request.pushRequest.setCart(snapshot)
+let payload = withCart.toDict()
+let localized = request.pushRequest.locale("en_US")
+client.push(withCart) // the request the client sees is whatever you pass it — a
+                       // tracking request's own cart, if any, is not read by push
 ```
 
-`RelevaClient` is a non-final `public class`, so making `push(_:completion:)` and
-`push(_:) async` generic over `PushRequestConvertible` also changes the signature
-a subclass override has to match. If you subclass `RelevaClient` and override
-either `push` method, update the override to the new generic signature.
+`cart` is the concrete case worth calling out on its own, since it's the one
+where 3.x kept compiling with different behavior (setting a property that was
+silently never read) rather than failing to compile. There is no
+`PushRequestConvertible` member that replaces it; build a `PushRequest` and
+`setCart` on that instead, as above.
+
+`RelevaClient` is a non-final `public class`, so changing `push(_:completion:)`
+and `push(_:) async` from taking the `PushRequest` base class to taking
+`any PushRequestConvertible` also changes the signature a subclass override has
+to match. If you subclass `RelevaClient` and override either `push` method,
+update the override to the new parameter type.
 
 Everything the requests hold is `Sendable` too — `Cart`, `CartProduct`,
 `ViewedProduct`, `CustomEvent`, `CustomEventProduct`, `CustomFields`,

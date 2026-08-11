@@ -12,6 +12,11 @@ public protocol PushRequestConvertible: Sendable {
     var pushRequest: PushRequest { get }
 
     /// Validate the request
+    ///
+    /// A requirement rather than only an extension member so that a type carrying
+    /// stricter rules of its own still gets them when the caller holds the protocol —
+    /// the dynamic dispatch the `override` in `SearchRequest` and `CheckoutSuccessRequest`
+    /// used to provide.
     /// - Throws: RelevaError if validation fails
     func validate() throws
 }
@@ -20,10 +25,7 @@ extension PushRequestConvertible {
 
     /// Validates whatever the request converts to.
     ///
-    /// `validate()` is a requirement rather than only an extension member so that a type
-    /// carrying stricter rules of its own still gets them when the caller holds the
-    /// protocol — the dynamic dispatch the `override` in `SearchRequest` and
-    /// `CheckoutSuccessRequest` used to provide.
+    /// A conforming type with no rules beyond the cart checks needs nothing more than this.
     public func validate() throws {
         try pushRequest.validate()
     }

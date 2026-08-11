@@ -136,4 +136,41 @@ final class TrackingRequestConversionTests: XCTestCase {
 
         XCTAssertNoThrow(try request.validate(), "a screen view adds no rules of its own")
     }
+
+    // MARK: - RelevaClient.push accepts every convertible type
+
+    /// The load-bearing assertion for the whole `PushRequestConvertible` design: all four
+    /// concrete types go into `RelevaClient.push` without a call-site conversion, including
+    /// when held together as `any PushRequestConvertible` in one array. `push` takes that
+    /// existential rather than a generic parameter precisely so this compiles — a generic
+    /// `<Request: PushRequestConvertible>` parameter would reject a value statically typed
+    /// as the protocol, since Swift existentials don't self-conform.
+    @MainActor
+    func testTheClientAcceptsEveryConvertibleRequestTypeIncludingAsAnExistentialArray() {
+        // `enableTracking: false` makes `push` resolve synchronously with
+        // `.success(.empty())` without a network call (RelevaClient.swift's push guard).
+        let client = RelevaClient(
+            realm: "test",
+            accessToken: "test-token",
+            config: RelevaConfig(enableTracking: false)
+        )
+        let requests: [any PushRequestConvertible] = [
+            PushRequest().screenView("home"),
+            ScreenViewRequest(screenToken: "home"),
+            SearchRequest(query: "shoes"),
+            CheckoutSuccessRequest(orderedCart: Cart.paid([CartProduct(id: "p1", price: 1)], orderId: "o"))
+        ]
+        XCTAssertEqual(requests.count, 4)
+
+        for request in requests {
+            let done = expectation(description: "push completes")
+            client.push(request) { result in
+                if case .failure(let error) = result {
+                    XCTFail("expected push to succeed with tracking disabled, got \(error)")
+                }
+                done.fulfill()
+            }
+            waitForExpectations(timeout: 1)
+        }
+    }
 }
