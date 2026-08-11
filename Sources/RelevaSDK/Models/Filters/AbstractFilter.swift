@@ -12,19 +12,19 @@ public protocol AbstractFilter: Codable, Sendable {
 /// Operators for filter conditions
 public enum FilterOperator: String, CaseIterable, Codable, Sendable {
     /// Equal to
-    case eq = "eq"
+    case eq
 
     /// Less than
-    case lt = "lt"
+    case lt
 
     /// Greater than
-    case gt = "gt"
+    case gt
 
     /// Less than or equal to
-    case lte = "lte"
+    case lte
 
     /// Greater than or equal to
-    case gte = "gte"
+    case gte
 
     /// Greater than or equal to AND less than or equal to
     case gteLte = "gte,lte"
@@ -83,16 +83,16 @@ public enum FilterOperator: String, CaseIterable, Codable, Sendable {
 /// Actions for filter application
 public enum FilterAction: String, CaseIterable, Codable, Sendable {
     /// Include only products that match the condition
-    case include = "include"
+    case include
 
     /// Exclude products that match the condition
-    case exclude = "exclude"
+    case exclude
 
     /// Make products appear at bottom if they match
-    case bury = "bury"
+    case bury
 
     /// Make products appear at top if they match
-    case boost = "boost"
+    case boost
 
     // MARK: - Properties
 
@@ -129,10 +129,10 @@ public enum FilterAction: String, CaseIterable, Codable, Sendable {
 /// Operation types for nested filters
 public enum NestedFilterOperation: String, CaseIterable, Codable, Sendable {
     /// All conditions must be met
-    case and = "and"
+    case and
 
     /// At least one condition must be met
-    case or = "or"
+    case or
 
     // MARK: - Properties
 

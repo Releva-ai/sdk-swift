@@ -630,7 +630,8 @@ public class NetworkService {
     }
 
     /// Build push request payload with context
-    // internal (not private) so the identity-merge contract can be unit-tested via @testable.
+    ///
+    /// Internal (not private) so the identity-merge contract can be unit-tested via `@testable`.
     func buildPushPayload(request: [String: Any], context: [String: Any]) -> [String: Any] {
         var payload: [String: Any] = [
             "context": context,

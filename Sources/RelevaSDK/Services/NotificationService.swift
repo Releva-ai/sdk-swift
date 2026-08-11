@@ -194,7 +194,7 @@ public class NotificationService: NSObject {
 
     /// Add image attachment to notification
     private func addImageAttachment(to content: UNMutableNotificationContent, from url: URL, completion: @escaping (UNNotificationContent) -> Void) {
-        URLSession.shared.downloadTask(with: url) { localUrl, _, error in
+        let task = URLSession.shared.downloadTask(with: url) { localUrl, _, error in
             guard let localUrl = localUrl, error == nil else {
                 completion(content)
                 return
@@ -222,7 +222,8 @@ public class NotificationService: NSObject {
             }
 
             completion(content)
-        }.resume()
+        }
+        task.resume()
     }
 }
 
@@ -507,7 +508,8 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 print("RelevaSDK: Navigating to inbox")
             }
             navigateToInbox(parameters: data["navigate_to_parameters"] as? String)
-            default:
+
+        default:
             if config.enableDebugLogging {
                 print("RelevaSDK: ⚠️ Unknown target type: \(target)")
             }

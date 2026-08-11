@@ -3,13 +3,13 @@ import Foundation
 /// Types of engagement events for push notifications
 public enum EngagementEventType: String, CaseIterable, Codable {
     /// Notification was delivered to the device
-    case delivered = "delivered"
+    case delivered
 
     /// Notification was opened by the user
-    case opened = "opened"
+    case opened
 
     /// Notification action button was clicked
-    case clicked = "clicked"
+    case clicked
 
     // MARK: - Properties
 

@@ -63,10 +63,8 @@ final class SessionServiceTests: XCTestCase {
         NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
 
-        XCTAssertEqual(storage.getDeviceSessionCount(), countBefore,
-                       "Session count must not change after a short background")
-        XCTAssertEqual(storage.getSession()?.sessionId, sessionIdBefore,
-                       "Session ID must not change after a short background")
+        XCTAssertEqual(storage.getDeviceSessionCount(), countBefore, "Session count must not change after a short background")
+        XCTAssertEqual(storage.getSession()?.sessionId, sessionIdBefore, "Session ID must not change after a short background")
     }
 
     /// A background longer than the threshold must start a new session.
@@ -83,10 +81,8 @@ final class SessionServiceTests: XCTestCase {
         NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
 
-        XCTAssertEqual(storage.getDeviceSessionCount(), countBefore + 1,
-                       "Session count must increment after a long background")
-        XCTAssertNotEqual(storage.getSession()?.sessionId, sessionIdBefore,
-                          "Session ID must change after a long background")
+        XCTAssertEqual(storage.getDeviceSessionCount(), countBefore + 1, "Session count must increment after a long background")
+        XCTAssertNotEqual(storage.getSession()?.sessionId, sessionIdBefore, "Session ID must change after a long background")
     }
 
     /// Multiple foreground events after a single background must only create one new session.
@@ -102,8 +98,11 @@ final class SessionServiceTests: XCTestCase {
         // Second foreground without a preceding background: pausedAtMs is nil, no new session.
         NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
 
-        XCTAssertEqual(storage.getDeviceSessionCount(), countBefore + 1,
-                       "Only one new session must be counted for a single background/foreground cycle")
+        XCTAssertEqual(
+            storage.getDeviceSessionCount(),
+            countBefore + 1,
+            "Only one new session must be counted for a single background/foreground cycle"
+        )
     }
 
     /// `firstSeenAt` must be written on the first ever session and never overwritten.
@@ -117,8 +116,7 @@ final class SessionServiceTests: XCTestCase {
         NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
 
-        XCTAssertEqual(storage.getDeviceFirstSeenAt(), firstSeenAt,
-                       "firstSeenAt must not change on subsequent sessions")
+        XCTAssertEqual(storage.getDeviceFirstSeenAt(), firstSeenAt, "firstSeenAt must not change on subsequent sessions")
     }
 
     // MARK: - Pre-init getSessionId fallback
@@ -127,8 +125,7 @@ final class SessionServiceTests: XCTestCase {
     func testGetSessionIdFallbackIsStable() {
         let id1 = SessionService.shared.getSessionId()
         let id2 = SessionService.shared.getSessionId()
-        XCTAssertEqual(id1, id2,
-                       "Pre-init getSessionId() must return a stable fallback UUID")
+        XCTAssertEqual(id1, id2, "Pre-init getSessionId() must return a stable fallback UUID")
     }
 
     /// After `initialize()`, the real storage-backed session ID replaces the fallback.
@@ -136,10 +133,12 @@ final class SessionServiceTests: XCTestCase {
         let fallbackId = SessionService.shared.getSessionId()
         SessionService.shared.initialize(storage: storage, npsManager: nil)
         let realId = SessionService.shared.getSessionId()
-        XCTAssertNotEqual(realId, fallbackId,
-                          "Post-init getSessionId() must return the real session ID, not the fallback")
-        XCTAssertEqual(realId, storage.getSession()?.sessionId,
-                       "Post-init getSessionId() must return the storage-backed session ID")
+        XCTAssertNotEqual(realId, fallbackId, "Post-init getSessionId() must return the real session ID, not the fallback")
+        XCTAssertEqual(
+            realId,
+            storage.getSession()?.sessionId,
+            "Post-init getSessionId() must return the storage-backed session ID"
+        )
     }
 
     // MARK: - dispose / re-initialize lifecycle
@@ -152,10 +151,8 @@ final class SessionServiceTests: XCTestCase {
 
         SessionService.shared.initialize(storage: storage, npsManager: nil)
 
-        XCTAssertEqual(storage.getDeviceSessionCount(), countAfterFirst,
-                       "Second initialize() must not increment session count")
-        XCTAssertEqual(storage.getSession()?.sessionId, sessionIdAfterFirst,
-                       "Second initialize() must not change session ID")
+        XCTAssertEqual(storage.getDeviceSessionCount(), countAfterFirst, "Second initialize() must not increment session count")
+        XCTAssertEqual(storage.getSession()?.sessionId, sessionIdAfterFirst, "Second initialize() must not change session ID")
     }
 
     /// After `dispose()`, `getSessionId()` must fall back to the stable pre-init path again.
@@ -165,8 +162,7 @@ final class SessionServiceTests: XCTestCase {
 
         let id1 = SessionService.shared.getSessionId()
         let id2 = SessionService.shared.getSessionId()
-        XCTAssertEqual(id1, id2,
-                       "After dispose(), getSessionId() must return a stable fallback UUID")
+        XCTAssertEqual(id1, id2, "After dispose(), getSessionId() must return a stable fallback UUID")
     }
 
     /// `dispose()` followed by `initialize()` must start a fresh session.
@@ -177,9 +173,7 @@ final class SessionServiceTests: XCTestCase {
         SessionService.shared.dispose()
         SessionService.shared.initialize(storage: storage, npsManager: nil)
 
-        XCTAssertNotEqual(storage.getSession()?.sessionId, firstSessionId,
-                          "Re-initialize after dispose must generate a new session ID")
-        XCTAssertEqual(storage.getDeviceSessionCount(), 2,
-                       "Re-initialize after dispose must increment the session count to 2")
+        XCTAssertNotEqual(storage.getSession()?.sessionId, firstSessionId, "Re-initialize after dispose must generate a new session ID")
+        XCTAssertEqual(storage.getDeviceSessionCount(), 2, "Re-initialize after dispose must increment the session count to 2")
     }
 }

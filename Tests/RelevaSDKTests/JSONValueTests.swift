@@ -21,7 +21,7 @@ final class JSONValueTests: XCTestCase {
         encoder.outputFormatting = .sortedKeys
         let reEncoded = try encoder.encode(decoded)
 
-        XCTAssertEqual(String(decoding: reEncoded, as: UTF8.self), #"{"count":3,"ratio":0.5}"#)
+        XCTAssertEqual(try XCTUnwrap(String(data: reEncoded, encoding: .utf8)), #"{"count":3,"ratio":0.5}"#)
     }
 
     /// The guarantee this type actually provides is "a JSON integer stays an integer", not
@@ -38,7 +38,11 @@ final class JSONValueTests: XCTestCase {
         encoder.outputFormatting = .sortedKeys
         let reEncoded = try encoder.encode(decoded)
 
-        XCTAssertEqual(String(decoding: reEncoded, as: UTF8.self), #"{"ratio":1}"#, "the trailing .0 does not survive the round trip")
+        XCTAssertEqual(
+            try XCTUnwrap(String(data: reEncoded, encoding: .utf8)),
+            #"{"ratio":1}"#,
+            "the trailing .0 does not survive the round trip"
+        )
     }
 
     /// The numeric accessors match what the `from(dict:)` factories used to get out of `NSNumber`,

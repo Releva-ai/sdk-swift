@@ -298,10 +298,10 @@ public struct DesignRenderer {
     ///   - value: The backgroundImage dictionary from Unlayer JSON
     ///   - forceCover: When true, always use .fill content mode
     /// - Returns: Tuple of (URL, ContentMode, Alignment) or nil if no valid URL
-    // Swapping this labelled 3-tuple for a named struct would change a public signature,
-    // which this release rules out; it waits for the next major instead.
-    // swiftlint:disable:next large_tuple
-    public static func parseBackgroundImage(_ value: JSONValue?, forceCover: Bool = false) -> (url: URL, contentMode: ContentMode, alignment: Alignment)? {
+    ///
+    /// The labelled 3-tuple is `large_tuple`; swapping it for a named struct would change a
+    /// public signature, which this release rules out, so it waits for the next major.
+    public static func parseBackgroundImage(_ value: JSONValue?, forceCover: Bool = false) -> (url: URL, contentMode: ContentMode, alignment: Alignment)? { // swiftlint:disable:this large_tuple
         guard let bgImage = value?.objectValue,
               let urlStr = bgImage["url"]?.stringValue, !urlStr.isEmpty,
               let url = URL(string: urlStr) else { return nil }
@@ -414,10 +414,14 @@ public struct DesignRenderer {
     }
 
     static func parseDimensionRaw(_ value: JSONValue?) -> CGFloat? {
-        guard let str = "\(value?.anyValue ?? "")".trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "px", with: "")
-            .replacingOccurrences(of: "em", with: "").replacingOccurrences(of: "rem", with: "")
-            .replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces) as String?,
-              let val = Double(str) else { return nil }
+        let str = "\(value?.anyValue ?? "")"
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "px", with: "")
+            .replacingOccurrences(of: "em", with: "")
+            .replacingOccurrences(of: "rem", with: "")
+            .replacingOccurrences(of: "%", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        guard let val = Double(str) else { return nil }
         return CGFloat(val)
     }
 

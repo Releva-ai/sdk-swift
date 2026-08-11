@@ -69,7 +69,12 @@ test: require-macos
 
 # The same invocation the `SwiftLint` job in ci.yml runs, and it gates there.
 # `strict: true` lives in .swiftlint.yml rather than in a flag on either side, so
-# this target cannot end up more lenient than CI.
+# this target cannot end up more lenient than CI. The one deliberate difference
+# is the reporter: CI passes `--reporter github-actions-logging` so violations
+# annotate the diff, which only means anything inside a GitHub Actions run. The
+# default `xcode` reporter here is what makes a local violation clickable in
+# Xcode's issue navigator - a strict downgrade for a human at a terminal.
+# Neither reporter choice affects which violations fail the run.
 #
 # `brew install swiftlint` gives you whatever is newest, while CI installs a
 # pinned version (see the "Install SwiftLint" step in ci.yml). If a violation

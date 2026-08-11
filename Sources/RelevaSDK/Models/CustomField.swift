@@ -36,12 +36,14 @@ public struct CustomField<T: Codable & Equatable & Hashable>: Codable, Equatable
     public func toDict() -> [String: Any] {
         var dict: [String: Any] = ["key": key]
 
-        // One conditional cast in place of a `T.self == Date.self` test plus a force cast.
-        // `T` is constrained to `Codable & Equatable & Hashable`, so the cast succeeds for
-        // exactly the instantiations the type test used to select: `T == Date`.
-        if let dateValues = values as? [Date] {
-            // Convert dates to ISO8601 strings
-            dict["values"] = dateValues.map { ISO8601DateFormatter().string(from: $0) }
+        // No force cast: the `T.self == Date.self` test still selects the branch, and the
+        // conditional cast is what unwraps it. The type test is not redundant — an *empty*
+        // `[T]` casts to `[Date]` for any `T`, because array casts are element-wise.
+        if T.self == Date.self, let dateValues = values as? [Date] {
+            // Convert dates to ISO8601 strings. One formatter for the whole array rather than
+            // one per element - ISO8601DateFormatter initialisation is not cheap.
+            let formatter = ISO8601DateFormatter()
+            dict["values"] = dateValues.map { formatter.string(from: $0) }
         } else {
             dict["values"] = values
         }

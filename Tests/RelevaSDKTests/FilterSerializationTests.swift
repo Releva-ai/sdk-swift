@@ -241,10 +241,11 @@ final class FilterSerializationTests: XCTestCase {
     }
 
     func testNestedFilterEncodesChildrenInOrder() throws {
-        let dict = NestedFilter.and([
+        let filter = NestedFilter.and([
             SimpleFilter.priceRange(minPrice: 10, maxPrice: 20),
             SimpleFilter.brand("Acme")
-        ]).toDict()
+        ])
+        let dict = filter.toDict()
 
         let children = try nested(dict)
         XCTAssertEqual(children.count, 2)
@@ -354,12 +355,13 @@ final class FilterSerializationTests: XCTestCase {
     }
 
     func testPriceWithBrandsOrCategoriesGroupsBothListsIntoOneOrNode() throws {
-        let dict = NestedFilter.priceWithBrandsOrCategories(
+        let filter = NestedFilter.priceWithBrandsOrCategories(
             minPrice: 10,
             maxPrice: 20,
             brands: ["Acme"],
             categories: ["shoes", "boots"]
-        ).toDict()
+        )
+        let dict = filter.toDict()
 
         let children = try nested(dict)
         XCTAssertEqual(children.count, 2, "price, plus a single OR node for brands and categories")
@@ -384,12 +386,13 @@ final class FilterSerializationTests: XCTestCase {
     // MARK: - JSON-serializability of the encoded form
 
     func testEncodedFilterTreeIsJsonSerializable() throws {
-        let dict = NestedFilter.priceWithBrandsOrCategories(
+        let filter = NestedFilter.priceWithBrandsOrCategories(
             minPrice: 10,
             maxPrice: 20,
             brands: ["Acme"],
             categories: ["shoes"]
-        ).toDict()
+        )
+        let dict = filter.toDict()
 
         XCTAssertTrue(
             JSONSerialization.isValidJSONObject(dict),

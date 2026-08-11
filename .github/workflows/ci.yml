@@ -41,6 +41,11 @@ jobs:
           curl --fail --silent --show-error --location \
             --output "$RUNNER_TEMP/SwiftLint.pkg" \
             https://github.com/realm/SwiftLint/releases/download/0.65.0/SwiftLint.pkg
+          # Pins the download to the release's published asset digest (`gh release
+          # view 0.65.0 --repo realm/SwiftLint --json assets`), not just the version
+          # number - an unverified `sudo installer` run on whatever the URL served
+          # is the thing worth closing here.
+          echo "825e687d618e17d24bd5fad6d2cf98d4c32a157940ad5b7ce8ae4d722d6afb3a  $RUNNER_TEMP/SwiftLint.pkg" | shasum -a 256 -c
           sudo installer -pkg "$RUNNER_TEMP/SwiftLint.pkg" -target /
           swiftlint version
 
@@ -48,10 +53,14 @@ jobs:
       # warning to an error, so any violation fails this job. The strictness
       # lives in the config rather than in a --strict flag here, so `make lint`
       # cannot drift into being more lenient than CI.
+      #
+      # `github-actions-logging` emits ::error/::warning workflow commands so
+      # violations are annotated on the diff, not just buried in the raw log -
+      # it still exits non-zero on violations, so the gate is unchanged.
       - name: Lint
         run: |
           set -euo pipefail
-          swiftlint lint
+          swiftlint lint --reporter github-actions-logging
 
   ios:
     name: iOS build and test

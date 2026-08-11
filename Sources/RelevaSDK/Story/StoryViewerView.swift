@@ -75,10 +75,10 @@ public struct StoryViewerView: View {
                                 DesignRenderer.render(
                                     design: design,
                                     maxWidth: geometry.size.width
-                                )                                    { url in
-                                        trackSlideClick()
-                                        onLinkTap(url)
-                                    }
+                                ) { url in
+                                    trackSlideClick()
+                                    onLinkTap(url)
+                                }
                             }
                         }
 

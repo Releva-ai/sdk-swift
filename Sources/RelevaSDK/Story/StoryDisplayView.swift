@@ -25,9 +25,9 @@ public struct StoryDisplayModifier: ViewModifier {
                     story: story.story,
                     client: client,
                     onLinkTap: onLinkTap
-                )                    {
-                        viewModel.activeStory = nil
-                    }
+                ) {
+                    viewModel.activeStory = nil
+                }
             }
             .onAppear {
                 viewModel.start(client: client)

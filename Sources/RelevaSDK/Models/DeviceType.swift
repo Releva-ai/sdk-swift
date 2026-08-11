@@ -3,16 +3,16 @@ import Foundation
 /// Types of mobile devices for push notification registration
 public enum DeviceType: String, CaseIterable, Codable {
     /// Android device
-    case android = "android"
+    case android
 
     /// iOS device
-    case ios = "ios"
+    case ios
 
     /// Huawei device
-    case huawei = "huawei"
+    case huawei
 
     /// Other device type
-    case other = "other"
+    case other
 
     // MARK: - Properties
 
