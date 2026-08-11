@@ -200,9 +200,12 @@ public final class BannerPresenter {
             // either finds it still presented (re-issuing the dismiss when not needed) or finds
             // `presentingViewController == nil` by then and drops it via the guard above.
             presenting.dismiss(animated: true) { [weak self] in
-                // `cancellable` is the started flag: a completion that lands after `stop()`
-                // must not put a banner back up.
-                guard let self = self, self.cancellable != nil else { return }
+                // `cancellable` is the started flag: a completion that lands after `stop()` must
+                // not put a banner back up. Identity-checked as well, the same guard
+                // `NpsPresenter.close` carries: this branch re-issues the dismiss on every
+                // reconcile, so two completions can be outstanding for one controller, and the
+                // first clears the reference and presents a replacement below in the same breath.
+                guard let self = self, self.cancellable != nil, self.overlayController === controller else { return }
                 self.overlayController = nil // it really is gone
                 // A banner that arrived while the dismissal was in flight gets its overlay here:
                 // `present` on a controller mid-dismissal is the one thing UIKit reliably
