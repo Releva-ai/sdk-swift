@@ -157,7 +157,7 @@ four are now `Sendable` structs. The payload on the wire is unchanged.
 are structs. The three tracking requests no longer inherit from `PushRequest`;
 they conform to the new `PushRequestConvertible` protocol, which `client.push(...)`
 takes as `any PushRequestConvertible`, so every existing `push` call site compiles
-unchanged — including one that holds the request as the protocol type.
+unchanged.
 
 Chained builder calls are unchanged. Each one returns a copy where it used to
 return the same instance, which reads identically in a chain:
@@ -176,7 +176,9 @@ silently missing attribute.
 // 3.x — mutated the request in place
 let request = PushRequest()
 request.screenView("home")
+```
 
+```swift
 // 4.0.0 — keep the returned copy
 let request = PushRequest().screenView("home")
 ```
@@ -192,12 +194,14 @@ computed, chain onto one value and push *that* value:
 let request = ScreenViewRequest(screenToken: "cart")
 request.cart = snapshot
 let payload = request.toDict()
-client.push(request)
+client.push(request) { _ in }
+```
 
+```swift
 // 4.0.0
 let request = ScreenViewRequest(screenToken: "cart").pushRequest.setCart(snapshot)
 let payload = request.toDict()
-client.push(request)
+client.push(request) { _ in }
 ```
 
 Deleting a `request.cart = …` line rather than carrying it over is not a no-op:
