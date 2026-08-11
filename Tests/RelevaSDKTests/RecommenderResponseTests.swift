@@ -6,14 +6,14 @@ import XCTest
 ///
 /// `RelevaResponseTests` covers the envelope (`RelevaResponse.from(jsonData:)`); this suite
 /// covers what the recommender and product decoders make of realistic payloads, including the
-/// fields they deliberately drop and the timestamp formats they silently refuse.
+/// open-ended JSON they now keep and the timestamp formats they silently refuse.
 final class RecommenderResponseTests: XCTestCase {
 
     // MARK: - Fixtures
 
     /// Shaped after a real recommender block: mixed availability, one discounted product,
-    /// one product carrying only the required fields, and `meta`/`custom`/`data` objects that
-    /// the decoders are known to drop.
+    /// one product carrying only the required fields, and `meta`/`custom`/`data` objects of
+    /// arbitrary shape that the decoders keep as `JSONValue`.
     private let recommenderJSON = """
     {
       "token": "similar-products",
@@ -109,13 +109,22 @@ final class RecommenderResponseTests: XCTestCase {
         XCTAssertEqual(recommender.productIds, ["SKU-1", "SKU-2", "SKU-3", "SKU-4"], "decoding preserves API order")
     }
 
-    func testMetaIsDroppedEvenWhenThePayloadCarriesIt() throws {
+    func testMetaIsDecodedAsTypedJson() throws {
         let recommender = try decodeRecommender(recommenderJSON)
 
-        XCTAssertNil(
-            recommender.meta,
-            "the decoder deliberately does not decode [String: Any]; callers must not expect meta"
-        )
+        let meta = try XCTUnwrap(recommender.meta)
+        XCTAssertEqual(meta["algorithm"]?.stringValue, "collaborative-filtering")
+        XCTAssertEqual(meta["modelVersion"]?.intValue, 3, "a JSON integer stays an integer")
+    }
+
+    func testAWrongShapeMetaDecodesToNilRatherThanThrowing() throws {
+        // A backend that serialises an empty map as an empty array (e.g. PHP's json_encode([]))
+        // must not take down the whole recommender over an open-ended field.
+        let recommender = try decodeRecommender("""
+        { "token": "t", "name": "n", "meta": [], "response": [] }
+        """)
+
+        XCTAssertNil(recommender.meta, "meta is open-ended; a non-object value degrades to nil rather than throwing")
     }
 
     func testAMissingTokenAndNameDecodeToEmptyStringsRatherThanFailing() throws {
@@ -247,11 +256,20 @@ final class RecommenderResponseTests: XCTestCase {
         XCTAssertTrue(try decodeProductWith("\"available\": true").available)
     }
 
-    func testCustomAndDataAreDroppedEvenWhenThePayloadCarriesThem() throws {
+    func testCustomAndDataAreDecodedAsTypedJson() throws {
         let decoded = try decodeProductWith("\"custom\": { \"material\": [\"mesh\"] }, \"data\": { \"wh\": \"DE1\" }")
 
-        XCTAssertNil(decoded.custom, "the decoder deliberately does not decode [String: Any]")
-        XCTAssertNil(decoded.data, "the decoder deliberately does not decode [String: Any]")
+        XCTAssertEqual(try XCTUnwrap(decoded.custom)["material"]?.arrayValue?.first?.stringValue, "mesh")
+        XCTAssertEqual(try XCTUnwrap(decoded.data)["wh"]?.stringValue, "DE1")
+    }
+
+    func testAWrongShapeCustomOrDataDecodesToNilRatherThanThrowing() throws {
+        // Same open-ended-field tolerance as recommender.meta, but per product: one bad product
+        // must not take down the whole recommender (or the whole push response).
+        let decoded = try decodeProductWith("\"custom\": [], \"data\": \"none\"")
+
+        XCTAssertNil(decoded.custom, "custom is open-ended; a non-object value degrades to nil rather than throwing")
+        XCTAssertNil(decoded.data, "data is open-ended; a non-object value degrades to nil rather than throwing")
     }
 
     func testExplicitNullProductFieldsDecodeAsNil() throws {
@@ -524,18 +542,23 @@ final class RecommenderResponseTests: XCTestCase {
 
     // MARK: - Encoding
 
-    func testEncodingOmitsTheFieldsTheDecoderNeverPopulates() throws {
+    func testTheOpenEndedPayloadsSurviveAReEncode() throws {
         let recommender = try decodeRecommender(recommenderJSON)
 
         let encoded = try JSONEncoder().encode(recommender)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
 
-        XCTAssertNil(object["meta"], "meta is never decoded, so re-encoding cannot restore it")
+        let meta = try XCTUnwrap(object["meta"] as? [String: Any])
+        XCTAssertEqual(meta["algorithm"] as? String, "collaborative-filtering")
+        // `NSNumber as? Int` is exact-value-preserving, not type-preserving, so this says the value
+        // survived, not that it was written as `3` rather than `3.0`. The format itself is pinned by
+        // `JSONValueTests.testAJsonIntegerSurvivesDecodeThenEncodeUnchanged`, which compares bytes.
+        XCTAssertEqual(meta["modelVersion"] as? Int, 3)
 
         let products = try XCTUnwrap(object["response"] as? [[String: Any]])
         let first = try XCTUnwrap(products.first)
-        XCTAssertNil(first["custom"], "custom is never decoded, so re-encoding cannot restore it")
-        XCTAssertNil(first["data"], "data is never decoded, so re-encoding cannot restore it")
+        XCTAssertEqual((first["custom"] as? [String: Any])?["material"] as? [String], ["mesh"])
+        XCTAssertEqual((first["data"] as? [String: Any])?["warehouse"] as? String, "DE1")
         XCTAssertEqual(first["createdAt"] as? String, "2024-01-15T10:30:00Z", "dates round-trip as internet date-time")
         XCTAssertEqual(first["mergeContext"] as? [String: String], ["slot": "1", "source": "reco"])
     }

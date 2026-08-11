@@ -1,7 +1,13 @@
 import Foundation
 
 /// Represents the main API response from Releva
-public struct RelevaResponse: Codable, Equatable {
+///
+/// `Codable` conformance is decode-complete but encode-partial: `init(from:)` decodes all five
+/// fields, but `encode(to:)` only writes `recommenders` and `push` — `banners`, `stories` and `nps`
+/// are intentionally not re-encoded (see the note on `encode(to:)`). Nothing in this SDK encodes a
+/// `RelevaResponse`; if a consumer does (for example to cache one in `UserDefaults` or a file), a
+/// `decode → encode → decode` round trip silently drops those three fields.
+public struct RelevaResponse: Codable, Equatable, Sendable {
 
     // NOTE: the /api/v0/push response also carries a top-level `userId` (the backend's resolved
     // canonical id). We intentionally do NOT decode or persist it. Identity is client-owned: the SDK
@@ -156,51 +162,46 @@ public struct RelevaResponse: Codable, Equatable {
         case recommenders, banners, stories, nps, push
     }
 
-    /// Codable initializer — only decodes Codable-compatible fields.
-    /// Stories and NPS contain [String: Any] and are NOT decoded here.
-    /// Always use `from(jsonData:)` or `from(jsonString:)` to get the full response.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         recommenders = try container.decodeIfPresent([RecommenderResponse].self, forKey: .recommenders) ?? []
         push = try container.decodeIfPresent(PushInfo.self, forKey: .push)
 
-        banners = RelevaResponse.decodeBanners(from: decoder)
-
-        // Stories and NPS require manual JSON parsing (they contain [String: Any]).
-        // They are populated by from(jsonData:) after this initializer returns.
-        stories = []
-        nps = nil
-
-        // Warn if stories/nps keys are present — caller should use from(jsonData:) instead
-        if container.contains(.stories), (try? container.decodeNil(forKey: .stories)) == false {
-            print("RelevaSDK Warning: RelevaResponse.init(from:) drops stories data. Use RelevaResponse.from(jsonData:) instead.")
-        }
-        if container.contains(.nps), (try? container.decodeNil(forKey: .nps)) == false {
-            print("RelevaSDK Warning: RelevaResponse.init(from:) drops NPS data. Use RelevaResponse.from(jsonData:) instead.")
-        }
+        // Banners, stories and NPS carry open-ended JSON, so they are decoded as `JSONValue` and
+        // handed to the same `from(dict:)` factories the rest of the SDK uses.
+        banners = RelevaResponse.decodeObjects(container, forKey: .banners, using: BannerResponse.from(dict:))
+        stories = RelevaResponse.decodeObjects(container, forKey: .stories, using: StoryResponse.from(dict:))
+        let rawNps = try? container.decode(JSONValue.self, forKey: .nps)
+        nps = rawNps?.objectValue.map { NpsConfig.from(dict: $0.anyValue) }
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(recommenders, forKey: .recommenders)
         try container.encodeIfPresent(push, forKey: .push)
-        // Banners, stories, NPS are not re-encoded (they're read-only from API)
+        // Banners, stories and NPS are read-only API payloads that this SDK never re-encodes
+        // internally, so they are deliberately left out here rather than given `Encodable`
+        // conformance purely to round-trip. This is a one-way asymmetry: `init(from:)` above
+        // decodes all five fields, but a `decode → encode → decode` cycle on this type drops these
+        // three (see the type-level doc comment). If a consumer needs to cache a full response,
+        // caching the original response `Data` rather than a re-encoded `RelevaResponse` avoids
+        // the loss.
     }
 
-    /// Decode banners from raw JSON data since BannerResponse contains [String: Any] fields
-    private static func decodeBanners(from decoder: Decoder) -> [BannerResponse] {
-        // Try to get the raw JSON data from the decoder's userInfo or re-parse
-        // Since JSONDecoder doesn't expose raw data per-key easily, we use a workaround
-        // by decoding banners as [[String: AnyCodable]] or raw JSON
-        guard let container = try? decoder.container(keyedBy: CodingKeys.self) else { return [] }
-
-        // Decode as array of raw JSON dictionaries using a helper
-        guard let rawBanners = try? container.decode([RawJSON].self, forKey: .banners) else { return [] }
-
-        return rawBanners.compactMap { raw -> BannerResponse? in
-            guard let dict = raw.value as? [String: Any] else { return nil }
-            return BannerResponse.from(dict: dict)
-        }
+    /// Decode an array of JSON objects under `key` and map each through a `from(dict:)` factory.
+    ///
+    /// A missing key, an explicit `null` and a value of the wrong shape all yield an empty array,
+    /// which is what the `JSONSerialization` pass this replaced did. Within an array of the right
+    /// shape, an individual element that is not itself an object is dropped rather than emptying
+    /// the whole array — more tolerant than before, where `as? [[String: Any]]` made one bad
+    /// element empty out the entire list. Only reachable on a malformed response.
+    private static func decodeObjects<T>(
+        _ container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys,
+        using make: ([String: Any]) -> T
+    ) -> [T] {
+        let raw = try? container.decode(JSONValue.self, forKey: key)
+        return (raw?.arrayValue ?? []).compactMap { $0.objectValue }.map { make($0.anyValue) }
     }
 
     // MARK: - Equatable
@@ -220,34 +221,7 @@ public struct RelevaResponse: Codable, Equatable {
     /// - Returns: RelevaResponse instance
     /// - Throws: Decoding error if JSON is invalid
     public static func from(jsonData data: Data) throws -> RelevaResponse {
-        // Parse banners, stories, and NPS manually from raw JSON (they contain [String: Any])
-        var parsedBanners: [BannerResponse] = []
-        var parsedStories: [StoryResponse] = []
-        var parsedNps: NpsConfig?
-
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            if let bannersArray = json["banners"] as? [[String: Any]] {
-                parsedBanners = bannersArray.map { BannerResponse.from(dict: $0) }
-            }
-            if let storiesArray = json["stories"] as? [[String: Any]] {
-                parsedStories = storiesArray.map { StoryResponse.from(dict: $0) }
-            }
-            if let npsDict = json["nps"] as? [String: Any] {
-                parsedNps = NpsConfig.from(dict: npsDict)
-            }
-        }
-
-        // Decode the rest with standard Codable
-        let decoder = JSONDecoder()
-        let response = try decoder.decode(RelevaResponse.self, from: data)
-
-        return RelevaResponse(
-            recommenders: response.recommenders,
-            banners: parsedBanners.isEmpty ? response.banners : parsedBanners,
-            stories: parsedStories,
-            nps: parsedNps,
-            push: response.push
-        )
+        return try JSONDecoder().decode(RelevaResponse.self, from: data)
     }
 
     /// Create from JSON string
@@ -269,7 +243,7 @@ public struct RelevaResponse: Codable, Equatable {
 }
 
 /// Push notification configuration info
-public struct PushInfo: Codable, Equatable {
+public struct PushInfo: Codable, Equatable, Sendable {
 
     // MARK: - Properties
 

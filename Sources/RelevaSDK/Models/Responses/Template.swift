@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a display template for recommendations
-public struct Template: Codable, Equatable {
+public struct Template: Codable, Equatable, Sendable {
 
     // MARK: - Properties
 

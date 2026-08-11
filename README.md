@@ -90,7 +90,7 @@ Add the following to your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "3.0.0"),
+    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "4.0.0"),
     // Required because the push setup below calls Messaging.messaging() from
     // your own code: SPM only lets a target use products from packages this
     // manifest declares directly, so a transitive resolve is not enough.
@@ -119,7 +119,7 @@ and depend on the products from your target:
 
 1. File → Add Package Dependencies…
 2. Enter: `https://github.com/Releva-ai/sdk-swift.git`
-3. Dependency Rule: "Up to Next Major Version", starting from `3.0.0`
+3. Dependency Rule: "Up to Next Major Version", starting from `4.0.0`
 4. Add the `RelevaSDK` product to your app target
 5. Add `https://github.com/firebase/firebase-ios-sdk.git` as a second package
    dependency (Dependency Rule: "Up to Next Major Version", starting from
@@ -137,6 +137,112 @@ This SDK does not set up Firebase itself: you still need a `GoogleService-Info.p
 in your app target and a `FirebaseApp.configure()` call (typically in
 `application(_:didFinishLaunchingWithOptions:)`, before the push setup below)
 from the standard Firebase iOS setup.
+
+## Migrating to 4.0.0
+
+The open-ended JSON the API returns — Unlayer banner, story and inbox designs,
+recommender `meta`, product `custom` and `data` — used to be typed `[String: Any]`.
+`Any` is not `Sendable`, so no model holding one could cross a concurrency
+boundary, and it is not `Codable` either, which is why those fields were silently
+dropped by the standard decoders. They are now typed `JSONValue`, and the models
+that hold them are `Sendable`.
+
+### Changed property types
+
+| Type | Property | 3.x | 4.0.0 |
+|---|---|---|---|
+| `InboxMessage` | `design` | `[String: Any]` | `[String: JSONValue]` |
+| `BannerResponse` | `cssStyles` | `[String: Any]` | `[String: JSONValue]` |
+| `BannerResponse` | `design` | `[String: Any]?` | `[String: JSONValue]?` |
+| `BannerResponse` | `meta` | `[String: Any]?` | `[String: JSONValue]?` |
+| `StorySlideResponse` | `design` | `[String: Any]?` | `[String: JSONValue]?` |
+| `ProductRecommendation` | `custom` | `[String: Any]?` | `[String: JSONValue]?` |
+| `ProductRecommendation` | `data` | `[String: Any]?` | `[String: JSONValue]?` |
+| `RecommenderResponse` | `meta` | `[String: Any]?` | `[String: JSONValue]?` |
+
+The memberwise `init` of each of those types takes the new type in the same
+position; no parameter was added, removed or reordered.
+
+### Changed method signatures
+
+| Symbol | 3.x | 4.0.0 |
+|---|---|---|
+| `DesignRenderer.render(design:maxWidth:transparentBody:onLinkTap:)` | `design: [String: Any]` | `design: [String: JSONValue]` |
+| `DesignRenderer.getDesignBodyValues(_:)` | `-> [String: Any]` | `-> [String: JSONValue]` |
+
+Those two are the rendering entry points, so any code that renders an inbox or
+banner design outside the SDK's own views calls them directly. Pass
+`[String: JSONValue](any: someFoundationDictionary)` if you are holding a design
+you decoded yourself with `JSONSerialization`.
+
+`DesignRenderer`'s parsing helpers take `JSONValue?` instead of `Any?` for the
+same reason. `DesignRenderer.parseColor` is the one that changed shape: it is now
+`parseColor(_ value: JSONValue?)`, with `parseColor(css: String?)` for a colour
+you already hold as a `String`.
+
+### Reading a `JSONValue`
+
+Replace conditional casts with the accessor of the matching name. Each returns
+`nil` for any other case, so a lookup that used to be several `as?` casts is one
+optional chain:
+
+```swift
+// 3.x
+let body = message.design["body"] as? [String: Any]
+let values = body?["values"] as? [String: Any]
+let color = values?["backgroundColor"] as? String
+
+// 4.0.0
+let color = message.design["body"]?["values"]?["backgroundColor"]?.stringValue
+```
+
+`JSONValue` offers `stringValue`, `boolValue`, `intValue`, `doubleValue`,
+`arrayValue`, `objectValue` and `isNull`, plus `subscript(String)` for object keys
+and `subscript(Int)` for array elements. `intValue` and `doubleValue` convert
+between the two number cases the way `NSNumber` did, so a JSON `7` reads as either
+`7` or `7.0`; a JSON integer that is only ever read and re-encoded stays an
+integer rather than becoming `7.0`. The guarantee is "a JSON integer stays an
+integer", not full byte-for-byte number round-tripping: a whole-number `Double`
+in the source (`1.0`) also decodes as `.int(1)` and re-encodes as `1`, the same
+as a literal `1` would.
+
+### Writing a `JSONValue`
+
+Literals work directly, so test fixtures and hand-built designs need no
+annotation:
+
+```swift
+let design: [String: JSONValue] = [
+    "body": ["values": ["backgroundColor": "#ffffff"], "rows": []]
+]
+```
+
+If you are holding a `[String: Any]` from `JSONSerialization`, wrap it with
+`[String: JSONValue](any:)`, and unwrap with `.anyValue` to go back. The
+`from(dict:)` factories still take `[String: Any]` and `toDict()` still returns
+it, so code that goes through those is unaffected.
+
+### Decoding
+
+`RelevaResponse.init(from:)` used to decode only the `Codable`-compatible fields:
+a plain `JSONDecoder().decode(RelevaResponse.self, from:)` returned a response
+with no stories and no NPS, and printed a warning telling you to call
+`RelevaResponse.from(jsonData:)` instead. There is now one decoding path.
+`from(jsonData:)` still exists and is unchanged for callers; it is now a thin
+wrapper over `JSONDecoder`.
+
+For the same reason, `RecommenderResponse.meta` and `ProductRecommendation`'s
+`custom` and `data` now actually carry the values from the payload. In 3.x they
+decoded to `nil` unconditionally and were skipped on encode. If you worked around
+that by re-parsing the raw response yourself, you can drop the workaround.
+
+Decoding is now complete, but encoding is intentionally still partial:
+`RelevaResponse.encode(to:)` only writes `recommenders` and `push` — `banners`,
+`stories` and `nps` are read-only API payloads this SDK never re-encodes
+internally, so a `decode → encode → decode` round trip on this type silently
+drops those three fields. Nothing in the SDK does this today; if you need to
+cache a full response yourself, cache the original response `Data` rather than
+a re-encoded `RelevaResponse`.
 
 ## Quick Start
 
@@ -841,7 +947,7 @@ The inbox also refreshes automatically when the app returns to the foreground (v
 |---|---|---|
 | `id` | `String` (UUID) | Unique ID of this delivery. Use in all read/delete/action calls. |
 | `title` | `String` | Resolved message title. |
-| `design` | `[String: Any]` | Unlayer design JSON, ready to render via `InboxMessageView`. |
+| `design` | `[String: JSONValue]` | Unlayer design JSON, ready to render via `InboxMessageView`. Was `[String: Any]` before 4.0.0 — see [Migrating to 4.0.0](#migrating-to-400). |
 | `read` | `Bool` | Whether the user has read this message. |
 | `createdAt` | `Date` | When the message was delivered. Messages are sorted newest-first. |
 | `inboxMessageId` | `Int` | ID of the source message template. Use for push notification routing. |

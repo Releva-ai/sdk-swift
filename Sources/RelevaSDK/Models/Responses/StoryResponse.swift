@@ -1,10 +1,10 @@
 import Foundation
 
 /// Story slide response from the API
-public struct StorySlideResponse {
+public struct StorySlideResponse: Sendable {
     public let id: String
     public let html: String?
-    public let design: [String: Any]?
+    public let design: [String: JSONValue]?
     public let durationSeconds: Int
     public let actionType: String?
     public let actionUrl: String?
@@ -13,7 +13,7 @@ public struct StorySlideResponse {
     public init(
         id: String = "",
         html: String? = nil,
-        design: [String: Any]? = nil,
+        design: [String: JSONValue]? = nil,
         durationSeconds: Int = 5,
         actionType: String? = nil,
         actionUrl: String? = nil,
@@ -32,7 +32,7 @@ public struct StorySlideResponse {
         return StorySlideResponse(
             id: "\(dict["id"] ?? "")",
             html: dict["html"] as? String,
-            design: dict["design"] as? [String: Any],
+            design: (dict["design"] as? [String: Any]).map { [String: JSONValue](any: $0) },
             durationSeconds: (dict["durationSeconds"] as? NSNumber)?.intValue ?? 5,
             actionType: dict["actionType"] as? String,
             actionUrl: dict["actionUrl"] as? String,
@@ -42,7 +42,7 @@ public struct StorySlideResponse {
 }
 
 /// Story response from the API
-public struct StoryResponse {
+public struct StoryResponse: Sendable {
     public let token: String
     public let storyId: String
     public let name: String?

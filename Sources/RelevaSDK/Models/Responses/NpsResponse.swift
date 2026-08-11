@@ -1,7 +1,7 @@
 import Foundation
 
 /// NPS survey configuration from the API
-public struct NpsConfig {
+public struct NpsConfig: Sendable {
     public let token: String
     public let question: String
     public let scaleLowLabel: String?
@@ -66,7 +66,7 @@ public struct NpsConfig {
 }
 
 /// Follow-up prompts by NPS score range
-public struct NpsFollowUp {
+public struct NpsFollowUp: Sendable {
     public let promoter: String?
     public let passive: String?
     public let detractor: String?
@@ -94,7 +94,7 @@ public struct NpsFollowUp {
 }
 
 /// Thank-you messages by NPS score range
-public struct NpsThankYou {
+public struct NpsThankYou: Sendable {
     public let promoter: String?
     public let passive: String?
     public let detractor: String?
@@ -122,7 +122,7 @@ public struct NpsThankYou {
 }
 
 /// NPS survey appearance configuration (server-driven)
-public struct NpsAppearance {
+public struct NpsAppearance: Sendable {
     public let primaryColor: String
     public let backgroundColor: String
     public let textColor: String
@@ -167,7 +167,7 @@ public struct NpsAppearance {
 }
 
 /// Dark mode color overrides for NPS appearance
-public struct NpsAppearanceDark {
+public struct NpsAppearanceDark: Sendable {
     public let primaryColor: String?
     public let backgroundColor: String?
     public let textColor: String?
@@ -188,7 +188,7 @@ public struct NpsAppearanceDark {
 }
 
 /// NPS trigger configuration
-public struct NpsTrigger {
+public struct NpsTrigger: Sendable {
     public let type: String // appOpen, customEvent, sessionCount, screenView
     public let eventName: String?
     public let minSessions: Int?

@@ -11,21 +11,21 @@ public struct DesignRenderer {
     /// - Returns: A SwiftUI view representing the design
     @ViewBuilder
     public static func render(
-        design: [String: Any],
+        design: [String: JSONValue],
         maxWidth: CGFloat? = nil,
         transparentBody: Bool = false,
         onLinkTap: ((String) -> Void)? = nil
     ) -> some View {
-        let body = design["body"] as? [String: Any] ?? [:]
-        let bodyValues = body["values"] as? [String: Any] ?? [:]
-        let rows = body["rows"] as? [[String: Any]] ?? []
+        let body = design["body"]?.objectValue ?? [:]
+        let bodyValues = body["values"]?.objectValue ?? [:]
+        let rows = body["rows"]?.arrayValue?.compactMap { $0.objectValue } ?? []
 
         let backgroundColor = transparentBody ? Color.clear : (parseColor(bodyValues["backgroundColor"]) ?? .clear)
         let textColor = parseColor(bodyValues["textColor"]) ?? .black
 
-        let contentWidthRaw = bodyValues["contentWidth"] as? String ?? ""
+        let contentWidthRaw = bodyValues["contentWidth"]?.stringValue ?? ""
         let isPercentWidth = contentWidthRaw.hasSuffix("%")
-        let contentWidthPx = isPercentWidth ? nil : parseDimension(contentWidthRaw)
+        let contentWidthPx = isPercentWidth ? nil : parseDimension(.string(contentWidthRaw))
 
         let effectiveMaxWidth = maxWidth ?? UIScreen.main.bounds.width
         let effectiveContentWidth: CGFloat? = contentWidthPx.map { min($0, effectiveMaxWidth) }
@@ -55,13 +55,13 @@ public struct DesignRenderer {
 
     @ViewBuilder
     static func buildRow(
-        row: [String: Any],
+        row: [String: JSONValue],
         textColor: Color,
         onLinkTap: ((String) -> Void)?
     ) -> some View {
-        let columns = row["columns"] as? [[String: Any]] ?? []
-        let cells = row["cells"] as? [Any] ?? []
-        let rowValues = row["values"] as? [String: Any] ?? [:]
+        let columns = row["columns"]?.arrayValue?.compactMap { $0.objectValue } ?? []
+        let cells = row["cells"]?.arrayValue ?? []
+        let rowValues = row["values"]?.objectValue ?? [:]
 
         let bgColor = parseColor(rowValues["backgroundColor"])
         let columnsBgColor = parseColor(rowValues["columnsBackgroundColor"])
@@ -75,7 +75,7 @@ public struct DesignRenderer {
             } else {
                 HStack(spacing: 0) {
                     ForEach(Array(columns.enumerated()), id: \.offset) { index, column in
-                        let flex = index < cells.count ? ((cells[index] as? NSNumber)?.intValue ?? 1) : 1
+                        let flex = index < cells.count ? (cells[index].intValue ?? 1) : 1
                         buildColumn(column: column, textColor: textColor, onLinkTap: onLinkTap)
                             .frame(maxWidth: .infinity)
                             .layoutPriority(Double(flex))
@@ -102,12 +102,12 @@ public struct DesignRenderer {
 
     @ViewBuilder
     static func buildColumn(
-        column: [String: Any],
+        column: [String: JSONValue],
         textColor: Color,
         onLinkTap: ((String) -> Void)?
     ) -> some View {
-        let contents = column["contents"] as? [[String: Any]] ?? []
-        let colValues = column["values"] as? [String: Any] ?? [:]
+        let contents = column["contents"]?.arrayValue?.compactMap { $0.objectValue } ?? []
+        let colValues = column["values"]?.objectValue ?? [:]
 
         let backgroundColor = parseColor(colValues["backgroundColor"])
         let padding = parseEdgeInsets(colValues["padding"])
@@ -129,12 +129,12 @@ public struct DesignRenderer {
 
     @ViewBuilder
     static func buildContent(
-        content: [String: Any],
+        content: [String: JSONValue],
         textColor: Color,
         onLinkTap: ((String) -> Void)?
     ) -> some View {
-        let type = content["type"] as? String ?? ""
-        let values = content["values"] as? [String: Any] ?? [:]
+        let type = content["type"]?.stringValue ?? ""
+        let values = content["values"]?.objectValue ?? [:]
         let containerPadding = parseEdgeInsets(values["containerPadding"])
 
         Group {
@@ -161,12 +161,11 @@ public struct DesignRenderer {
     // MARK: - Image
 
     @ViewBuilder
-    static func buildImage(values: [String: Any], onLinkTap: ((String) -> Void)?) -> some View {
-        let src = values["src"] as? [String: Any] ?? [:]
-        let url = src["url"] as? String ?? ""
-        let action = values["action"] as? [String: Any]
-        let actionValues = action?["values"] as? [String: Any] ?? [:]
-        let href = actionValues["href"] as? String ?? ""
+    static func buildImage(values: [String: JSONValue], onLinkTap: ((String) -> Void)?) -> some View {
+        let src = values["src"]?.objectValue ?? [:]
+        let url = src["url"]?.stringValue ?? ""
+        let actionValues = values["action"]?["values"]?.objectValue ?? [:]
+        let href = actionValues["href"]?.stringValue ?? ""
 
         if !url.isEmpty, let imageUrl = URL(string: url) {
             let imageView = AsyncImage(url: imageUrl) { phase in
@@ -191,8 +190,8 @@ public struct DesignRenderer {
     // MARK: - Text
 
     @ViewBuilder
-    static func buildText(values: [String: Any], defaultTextColor: Color) -> some View {
-        let htmlText = values["text"] as? String ?? ""
+    static func buildText(values: [String: JSONValue], defaultTextColor: Color) -> some View {
+        let htmlText = values["text"]?.stringValue ?? ""
         let text = stripHtml(htmlText)
 
         if !text.isEmpty {
@@ -211,12 +210,12 @@ public struct DesignRenderer {
     // MARK: - Heading
 
     @ViewBuilder
-    static func buildHeading(values: [String: Any], defaultTextColor: Color) -> some View {
-        let htmlText = values["text"] as? String ?? ""
+    static func buildHeading(values: [String: JSONValue], defaultTextColor: Color) -> some View {
+        let htmlText = values["text"]?.stringValue ?? ""
         let text = stripHtml(htmlText)
 
         if !text.isEmpty {
-            let headingType = values["headingType"] as? String ?? "h1"
+            let headingType = values["headingType"]?.stringValue ?? "h1"
             let fontSize = parseDimensionRaw(values["fontSize"]) ?? getHeadingFontSize(headingType)
             let textAlign = parseTextAlign(values["textAlign"])
             let color = parseColor(values["color"]) ?? parseColor(values["textColor"]) ?? defaultTextColor
@@ -232,16 +231,15 @@ public struct DesignRenderer {
     // MARK: - Button
 
     @ViewBuilder
-    static func buildButton(values: [String: Any], onLinkTap: ((String) -> Void)?) -> some View {
-        let htmlText = values["text"] as? String ?? ""
+    static func buildButton(values: [String: JSONValue], onLinkTap: ((String) -> Void)?) -> some View {
+        let htmlText = values["text"]?.stringValue ?? ""
         let text = stripHtml(htmlText)
 
         if !text.isEmpty {
-            let href = values["href"] as? [String: Any]
-            let hrefValues = href?["values"] as? [String: Any] ?? [:]
-            let url = hrefValues["href"] as? String ?? ""
+            let hrefValues = values["href"]?["values"]?.objectValue ?? [:]
+            let url = hrefValues["href"]?.stringValue ?? ""
 
-            let buttonColors = values["buttonColors"] as? [String: Any] ?? [:]
+            let buttonColors = values["buttonColors"]?.objectValue ?? [:]
             let bgColor = parseColor(buttonColors["backgroundColor"]) ?? Color(red: 58/255, green: 174/255, blue: 224/255)
             let textColor = parseColor(buttonColors["color"]) ?? .white
 
@@ -250,8 +248,8 @@ public struct DesignRenderer {
             let borderRadius = parseDimensionRaw(values["borderRadius"]) ?? 4
             let textAlign = parseTextAlign(values["textAlign"])
 
-            let size = values["size"] as? [String: Any] ?? [:]
-            let autoWidth = size["autoWidth"] as? Bool ?? true
+            let size = values["size"]?.objectValue ?? [:]
+            let autoWidth = size["autoWidth"]?.boolValue ?? true
 
             let buttonContent = Text(text)
                 .font(.system(size: fontSize))
@@ -285,8 +283,8 @@ public struct DesignRenderer {
     // MARK: - Divider
 
     @ViewBuilder
-    static func buildDivider(values: [String: Any]) -> some View {
-        let border = values["border"] as? [String: Any] ?? [:]
+    static func buildDivider(values: [String: JSONValue]) -> some View {
+        let border = values["border"]?.objectValue ?? [:]
         let borderTopWidth = parseDimensionRaw(border["borderTopWidth"]) ?? 1
         let borderTopColor = parseColor(border["borderTopColor"]) ?? Color(white: 0.73)
 
@@ -301,23 +299,23 @@ public struct DesignRenderer {
     ///   - value: The backgroundImage dictionary from Unlayer JSON
     ///   - forceCover: When true, always use .fill content mode
     /// - Returns: Tuple of (URL, ContentMode, Alignment) or nil if no valid URL
-    public static func parseBackgroundImage(_ value: Any?, forceCover: Bool = false) -> (url: URL, contentMode: ContentMode, alignment: Alignment)? {
-        guard let bgImage = value as? [String: Any],
-              let urlStr = bgImage["url"] as? String, !urlStr.isEmpty,
+    public static func parseBackgroundImage(_ value: JSONValue?, forceCover: Bool = false) -> (url: URL, contentMode: ContentMode, alignment: Alignment)? {
+        guard let bgImage = value?.objectValue,
+              let urlStr = bgImage["url"]?.stringValue, !urlStr.isEmpty,
               let url = URL(string: urlStr) else { return nil }
 
         let contentMode: ContentMode
         if forceCover {
             contentMode = .fill
         } else {
-            let size = bgImage["size"] as? String ?? "cover"
+            let size = bgImage["size"]?.stringValue ?? "cover"
             switch size {
             case "contain":
                 contentMode = .fit
             case "custom":
-                let customSize = bgImage["customSize"] as? [Any]
+                let customSize = bgImage["customSize"]?.arrayValue
                 if let cs = customSize, cs.count == 2,
-                   "\(cs[0])".contains("%"), "\(cs[1])" == "auto" {
+                   cs[0].stringValue?.contains("%") == true, cs[1].stringValue == "auto" {
                     contentMode = .fit  // fitWidth approximation
                 } else {
                     contentMode = .fill
@@ -327,7 +325,7 @@ public struct DesignRenderer {
             }
         }
 
-        let position = bgImage["position"] as? String ?? "center"
+        let position = bgImage["position"]?.stringValue ?? "center"
         let alignment: Alignment
         switch position {
         case "top-center": alignment = .top
@@ -339,9 +337,9 @@ public struct DesignRenderer {
         case "center-left": alignment = .leading
         case "center-right": alignment = .trailing
         default:
-            if let customPos = bgImage["customPosition"] as? [Any], customPos.count == 2 {
-                let x = Double("\(customPos[0])".replacingOccurrences(of: "%", with: "")) ?? 50
-                let y = Double("\(customPos[1])".replacingOccurrences(of: "%", with: "")) ?? 50
+            if let customPos = bgImage["customPosition"]?.arrayValue, customPos.count == 2 {
+                let x = Double("\(customPos[0].anyValue)".replacingOccurrences(of: "%", with: "")) ?? 50
+                let y = Double("\(customPos[1].anyValue)".replacingOccurrences(of: "%", with: "")) ?? 50
                 alignment = Alignment(
                     horizontal: x < 33 ? .leading : x > 66 ? .trailing : .center,
                     vertical: y < 33 ? .top : y > 66 ? .bottom : .center
@@ -354,8 +352,17 @@ public struct DesignRenderer {
         return (url, contentMode, alignment)
     }
 
-    public static func parseColor(_ value: Any?) -> Color? {
-        guard let str = (value as? String)?.trimmingCharacters(in: .whitespaces), !str.isEmpty else { return nil }
+    /// Parse a colour out of a design JSON value. Anything that is not a string is not a colour.
+    public static func parseColor(_ value: JSONValue?) -> Color? {
+        return parseColor(css: value?.stringValue)
+    }
+
+    /// Parse a CSS colour string: `#rgb`, `#rrggbb`, `#rrggbbaa`, or `rgba(r, g, b, a)`.
+    ///
+    /// Colours that arrive already typed as `String` (story progress indicators, NPS appearance)
+    /// call this directly rather than boxing themselves into a `JSONValue`.
+    public static func parseColor(css value: String?) -> Color? {
+        guard let str = value?.trimmingCharacters(in: .whitespaces), !str.isEmpty else { return nil }
 
         // rgba(r, g, b, a)
         if str.hasPrefix("rgba("), str.hasSuffix(")") {
@@ -404,22 +411,22 @@ public struct DesignRenderer {
         }
     }
 
-    static func parseDimensionRaw(_ value: Any?) -> CGFloat? {
-        guard let str = "\(value ?? "")".trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "px", with: "")
+    static func parseDimensionRaw(_ value: JSONValue?) -> CGFloat? {
+        guard let str = "\(value?.anyValue ?? "")".trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "px", with: "")
             .replacingOccurrences(of: "em", with: "").replacingOccurrences(of: "rem", with: "")
             .replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces) as String?,
               let val = Double(str) else { return nil }
         return CGFloat(val)
     }
 
-    static func parseDimension(_ value: Any?) -> CGFloat? {
+    static func parseDimension(_ value: JSONValue?) -> CGFloat? {
         return parseDimensionRaw(value)
     }
 
-    static func parseEdgeInsets(_ value: Any?) -> EdgeInsets? {
-        guard let str = (value as? String)?.trimmingCharacters(in: .whitespaces), !str.isEmpty else { return nil }
+    static func parseEdgeInsets(_ value: JSONValue?) -> EdgeInsets? {
+        guard let str = value?.stringValue?.trimmingCharacters(in: .whitespaces), !str.isEmpty else { return nil }
 
-        let parts = str.components(separatedBy: .whitespaces).compactMap { parseDimensionRaw($0) }
+        let parts = str.components(separatedBy: .whitespaces).compactMap { parseDimensionRaw(.string($0)) }
         switch parts.count {
         case 1: return EdgeInsets(top: parts[0], leading: parts[0], bottom: parts[0], trailing: parts[0])
         case 2: return EdgeInsets(top: parts[0], leading: parts[1], bottom: parts[0], trailing: parts[1])
@@ -429,8 +436,8 @@ public struct DesignRenderer {
         }
     }
 
-    static func parseTextAlign(_ value: Any?) -> TextAlignment {
-        switch value as? String {
+    static func parseTextAlign(_ value: JSONValue?) -> TextAlignment {
+        switch value?.stringValue {
         case "center": return .center
         case "right": return .trailing
         default: return .leading
@@ -445,8 +452,8 @@ public struct DesignRenderer {
         }
     }
 
-    static func parseLineHeight(_ value: Any?) -> CGFloat? {
-        guard let str = value as? String else { return nil }
+    static func parseLineHeight(_ value: JSONValue?) -> CGFloat? {
+        guard let str = value?.stringValue else { return nil }
         if str.hasSuffix("%") {
             if let val = Double(str.replacingOccurrences(of: "%", with: "")) {
                 return CGFloat(val / 100)
@@ -481,10 +488,10 @@ public struct DesignRenderer {
     }
 
     /// Extract body values from a banner's design JSON
-    public static func getDesignBodyValues(_ banner: BannerResponse) -> [String: Any] {
+    public static func getDesignBodyValues(_ banner: BannerResponse) -> [String: JSONValue] {
         guard let design = banner.design,
-              let body = design["body"] as? [String: Any],
-              let values = body["values"] as? [String: Any] else { return [:] }
+              let body = design["body"]?.objectValue,
+              let values = body["values"]?.objectValue else { return [:] }
         return values
     }
 }
@@ -494,33 +501,30 @@ public struct DesignRenderer {
 /// A SwiftUI carousel view for Unlayer carousel content blocks.
 /// Supports swipe navigation, left/right tap navigation, autoplay, loop, dot indicators, and preview strip.
 struct CarouselView: View {
-    let content: [String: Any]
+    let content: [String: JSONValue]
     let onLinkTap: ((String) -> Void)?
 
     @State private var currentPage: Int = 0
     @State private var autoplayTimer: Timer?
 
-    private var values: [String: Any] {
-        content["values"] as? [String: Any] ?? [:]
+    private var values: [String: JSONValue] {
+        content["values"]?.objectValue ?? [:]
     }
 
-    private var images: [[String: Any]] {
-        let embedded = content["embedded"] as? [String: Any] ?? [:]
-        let imagesMap = embedded["images"] as? [String: Any] ?? [:]
-        let imagesList = imagesMap["values"] as? [[String: Any]] ?? []
-        return imagesList
+    private var images: [[String: JSONValue]] {
+        content["embedded"]?["images"]?["values"]?.arrayValue?.compactMap { $0.objectValue } ?? []
     }
 
-    private var autoplay: Bool { values["autoplay"] as? Bool ?? false }
-    private var loop: Bool { values["loop"] as? Bool ?? false }
-    private var showPreviews: Bool { values["showPreviews"] as? Bool ?? false }
+    private var autoplay: Bool { values["autoplay"]?.boolValue ?? false }
+    private var loop: Bool { values["loop"]?.boolValue ?? false }
+    private var showPreviews: Bool { values["showPreviews"]?.boolValue ?? false }
     private var previewWidth: CGFloat { DesignRenderer.parseDimensionRaw(values["previewWidth"]) ?? 100 }
 
     private var aspectRatio: CGFloat {
-        let firstSrc = images.first?["src"] as? [String: Any] ?? [:]
-        let w = (firstSrc["width"] as? NSNumber)?.doubleValue ?? 16
-        let h = (firstSrc["height"] as? NSNumber)?.doubleValue ?? 9
-        return CGFloat(w / h)
+        let firstSrc = images.first?["src"]?.objectValue ?? [:]
+        let width = firstSrc["width"]?.doubleValue ?? 16
+        let height = firstSrc["height"]?.doubleValue ?? 9
+        return CGFloat(width / height)
     }
 
     var body: some View {
@@ -575,12 +579,9 @@ struct CarouselView: View {
     // MARK: - Image
 
     @ViewBuilder
-    private func carouselImage(image: [String: Any]) -> some View {
-        let src = image["src"] as? [String: Any] ?? [:]
-        let url = src["url"] as? String ?? ""
-        let action = image["action"] as? [String: Any]
-        let actionValues = action?["values"] as? [String: Any] ?? [:]
-        let href = actionValues["href"] as? String ?? ""
+    private func carouselImage(image: [String: JSONValue]) -> some View {
+        let url = image["src"]?["url"]?.stringValue ?? ""
+        let href = image["action"]?["values"]?["href"]?.stringValue ?? ""
 
         if !url.isEmpty, let imageUrl = URL(string: url) {
             let imageView = AsyncImage(url: imageUrl) { phase in
@@ -621,8 +622,7 @@ struct CarouselView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(Array(images.enumerated()), id: \.offset) { index, image in
-                    let src = image["src"] as? [String: Any] ?? [:]
-                    let url = src["url"] as? String ?? ""
+                    let url = image["src"]?["url"]?.stringValue ?? ""
 
                     if !url.isEmpty, let imageUrl = URL(string: url) {
                         AsyncImage(url: imageUrl) { phase in
