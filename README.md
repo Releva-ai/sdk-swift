@@ -57,8 +57,17 @@ Native iOS SDK for integrating Releva's AI-powered e-commerce personalization pl
 
 ## Requirements
 
-- iOS 15.0+
-- Xcode 16.2+ (required by `firebase-ios-sdk` 11.15)
+- iOS 15.0+ (`firebase-ios-sdk` 12.x declares the same iOS 15 floor, so which
+  Firebase major you resolve does not move this)
+- Xcode 16.2+ on `firebase-ios-sdk` 11.15.x or 12.0.0–12.11.x. Later Firebase
+  releases need newer tooling, and SPM resolves the newest version your own
+  constraints allow, so this is the practical floor only if you cap Firebase
+  yourself. Per Firebase's release notes, 12.12.0 requires Xcode 26.2 and the
+  Swift 6.2.3+ toolchain, and from 12.15.0 the Firebase package manifest
+  declares Swift tools 6.1, which Xcode older than 16.3 cannot read at all. To
+  stay on Xcode 16.2, constrain `firebase-ios-sdk` to `"11.15.0"..<"12.0.0"` in
+  your own manifest — this package's own requirement (`>= 11.15.0, < 13.0.0`)
+  permits it.
 - Swift 5.7 language mode or later (the package declares `swift-tools-version: 5.7`)
 
 ## Installation
@@ -70,11 +79,12 @@ exposes two library products:
 - `RelevaNotificationExtension` — add to your Notification Service Extension
   target, if you want rich push notifications.
 
-`firebase-ios-sdk` (11.15.0 or newer) is resolved automatically as a dependency,
-but SPM only attaches package *products* to targets that ask for them. The push
-notification setup below calls `Messaging.messaging()` directly from your own
-`AppDelegate`, so your app target also needs to depend on `FirebaseMessaging`
-(and `FirebaseCore`, which it requires) explicitly — see below.
+`firebase-ios-sdk` (`>= 11.15.0, < 13.0.0`, i.e. Firebase 11 or 12) is resolved
+automatically as a dependency, but SPM only attaches package *products* to
+targets that ask for them. The push notification setup below calls
+`Messaging.messaging()` directly from your own `AppDelegate`, so your app target
+also needs to depend on `FirebaseMessaging` (and `FirebaseCore`, which it
+requires) explicitly — see below.
 
 ### In a `Package.swift` manifest
 
@@ -86,7 +96,11 @@ dependencies: [
     // Required because the push setup below calls Messaging.messaging() from
     // your own code: SPM only lets a target use products from packages this
     // manifest declares directly, so a transitive resolve is not enough.
-    .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "11.15.0")
+    //
+    // Firebase 11 and 12 both work. `from: "11.15.0"` would also resolve, but
+    // it means `< 12.0.0`, so it pins you to Firebase 11 (see Requirements
+    // above for the toolchain each major needs).
+    .package(url: "https://github.com/firebase/firebase-ios-sdk.git", "11.15.0"..<"13.0.0")
 ]
 ```
 
@@ -111,7 +125,8 @@ and depend on the products from your target:
 4. Add the `RelevaSDK` product to your app target
 5. Add `https://github.com/firebase/firebase-ios-sdk.git` as a second package
    dependency (Dependency Rule: "Up to Next Major Version", starting from
-   `11.15.0`) and add its `FirebaseMessaging` and `FirebaseCore` products to your
+   `11.15.0` for Firebase 11 or from a `12.x` version for Firebase 12 — this
+   package accepts either) and add its `FirebaseMessaging` and `FirebaseCore` products to your
    app target — the push-notification setup below calls `Messaging.messaging()`
    from your own code, and the "Choose Package Products" sheet for `sdk-swift`
    only offers this package's own products (`RelevaSDK`, `RelevaNotificationExtension`).
