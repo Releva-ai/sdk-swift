@@ -284,17 +284,18 @@ Anything that only touches local state stays synchronous, because making it `asy
 would add a suspension point without adding anything to await:
 
 `setDeviceId`, `getDeviceId`, `setProfileId`, `getProfileId`, `setEndpointOverride`,
-`setAppVersion`, `setCart`, `getCart`, `setWishlist`, `getWishlist`,
-`clearCartStorage`, `clearWishlistStorage`, `trackEvent`,
-`enablePushEngagementTracking`, `trackEngagement`, `isRelevaMessage` and
-`initializeInbox`.
+`setAppVersion`, `getCart`, `getWishlist`, `clearCartStorage`,
+`clearWishlistStorage`, `trackEvent`, `enablePushEngagementTracking`,
+`trackEngagement`, `isRelevaMessage`, `startTracking`, `stopTracking` and
+`clearPendingEvents`. (`trackEngagement` only appends to the engagement service's
+pending queue; the batch that queue sends later is what reaches the network.)
 
-`bannerImpression`, `bannerAction`, `storyImpression`, `storyAction`,
-`refreshPushToken` and every method on `InboxService` keep their synchronous
-signatures too, even though they do hit the network: they are called from SwiftUI
-view bodies, UIKit action handlers and lifecycle hooks that cannot await, so each
-starts its own `Task` internally. Failures are reported through debug logging, as
-before. `setCart` and `setWishlist` sync to the backend the same way.
+`setCart`, `setWishlist`, `bannerImpression`, `bannerAction`, `storyImpression`,
+`storyAction`, `refreshPushToken`, `flush`, `initializeInbox` and every method on
+`InboxService` keep their synchronous signatures too, even though they do reach the
+network: they are called from SwiftUI view bodies, UIKit action handlers and
+lifecycle hooks that cannot await, so each starts its own `Task` internally. Failures
+are reported through debug logging, as before.
 
 The wire format is unchanged. A 5.0.0 client and a 4.x client send byte-identical
 request bodies.
