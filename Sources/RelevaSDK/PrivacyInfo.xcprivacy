@@ -17,6 +17,16 @@
 	     hosts (see NetworkService.getBaseURL()). -->
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
+	<!-- Purposes below are ProductPersonalization + AppFunctionality only.
+	     Flagged for the same human/product sign-off as NSPrivacyTracking above:
+	     buildContext() (RelevaClient.swift) labels its own device block "with
+	     analytics" and sends session count, view count and first-seen date on
+	     every request, alongside the identifiers and events below. Whether that
+	     is Apple's Analytics purpose ("evaluating user behavior ... to plan new
+	     features, or measure audience size or characteristics") depends on how
+	     Releva's backend uses it, which is not visible from this repository —
+	     do not add NSPrivacyCollectedDataTypePurposeAnalytics without that
+	     answer, and do not assume its absence is settled either. -->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
 		<!-- The `profileId` the integrator sets via RelevaClient.setProfileId(_:),
@@ -34,8 +44,11 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
-		<!-- The `deviceId` the integrator sets via RelevaClient.setDeviceId(_:)
-		     and the FCM push token uploaded by registerPushToken(_:deviceType:). -->
+		<!-- The `deviceId` the integrator sets via RelevaClient.setDeviceId(_:),
+		     the FCM push token uploaded by registerPushToken(_:deviceType:), and
+		     the session ID: a UUID generated per session and persisted across
+		     launches as rlv_session_id (StorageService.swift), sent as
+		     context.sessionId on every request. -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeDeviceID</string>

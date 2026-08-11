@@ -1028,7 +1028,7 @@ The SDK ships an Apple privacy manifest at `Sources/RelevaSDK/PrivacyInfo.xcpriv
 | Type | What it is |
 | --- | --- |
 | User ID | the `profileId` you set via `setProfileId(_:)` |
-| Device ID | the `deviceId` you set via `setDeviceId(_:)`, and the FCM push token |
+| Device ID | the `deviceId` you set via `setDeviceId(_:)`, the FCM push token, and the session ID (a UUID persisted across launches as `rlv_session_id`) |
 | Product Interaction | screen and product views, cart and wishlist contents, custom events, banner/story/NPS impressions and clicks |
 | Search History | the query string you pass to `trackSearchView(query:...)` |
 | Purchase History | order ID, products, quantities, prices and total from `trackCheckoutSuccess(...)` |

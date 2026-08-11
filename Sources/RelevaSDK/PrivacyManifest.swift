@@ -10,7 +10,12 @@ import Foundation
 /// manifest out of the bundle it actually ships in.
 enum PrivacyManifest {
 
-    /// The bundled manifest, or `nil` if it did not make it into the product.
+    /// The bundled manifest, or `nil` if the resource bundle exists but does
+    /// not contain it.
+    ///
+    /// - Note: if the bundle itself is missing, SwiftPM's generated
+    ///   `Bundle.module` accessor calls `fatalError` — the caller gets a
+    ///   process trap, not `nil`.
     static var url: URL? {
         Bundle.module.url(forResource: "PrivacyInfo", withExtension: "xcprivacy")
     }

@@ -28,13 +28,21 @@ final class PrivacyManifestTests: XCTestCase {
     }
 
     private func collectedDataTypes() throws -> [[String: Any]] {
-        try XCTUnwrap(manifest["NSPrivacyCollectedDataTypes"] as? [[String: Any]])
+        let types = try XCTUnwrap(manifest["NSPrivacyCollectedDataTypes"] as? [[String: Any]])
+        XCTAssertFalse(types.isEmpty, "the SDK collects data, so an empty declaration is itself the bug")
+        return types
     }
 
     // MARK: - Required-reason APIs
 
     func testUserDefaultsIsDeclaredWithTheAppsOwnDefaultsReason() throws {
         let apiTypes = try XCTUnwrap(manifest["NSPrivacyAccessedAPITypes"] as? [[String: Any]])
+        XCTAssertEqual(
+            apiTypes.compactMap { $0["NSPrivacyAccessedAPIType"] as? String },
+            ["NSPrivacyAccessedAPICategoryUserDefaults"],
+            "UserDefaults is the SDK's only required-reason API use; declaring a category the SDK does not touch is its own App Store problem"
+        )
+
         let userDefaults = try XCTUnwrap(
             apiTypes.first { $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults" },
             "StorageService reads and writes UserDefaults, so the category has to be declared"
