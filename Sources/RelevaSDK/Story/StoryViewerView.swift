@@ -15,6 +15,27 @@ public struct StoryViewerView: View {
     @State private var storyCompleteTracked = false
     @State private var timer: Timer?
 
+    /// - Parameters:
+    ///   - story: The story to play.
+    ///   - client: The client that reports slide views, clicks, completion and close.
+    ///   - onLinkTap: Called when a link in a slide, or the slide's action button, is tapped.
+    ///   - onClose: Called when the story finishes or the user closes it. Take the viewer off
+    ///     screen here — the view does not dismiss itself.
+    ///
+    /// The memberwise initialiser is internal, so a `UIHostingController` outside the SDK could
+    /// not construct this view without this.
+    public init(
+        story: StoryResponse,
+        client: RelevaClient,
+        onLinkTap: @escaping (String) -> Void,
+        onClose: @escaping () -> Void
+    ) {
+        self.story = story
+        self.client = client
+        self.onLinkTap = onLinkTap
+        self.onClose = onClose
+    }
+
     private var currentSlide: StorySlideResponse {
         guard currentSlideIndex < story.slides.count else {
             return StorySlideResponse()
