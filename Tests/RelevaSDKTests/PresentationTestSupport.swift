@@ -1,5 +1,29 @@
 import UIKit
 import XCTest
+@testable import RelevaSDK
+
+/// Stands in for `RelevaClient`, which builds its own `NetworkService` over `URLSession.shared`
+/// and has no injection point — handing a real one to a view model or presenter would make a
+/// test perform network I/O.
+///
+/// Shared by `BannerPresenterTests` and `BannerDisplayViewModelTests`, which were previously two
+/// byte-for-byte copies of the same spy: both suites assert on the `"token:action"` format below,
+/// so one copy keeps that format from drifting between them.
+@MainActor
+final class BannerTrackerSpy: BannerTracker {
+    var impressions: [String] = []
+    /// `token:action` pairs in call order, flattened to strings so a whole expected sequence
+    /// can be compared in one assertion.
+    var actions: [String] = []
+
+    func bannerImpression(_ banner: BannerResponse) {
+        impressions.append(banner.token)
+    }
+
+    func bannerAction(_ banner: BannerResponse, action: String) {
+        actions.append("\(banner.token):\(action)")
+    }
+}
 
 /// Shared by `BannerPresenterTests` and `NpsPresenterTests`: both drive a presenter through the
 /// display-controller singleton it subscribes to, then look at what the host has on screen.
@@ -7,23 +31,21 @@ extension XCTestCase {
 
     /// A window holding `rootViewController`, made visible.
     ///
-    /// Visible because a view controller in no on-screen hierarchy cannot reliably present. The
-    /// runner has a scene, and a window belonging to none of them is not part of a hierarchy
-    /// that is on screen, so the window is attached to it.
+    /// Visible because a view controller in no on-screen hierarchy cannot reliably present.
+    ///
+    /// A previous version of this helper hard-asserted that `connectedScenes` yields a
+    /// `UIWindowScene`, on the theory that xcodebuild's generated SPM test host always has one.
+    /// It doesn't here: that assertion failed every single test that calls this helper — all of
+    /// `BannerPresenterTests` and `NpsPresenterTests`, and nothing else — because this test host
+    /// has no scene manifest, so `connectedScenes` is empty. Attach a scene when one exists;
+    /// `makeKeyAndVisible()` still puts the window on screen without one.
     ///
     /// The caller must keep the returned window alive for the length of the test and hide it
     /// afterwards; a key window left behind is the next test's root.
     @MainActor
     func makeVisibleWindow(rootViewController: UIViewController) -> UIWindow {
         let window = UIWindow(frame: UIScreen.main.bounds)
-        // SPM test bundles run under xcodebuild's generated host, so a window scene is expected
-        // here, but it is not guaranteed by the platform. Without it the window is never
-        // attached to a real hierarchy and presentation may or may not complete — the symptom
-        // would be `waitUntil` burning its timeout and failing with a message that reads like a
-        // presenter bug rather than a harness one, so make the assumption explicit instead.
-        let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
-        XCTAssertNotNil(scene, "these tests need a window scene to present from")
-        window.windowScene = scene
+        window.windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
         window.rootViewController = rootViewController
         window.makeKeyAndVisible()
         return window

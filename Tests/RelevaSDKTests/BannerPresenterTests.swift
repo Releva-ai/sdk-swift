@@ -3,25 +3,6 @@ import UIKit
 import XCTest
 @testable import RelevaSDK
 
-/// Stands in for `RelevaClient`, which builds its own `NetworkService` over `URLSession.shared`
-/// and has no injection point — handing a real one to the presenter would make these tests
-/// perform network I/O.
-@MainActor
-private final class BannerTrackerSpy: BannerTracker {
-    var impressions: [String] = []
-    /// `token:action` pairs in call order, flattened to strings so a whole expected sequence
-    /// can be compared in one assertion.
-    var actions: [String] = []
-
-    func bannerImpression(_ banner: BannerResponse) {
-        impressions.append(banner.token)
-    }
-
-    func bannerAction(_ banner: BannerResponse, action: String) {
-        actions.append("\(banner.token):\(action)")
-    }
-}
-
 /// A presenter over a host in a visible window, reporting to a spy.
 private struct BannerFixture {
     let host: UIViewController
@@ -61,11 +42,15 @@ final class BannerPresenterTests: XCTestCase {
     @MainActor
     func testPopupIsPresentedOverAnExistingModalRatherThanFailing() {
         let fixture = makeFixture()
-        defer { takeDown(fixture) }
-
         // The app already has something up before a banner arrives — the case
-        // `topMostPresentedViewController` exists for.
+        // `topMostPresentedViewController` exists for. Dismiss it before the presenter, so it
+        // doesn't leak into whatever runs the window next, the way `takeDown` alone would leave
+        // it — `takeDown` only stops the presenter and hides the window.
         let existingModal = UIViewController()
+        defer {
+            existingModal.dismiss(animated: false)
+            takeDown(fixture)
+        }
         fixture.host.present(existingModal, animated: false)
         waitUntil("the existing modal is presented") { fixture.host.presentedViewController != nil }
 
@@ -170,13 +155,47 @@ final class BannerPresenterTests: XCTestCase {
         drainMainQueue()
         waitUntil("the overlay is dismissed") { fixture.host.presentedViewController == nil }
 
-        // This is the path `isDismissingOverlay` guards: if dismissal never cleared the flag,
-        // this banner would be silently dropped and never reach the screen.
+        // A normal dismiss-then-repopulate round trip: the overlay was presented normally, so
+        // `presentingViewController` finds it and the dismiss completion clears the flag before
+        // this arrives either way. `testAPopupAfterTheOverlayWasDismissedExternallyIsStillPresented`
+        // below is the one that pins the latch itself, which needs the overlay gone before the
+        // presenter tries to dismiss it.
         BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
         drainMainQueue()
 
         XCTAssertEqual(fixture.tracker.impressions, ["popup-1", "popup-2"])
         waitUntil("the overlay is presented again") { fixture.host.presentedViewController != nil }
+    }
+
+    @MainActor
+    func testAPopupAfterTheOverlayWasDismissedExternallyIsStillPresented() {
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+
+        let first = banner("popup-1", displayType: "popup")
+        fixture.presenter.start()
+        BannerDisplayController.shared.showBanner(first)
+        drainMainQueue()
+        waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
+
+        // Behind the presenter's back — something else dismissed the chain the overlay was in,
+        // so `syncOverlay` finds a controller with no `presentingViewController` when it goes to
+        // dismiss it.
+        fixture.host.dismiss(animated: false)
+        waitUntil("the overlay is gone") { fixture.host.presentedViewController == nil }
+
+        // Pre-fix this set `isDismissingOverlay = true` and skipped the completion that clears
+        // it, wedging the presenter for the rest of its life.
+        fixture.presenter.viewModel.dismissPopup(first)
+        drainMainQueue()
+
+        BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
+        drainMainQueue()
+
+        XCTAssertEqual(fixture.tracker.impressions, ["popup-1", "popup-2"])
+        waitUntil("the next popup still reaches the screen") {
+            fixture.host.presentedViewController != nil
+        }
     }
 
     @MainActor
@@ -211,6 +230,10 @@ final class BannerPresenterTests: XCTestCase {
         drainMainQueue()
 
         XCTAssertEqual(fixture.tracker.actions, ["bar-1:bannerClose"])
+        XCTAssertTrue(
+            fixture.presenter.viewModel.barBanners.isEmpty,
+            "a dismissed bar must come out of the stack, not just report its close"
+        )
     }
 
     @MainActor

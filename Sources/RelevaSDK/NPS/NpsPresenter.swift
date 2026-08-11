@@ -39,6 +39,9 @@ public final class NpsPresenter {
 
     private var cancellable: AnyCancellable?
     private var surveyController: UIViewController?
+    /// Bounds the retry in `present` below so a host that can never present (rather than one
+    /// mid-transition) does not spin forever redoing the same failing presentation.
+    private var presentRetriesRemaining = 2
 
     /// - Parameters:
     ///   - host: The view controller the survey is presented from. Held weakly.
@@ -60,6 +63,7 @@ public final class NpsPresenter {
     public func start() {
         guard cancellable == nil else { return }
 
+        presentRetriesRemaining = 2
         cancellable = NpsDisplayController.shared.npsPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] config in
@@ -94,6 +98,30 @@ public final class NpsPresenter {
         controller.sheetPresentationController?.detents = [.medium(), .large()]
         surveyController = controller
         host.topMostPresentedViewController.present(controller, animated: true)
+
+        if controller.presentingViewController == nil {
+            // The presentation did not take — UIKit only logs, e.g. when
+            // `topMostPresentedViewController` handed back a controller whose own dismissal was
+            // still in flight. Nothing re-drives `present` until the next survey arrives, so
+            // without a retry this one would be lost rather than shown. `present` sets
+            // `presentingViewController` synchronously when it takes, so this is observable
+            // right here.
+            surveyController = nil
+            if presentRetriesRemaining > 0 {
+                presentRetriesRemaining -= 1
+                DispatchQueue.main.async { [weak self] in
+                    // `cancellable` is the started flag: a retry landing after `stop()` must not
+                    // put a survey back up.
+                    guard let self = self, self.cancellable != nil else { return }
+                    self.present(config)
+                }
+            }
+            // A host that can never present gives up here instead of retrying indefinitely.
+        } else {
+            // A later failure gets its own fresh budget rather than draining across unrelated
+            // surveys.
+            presentRetriesRemaining = 2
+        }
     }
 
     private func close(animated: Bool) {

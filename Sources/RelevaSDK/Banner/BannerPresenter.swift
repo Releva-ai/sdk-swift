@@ -50,6 +50,9 @@ public final class BannerPresenter {
     private var overlayController: UIHostingController<BannerOverlayView>?
     private var isDismissingOverlay = false
     private var barSlots: [BarSlot] = []
+    /// Bounds the retry below so a host that can never present (rather than one mid-transition)
+    /// does not spin forever redoing the same failing `present`.
+    private var presentRetriesRemaining = 2
 
     /// - Parameters:
     ///   - host: The view controller the banners are shown over. Held weakly.
@@ -77,6 +80,7 @@ public final class BannerPresenter {
         guard cancellable == nil, let host = host else { return }
 
         installBarSlots(in: host)
+        presentRetriesRemaining = 2
         viewModel.start(tracker: tracker, targetSelector: "", overlayOnly: true, onLinkTap: onLinkTap)
 
         // `receive(on:)` so a reconcile sees the view model's committed state: `@Published`
@@ -154,6 +158,35 @@ public final class BannerPresenter {
             // presented above it in the meantime — the usual trade-off of dismissing via
             // `presentingViewController` rather than tracking the exact controller to close.
             host.topMostPresentedViewController.present(controller, animated: true)
+
+            if controller.presentingViewController == nil {
+                // The presentation did not take — UIKit only logs, e.g. when
+                // `topMostPresentedViewController` handed back a controller whose own dismissal
+                // was still in flight. `reconcile` only runs again on the next `@Published`
+                // banner change, so without a retry this banner would sit in the view model,
+                // drawn nowhere, until an unrelated banner event happened to arrive. `present`
+                // sets `presentingViewController` synchronously when it takes, so this is
+                // observable right here.
+                overlayController = nil
+                if presentRetriesRemaining > 0 {
+                    presentRetriesRemaining -= 1
+                    DispatchQueue.main.async { [weak self] in
+                        // `cancellable` is the started flag: a retry landing after `stop()` must
+                        // not put a banner back up.
+                        guard let self = self, self.cancellable != nil else { return }
+                        self.syncOverlay(
+                            isNeeded: self.viewModel.popupBanner != nil || self.viewModel.flyoutBanner != nil
+                        )
+                    }
+                }
+                // A host that can never present (rather than one mid-transition) gives up here
+                // instead of retrying indefinitely; the banner stays pending until the next
+                // banner event, same as before this retry existed.
+            } else {
+                // A later failure gets its own fresh budget rather than draining across
+                // unrelated banners.
+                presentRetriesRemaining = 2
+            }
         } else {
             guard let controller = overlayController else { return }
 
@@ -230,7 +263,9 @@ public final class BannerPresenter {
 
     /// Below iOS 16 the bar's height has to be measured, because `sizingOptions` is
     /// unavailable and nothing else invalidates the hosting view's size when its content
-    /// changes. A no-op from iOS 16 up.
+    /// changes. A no-op from iOS 16 up, where every slot's `heightConstraint` is `nil` — checked
+    /// before forcing layout below, so the modern path is not made to pay for a measurement it
+    /// has no use for on every reconcile (every popup show, dismissal and bar add/remove).
     ///
     /// Forces layout first and bails out on a zero width rather than measuring against it: this
     /// can run from `start()`'s first reconcile, one main-queue hop after `viewWillAppear`,
@@ -242,7 +277,7 @@ public final class BannerPresenter {
     /// the same run-loop turn the `@Published` banner change was observed, so whether it sees
     /// the new content or the previous turn's has not been verified here.
     private func measureBars() {
-        guard let host = host else { return }
+        guard barSlots.contains(where: { $0.heightConstraint != nil }), let host = host else { return }
         host.view.layoutIfNeeded()
         let width = host.view.safeAreaLayoutGuide.layoutFrame.width
         guard width > 0 else { return }

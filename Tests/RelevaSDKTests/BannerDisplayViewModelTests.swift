@@ -9,20 +9,6 @@ import XCTest
 final class BannerDisplayViewModelTests: XCTestCase {
 
     @MainActor
-    private final class TrackerSpy: BannerTracker {
-        var impressions: [String] = []
-        var actions: [String] = []
-
-        func bannerImpression(_ banner: BannerResponse) {
-            impressions.append(banner.token)
-        }
-
-        func bannerAction(_ banner: BannerResponse, action: String) {
-            actions.append("\(banner.token):\(action)")
-        }
-    }
-
-    @MainActor
     private func banner(
         _ token: String,
         displayType: String?,
@@ -43,7 +29,7 @@ final class BannerDisplayViewModelTests: XCTestCase {
     @MainActor
     func testOverlayOnlyAcceptsPopupFlyoutAndBar() {
         let viewModel = BannerDisplayViewModel()
-        let tracker = TrackerSpy()
+        let tracker = BannerTrackerSpy()
         defer { viewModel.stop() }
 
         viewModel.start(tracker: tracker, targetSelector: "", overlayOnly: true, onLinkTap: nil)
@@ -61,7 +47,7 @@ final class BannerDisplayViewModelTests: XCTestCase {
     @MainActor
     func testOverlayOnlyDropsStaticAndReplaceBannersBeforeTrackingAnImpression() {
         let viewModel = BannerDisplayViewModel()
-        let tracker = TrackerSpy()
+        let tracker = BannerTrackerSpy()
         defer { viewModel.stop() }
 
         viewModel.start(tracker: tracker, targetSelector: "#hero", overlayOnly: true, onLinkTap: nil)
@@ -86,7 +72,7 @@ final class BannerDisplayViewModelTests: XCTestCase {
     @MainActor
     func testNonOverlayStillRoutesAMatchingStaticBannerToBeforeContent() {
         let viewModel = BannerDisplayViewModel()
-        let tracker = TrackerSpy()
+        let tracker = BannerTrackerSpy()
         defer { viewModel.stop() }
 
         viewModel.start(tracker: tracker, targetSelector: "#hero", overlayOnly: false, onLinkTap: nil)
@@ -102,7 +88,7 @@ final class BannerDisplayViewModelTests: XCTestCase {
     @MainActor
     func testNonOverlayDropsAStaticBannerForADifferentSelector() {
         let viewModel = BannerDisplayViewModel()
-        let tracker = TrackerSpy()
+        let tracker = BannerTrackerSpy()
         defer { viewModel.stop() }
 
         viewModel.start(tracker: tracker, targetSelector: "#hero", overlayOnly: false, onLinkTap: nil)
@@ -120,7 +106,7 @@ final class BannerDisplayViewModelTests: XCTestCase {
     @MainActor
     func testTrackClickReportsTheClickActionRatherThanTheCloseOne() {
         let viewModel = BannerDisplayViewModel()
-        let tracker = TrackerSpy()
+        let tracker = BannerTrackerSpy()
         defer { viewModel.stop() }
 
         viewModel.start(tracker: tracker, targetSelector: "", overlayOnly: true, onLinkTap: nil)
