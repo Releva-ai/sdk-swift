@@ -78,10 +78,13 @@ final class NpsPresenterTests: XCTestCase {
         // `close(animated:)` only clears `surveyController` from the dismiss completion, so a
         // sheet UIKit declines to dismiss (still `isBeingPresented`) is not orphaned — see
         // `NpsPresenter.close`. That completion needs the transition to actually finish, which
-        // this test host's windows (no `UIWindowScene`) never do, so it stays set here rather
-        // than going to `nil`; see `PresentationTestSupport.makeVisibleWindow`.
-        XCTAssertNotNil(
-            presenter.surveyController,
+        // this test host's windows (no `UIWindowScene`) never do; see
+        // `PresentationTestSupport.makeVisibleWindow`. Asserting `!= nil` here would only pin
+        // that harness limitation rather than presenter behaviour, so the identity check below —
+        // still the same instance stop() found, not something a late reconcile replaced it with
+        // — is the transition-independent fact instead.
+        XCTAssertTrue(
+            presenter.surveyController === firstSurvey,
             "the presenter must not let go of the survey until UIKit confirms the dismissal"
         )
 

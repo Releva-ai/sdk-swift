@@ -135,12 +135,11 @@ final class BannerPresenterTests: XCTestCase {
         // `overlayController` is cleared from the dismiss completion, not up front — see
         // `syncOverlay` — precisely so a dismissal UIKit declines does not orphan the overlay.
         // That completion needs a transition to actually finish, which this test host's windows
-        // (no `UIWindowScene`) never do, so it stays set here rather than going to `nil`; see
-        // `PresentationTestSupport.makeVisibleWindow`.
-        XCTAssertNotNil(
-            fixture.presenter.overlayController,
-            "the presenter must not let go of the overlay until UIKit confirms the dismissal"
-        )
+        // (no `UIWindowScene`) never do, so asserting on `overlayController` here would only pin
+        // the harness's inability to finish a transition, not presenter behaviour — see
+        // `PresentationTestSupport.makeVisibleWindow`. `dismissPopup` clearing `popupBanner`
+        // synchronously, independent of any UIKit transition, is the fact that actually holds.
+        XCTAssertNil(fixture.presenter.viewModel.popupBanner, "the dismissed banner must leave the view model")
     }
 
     @MainActor
@@ -159,11 +158,10 @@ final class BannerPresenterTests: XCTestCase {
 
         XCTAssertEqual(fixture.tracker.actions, ["flyout-1:bannerClose"])
         // Same harness limitation as the popup case above: the dismiss completion that clears
-        // `overlayController` needs a transition to finish, which never happens here.
-        XCTAssertNotNil(
-            fixture.presenter.overlayController,
-            "the presenter must not let go of the overlay until UIKit confirms the dismissal"
-        )
+        // `overlayController` needs a transition to finish, which never happens here, so the
+        // transition-independent fact — `dismissFlyout` clearing `flyoutBanner` synchronously —
+        // is what is asserted instead.
+        XCTAssertNil(fixture.presenter.viewModel.flyoutBanner, "the dismissed banner must leave the view model")
     }
 
     @MainActor
@@ -196,12 +194,19 @@ final class BannerPresenterTests: XCTestCase {
         drainMainQueue()
         waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
 
+        let stale = fixture.presenter.overlayController
         fixture.presenter.stop()
         // As in the dismiss tests above, `stop()` only clears `overlayController` once
         // `controller.presentingViewController` reads back `nil` — which needs the dismissal to
-        // have actually finished, and this test host's transitions never do. What `stop()`
-        // guarantees regardless of that is covered below: it unsubscribes and tears the bar
-        // slots down.
+        // have actually finished, and this test host's transitions never do. That does not stop
+        // this test from asserting the transition-independent half: whatever `overlayController`
+        // is now, it must be the same instance stop() found, not a second overlay a late
+        // reconcile put up — the same technique `NpsPresenterTests`'
+        // `testStopTakesTheSurveyDownAndIgnoresLaterOnes` uses.
+        XCTAssertTrue(
+            fixture.presenter.overlayController === stale,
+            "a stopped presenter must not put anything back on screen"
+        )
         XCTAssertTrue(fixture.host.children.isEmpty, "the bar slots must come off with the presenter")
 
         BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
@@ -215,12 +220,21 @@ final class BannerPresenterTests: XCTestCase {
     }
 
     /// `stop()`'s doc comment and the CHANGELOG both promise that the view model's banner state
-    /// survives a `stop()` / `start()` round trip, so a retained popup comes back without a
-    /// second impression. Unlike the dismiss cases above, this round trip needs no UIKit
-    /// transition to complete — `syncOverlay`'s `isNeeded: true` branch reads the view model,
-    /// not a pending dismissal — so it is exercised directly rather than only documented.
+    /// survives a `stop()` / `start()` round trip, so a retained popup does not get counted
+    /// twice. The *presentation* half of that round trip cannot be exercised here: `stop()`
+    /// only clears `overlayController` once `presentingViewController` reads back `nil`, which
+    /// needs the declined dismiss's completion to have run, and this test host's transitions
+    /// never complete (no `UIWindowScene` — see `PresentationTestSupport.makeVisibleWindow`). So
+    /// `syncOverlay`'s `isNeeded: true` branch on the `start()` below finds `overlayController`
+    /// still set from before `stop()`, fails its `overlayController == nil` guard, and returns
+    /// without presenting anything — a controller reference asserted `!= nil` afterwards would
+    /// pass on the pre-`stop()` controller, whether or not `start()` presents anything at all.
+    /// What *is* observable, and would fail if `start()`'s guard against a second impression
+    /// regressed: `viewModel.stop()` only cancels the subscription, so `displayedBanners`
+    /// survives and `handleBanner`'s `guard !displayedBanners.contains` is what keeps the
+    /// impression count at one.
     @MainActor
-    func testStopThenStartRePresentsTheRetainedBannerWithoutASecondImpression() {
+    func testStopThenStartDoesNotCountASecondImpressionForTheRetainedBanner() {
         let fixture = makeFixture()
         defer { takeDown(fixture) }
 
@@ -233,8 +247,7 @@ final class BannerPresenterTests: XCTestCase {
         fixture.presenter.start()
         drainMainQueue()
 
-        XCTAssertNotNil(fixture.presenter.overlayController, "the retained banner comes back")
-        XCTAssertEqual(fixture.tracker.impressions, ["popup-1"], "and is not counted twice")
+        XCTAssertEqual(fixture.tracker.impressions, ["popup-1"], "the retained banner is not counted twice")
     }
 
     // MARK: - Fixtures

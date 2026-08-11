@@ -116,10 +116,20 @@ public final class NpsPresenter {
         // same shape as `BannerPresenter.syncOverlay`: a sheet still `isBeingPresented` (skipped
         // or submitted during its own presentation) declines `dismiss` and only logs, so clearing
         // `surveyController` up front would leave nothing able to reach the orphaned sheet again.
-        // A declined dismissal leaves `surveyController` set, so `present`'s own guard retries it
-        // when the next survey arrives instead of stacking a second sheet on top.
+        // Unlike `BannerPresenter`, nothing here retries a declined dismiss: `present`'s guard
+        // just returns while `surveyController` still points at the orphaned sheet, so it — and
+        // every survey after it — stays unshown for the rest of the app session.
+        // `BannerPresenter` doesn't have this gap because `reconcile` runs on every banner event
+        // and its `isNeeded: false` branch re-issues the dismiss; nothing plays that role here.
+        // Recovery is user-driven only: a `.pageSheet` is swipe-dismissable, which is what keeps
+        // this from being worse than the banner case. See the CHANGELOG's "Known limitations".
         presenting.dismiss(animated: animated) { [weak self] in
-            self?.surveyController = nil
+            // Identity-checked rather than an unconditional clear: `present` can replace
+            // `surveyController` with a new sheet before this completion lands (a fast
+            // skip-then-next-survey), and the property could otherwise be dropping the live
+            // sheet's reference instead of the one that was actually dismissed.
+            guard let self = self, self.surveyController === controller else { return }
+            self.surveyController = nil
         }
     }
 }
