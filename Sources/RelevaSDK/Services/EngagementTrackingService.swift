@@ -190,35 +190,42 @@ public class EngagementTrackingService {
                 print("RelevaSDK: Sending \(eventsToSend.count) engagement events")
             }
 
-            // Send events
-            self.networkService.sendEngagementEvents(eventsToSend) { result in
-                self.queue.async {
-                    self.isSending = false
-
-                    switch result {
-                    case .success:
-                        // Remove sent events
-                        self.pendingEvents.removeAll { event in
-                            eventsToSend.contains { $0.notificationId == event.notificationId }
-                        }
-                        self.storage.removePendingEngagementEvents(eventsToSend)
-
-                        if self.config.enableDebugLogging {
-                            print("RelevaSDK: Successfully sent \(eventsToSend.count) engagement events")
-                        }
-
-                    case .failure(let error):
-                        if self.config.enableDebugLogging {
-                            print("RelevaSDK: Failed to send engagement events: \(error)")
-                        }
-
-                        // Events will be retried in next batch
+            // Send events. The unstructured `Task` is the bridge from this serial queue into
+            // the async fan-out; the state it touches afterwards is hopped back onto the queue
+            // by `finishBatch`, so `pendingEvents` and `isSending` stay queue-confined.
+            Task {
+                do {
+                    try await self.networkService.sendEngagementEvents(eventsToSend)
+                    if self.config.enableDebugLogging {
+                        print("RelevaSDK: Successfully sent \(eventsToSend.count) engagement events")
                     }
-
-                    // Save updated pending events
-                    self.storage.savePendingEngagementEvents(self.pendingEvents)
+                    self.finishBatch(eventsToSend, delivered: true)
+                } catch {
+                    if self.config.enableDebugLogging {
+                        print("RelevaSDK: Failed to send engagement events: \(error)")
+                    }
+                    // Events will be retried in next batch
+                    self.finishBatch(eventsToSend, delivered: false)
                 }
             }
+        }
+    }
+
+    /// Settle a batch back on `queue`: clear the in-flight flag, drop the events if they
+    /// were delivered, and persist whatever is left.
+    private func finishBatch(_ eventsToSend: [EngagementEvent], delivered: Bool) {
+        queue.async {
+            self.isSending = false
+
+            if delivered {
+                self.pendingEvents.removeAll { event in
+                    eventsToSend.contains { $0.notificationId == event.notificationId }
+                }
+                self.storage.removePendingEngagementEvents(eventsToSend)
+            }
+
+            // Save updated pending events
+            self.storage.savePendingEngagementEvents(self.pendingEvents)
         }
     }
 
@@ -235,29 +242,52 @@ public class EngagementTrackingService {
     }
 
     /// Get pending event count
-    public func getPendingEventCount(completion: @escaping (Int) -> Void) {
-        queue.async {
-            completion(self.pendingEvents.count)
+    public func getPendingEventCount() async -> Int {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                continuation.resume(returning: self.pendingEvents.count)
+            }
         }
     }
 }
 
 // MARK: - Statistics
 
+/// A snapshot of the engagement queue.
+///
+/// Replaces the `[String: Any]` that `getStatistics` used to hand back: the keys were
+/// undocumented, every read needed a cast, and the dictionary is not `Sendable`, which
+/// matters now that it crosses from the tracking queue to whatever awaited it.
+public struct EngagementStatistics: Sendable, Equatable {
+    /// Events waiting to be sent.
+    public let pendingCount: Int
+    /// Whether the batch timer is running.
+    public let isTracking: Bool
+    /// Whether a batch is in flight right now.
+    public let isSending: Bool
+    /// Configured maximum events per batch.
+    public let batchSize: Int
+    /// Configured seconds between batches.
+    public let batchInterval: TimeInterval
+    /// Pending event counts keyed by `EngagementEventType.rawValue`.
+    public let eventTypes: [String: Int]
+}
+
 extension EngagementTrackingService {
     /// Get engagement statistics
-    public func getStatistics(completion: @escaping ([String: Any]) -> Void) {
-        queue.async {
-            let stats: [String: Any] = [
-                "pendingCount": self.pendingEvents.count,
-                "isTracking": self.batchTimer != nil,
-                "isSending": self.isSending,
-                "batchSize": self.config.engagementBatchSize,
-                "batchInterval": self.config.engagementBatchInterval,
-                "eventTypes": Dictionary(grouping: self.pendingEvents) { $0.type.rawValue }
-                    .mapValues { $0.count }
-            ]
-            completion(stats)
+    public func getStatistics() async -> EngagementStatistics {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                continuation.resume(returning: EngagementStatistics(
+                    pendingCount: self.pendingEvents.count,
+                    isTracking: self.batchTimer != nil,
+                    isSending: self.isSending,
+                    batchSize: self.config.engagementBatchSize,
+                    batchInterval: self.config.engagementBatchInterval,
+                    eventTypes: Dictionary(grouping: self.pendingEvents) { $0.type.rawValue }
+                        .mapValues { $0.count }
+                ))
+            }
         }
     }
 }

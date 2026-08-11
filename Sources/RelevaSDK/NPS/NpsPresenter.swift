@@ -9,14 +9,15 @@ import UIKit
 /// same on both paths.
 ///
 /// Reporting the response is the app's job on both paths — pass a closure that calls
-/// `RelevaClient.submitNpsResponse(token:score:comment:completion:)`:
+/// `RelevaClient.submitNpsResponse(token:score:comment:)`. That method is `async throws`, and
+/// `onSubmit` is not, so the call goes in a `Task`:
 ///
 /// ```swift
 /// final class HomeViewController: UIViewController {
 ///     let client: RelevaClient
 ///
 ///     private lazy var nps = NpsPresenter(host: self, onSubmit: { [weak self] token, score, comment in
-///         self?.client.submitNpsResponse(token: token, score: score, comment: comment)
+///         Task { try? await self?.client.submitNpsResponse(token: token, score: score, comment: comment) }
 ///     })
 ///
 ///     override func viewWillAppear(_ animated: Bool) {

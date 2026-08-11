@@ -1,6 +1,12 @@
 import Foundation
 
-/// Service for handling network requests
+/// Service for handling network requests.
+///
+/// Deliberately *not* `@MainActor`. Every method here is a nonisolated `async` function, so
+/// its body runs on the cooperative pool even when awaited from `@MainActor RelevaClient`
+/// (SE-0338: a nonisolated async function does not inherit the caller's actor). That is what
+/// keeps request encoding and response decoding off the main thread — see the `@MainActor`
+/// audit notes in CHANGELOG 5.0.0.
 public class NetworkService {
     // MARK: - Types
 
@@ -11,12 +17,6 @@ public class NetworkService {
         case put = "PUT"
         case delete = "DELETE"
     }
-
-    /// Network request result
-    public typealias NetworkResult<T> = Result<T, RelevaError>
-
-    /// Completion handler for network requests
-    public typealias CompletionHandler<T> = (NetworkResult<T>) -> Void
 
     // MARK: - Properties
 
@@ -147,35 +147,27 @@ public class NetworkService {
     /// - Parameters:
     ///   - request: Push request data
     ///   - context: Additional context data
-    ///   - completion: Completion handler with RelevaResponse
+    /// - Returns: The decoded API response
     public func sendPushRequest(
         _ request: [String: Any],
-        context: [String: Any],
-        completion: @escaping CompletionHandler<RelevaResponse>
-    ) {
+        context: [String: Any]
+    ) async throws -> RelevaResponse {
         let payload = buildPushPayload(request: request, context: context)
 
-        performRequest(
+        let data = try await performRequest(
             endpoint: "/api/v0/push",
             method: .post,
             body: payload,
             retryAttempts: maxRetryAttempts
-        ) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success(let data):
-                do {
-                    let response = try RelevaResponse.from(jsonData: data)
-                    completion(.success(response))
-                } catch {
-                    if self.config.enableDebugLogging {
-                        print("RelevaSDK: Failed to decode response: \(error)")
-                    }
-                    completion(.failure(.invalidResponse("Failed to decode response")))
-                }
+        )
 
-            case .failure(let error):
-                completion(.failure(error))
+        do {
+            return try RelevaResponse.from(jsonData: data)
+        } catch {
+            if config.enableDebugLogging {
+                print("RelevaSDK: Failed to decode response: \(error)")
             }
+            throw RelevaError.invalidResponse("Failed to decode response")
         }
     }
 
@@ -185,14 +177,12 @@ public class NetworkService {
     ///   - deviceType: Device type
     ///   - deviceId: Device ID
     ///   - profileId: Profile ID
-    ///   - completion: Completion handler
     public func registerPushToken(
         _ token: String,
         deviceType: DeviceType,
         deviceId: String,
-        profileId: String?,
-        completion: @escaping CompletionHandler<Bool>
-    ) {
+        profileId: String?
+    ) async throws {
         var payload: [String: Any] = [
             "pushToken": token,
             "deviceType": deviceType.rawValue,
@@ -203,178 +193,116 @@ public class NetworkService {
             payload["profileId"] = profileId
         }
 
-        performRequest(
+        _ = try await performRequest(
             endpoint: "/api/v0/appPush/tokens",
             method: .post,
             body: payload,
             retryAttempts: maxRetryAttempts
-        ) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success:
-                completion(.success(true))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-
-    /// Whether every engagement callback has succeeded so far.
-    ///
-    /// `URLSession` delivers the callbacks' completion handlers concurrently on its
-    /// delegate queue, so they cannot share a captured `var`: the writes would be
-    /// unsynchronised, which is undefined behaviour however benign the values look.
-    ///
-    /// `@unchecked Sendable`: every access to `succeeded` goes through `lock`, so the
-    /// class is actually safe to share across the `@Sendable` completion handler below —
-    /// this states that synchronisation, it doesn't suppress the checker in its absence
-    /// (that would be `nonisolated(unsafe)` on a bare `var`, which the fix above
-    /// deliberately avoids).
-    private final class CallbackOutcome: @unchecked Sendable {
-        private let lock = NSLock()
-        private var succeeded = true
-
-        func recordFailure() {
-            lock.lock()
-            defer { lock.unlock() }
-            succeeded = false
-        }
-
-        var allSucceeded: Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            return succeeded
-        }
+        )
     }
 
     /// Send engagement events by firing each callback URL with a simple GET request.
     /// The backend registers the click when the callback URL is fetched — no JSON body needed.
-    /// - Parameters:
-    ///   - events: Array of engagement events
-    ///   - completion: Completion handler
-    public func sendEngagementEvents(
-        _ events: [EngagementEvent],
-        completion: @escaping CompletionHandler<Bool>
-    ) {
+    ///
+    /// Throws `RelevaError.networkError` if *any* callback failed, which is what the caller
+    /// needs to decide whether the batch may be dropped from the pending queue.
+    /// - Parameter events: Array of engagement events
+    public func sendEngagementEvents(_ events: [EngagementEvent]) async throws {
         // Deduplicate callback URLs (multiple events may share the same URL)
         let uniqueCallbackUrls = Set(events.compactMap { $0.callbackUrl })
 
-        let group = DispatchGroup()
-        let outcome = CallbackOutcome()
+        // The child tasks each return their own verdict and the group folds them together, so
+        // there is no shared mutable flag to guard — that is what replaced `CallbackOutcome`.
+        let allSucceeded = await withTaskGroup(of: Bool.self, returning: Bool.self) { group in
+            for callbackUrl in uniqueCallbackUrls {
+                guard let url = URL(string: callbackUrl) else {
+                    if config.enableDebugLogging {
+                        print("RelevaSDK: Invalid callback URL, skipping: \(callbackUrl)")
+                    }
+                    continue
+                }
 
-        for callbackUrl in uniqueCallbackUrls {
-            guard let url = URL(string: callbackUrl) else {
                 if config.enableDebugLogging {
-                    print("RelevaSDK: Invalid callback URL, skipping: \(callbackUrl)")
+                    print("RelevaSDK: Firing callback URL: \(callbackUrl)")
                 }
-                continue
+
+                group.addTask { await self.fireEngagementCallback(url) }
             }
 
-            group.enter()
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.timeoutInterval = requestTimeout
-
-            if config.enableDebugLogging {
-                print("RelevaSDK: Firing callback URL: \(callbackUrl)")
+            var succeeded = true
+            for await callbackSucceeded in group where !callbackSucceeded {
+                succeeded = false
             }
-
-            let task = session.dataTask(with: request) { [weak self] _, response, error in
-                if let error = error {
-                    if self?.config.enableDebugLogging == true {
-                        print("RelevaSDK: Callback URL failed: \(error.localizedDescription)")
-                    }
-                    outcome.recordFailure()
-                } else if let httpResponse = response as? HTTPURLResponse {
-                    if self?.config.enableDebugLogging == true {
-                        print("RelevaSDK: Callback URL response: \(httpResponse.statusCode)")
-                    }
-                    if httpResponse.statusCode >= 400 {
-                        outcome.recordFailure()
-                    }
-                }
-                group.leave()
-            }
-            task.resume()
+            return succeeded
         }
 
-        group.notify(queue: .main) {
-            completion(outcome.allSucceeded ? .success(true) : .failure(.networkError("Failed to send some events")))
+        guard allSucceeded else {
+            throw RelevaError.networkError("Failed to send some events")
+        }
+    }
+
+    /// Fire one engagement callback. Returns whether it counted as a success.
+    private func fireEngagementCallback(_ url: URL) async -> Bool {
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = requestTimeout
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            // A non-HTTP response carries no status to judge; the DispatchGroup version this
+            // replaced also let that case through as a success.
+            guard let httpResponse = response as? HTTPURLResponse else { return true }
+
+            if config.enableDebugLogging {
+                print("RelevaSDK: Callback URL response: \(httpResponse.statusCode)")
+            }
+            return httpResponse.statusCode < 400
+        } catch {
+            if config.enableDebugLogging {
+                print("RelevaSDK: Callback URL failed: \(error.localizedDescription)")
+            }
+            return false
         }
     }
 
     // MARK: - Banner Tracking
 
     /// Send banner impression
-    public func sendBannerImpression(
-        _ payload: [String: Any],
-        completion: @escaping CompletionHandler<Bool>
-    ) {
-        performRequest(
+    public func sendBannerImpression(_ payload: [String: Any]) async throws {
+        _ = try await performRequest(
             endpoint: "/api/v0/impressions",
             method: .post,
             body: payload,
             retryAttempts: 2
-        ) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success:
-                completion(.success(true))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
+        )
     }
 
     /// Send a push event action (banner click/close, story impression/click, etc.)
-    public func sendPushEvent(
-        _ payload: [String: Any],
-        completion: @escaping CompletionHandler<Bool>
-    ) {
-        performRequest(
+    public func sendPushEvent(_ payload: [String: Any]) async throws {
+        _ = try await performRequest(
             endpoint: "/api/v0/push/events",
             method: .post,
             body: payload,
             retryAttempts: 2
-        ) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success:
-                completion(.success(true))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
+        )
     }
 
     /// Send banner action (click, close, etc.) — convenience alias for sendPushEvent
-    public func sendBannerAction(
-        _ payload: [String: Any],
-        completion: @escaping CompletionHandler<Bool>
-    ) {
-        sendPushEvent(payload, completion: completion)
+    public func sendBannerAction(_ payload: [String: Any]) async throws {
+        try await sendPushEvent(payload)
     }
 
     // MARK: - NPS
 
     /// Submit NPS survey response
-    public func sendNpsSubmission(
-        _ payload: [String: Any],
-        token: String,
-        completion: @escaping CompletionHandler<Bool>
-    ) {
+    public func sendNpsSubmission(_ payload: [String: Any], token: String) async throws {
         let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? token
-        performRequest(
+        _ = try await performRequest(
             endpoint: "/api/v0/nps/\(encodedToken)/submissions",
             method: .post,
             body: payload,
             retryAttempts: 1
-        ) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success:
-                completion(.success(true))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
+        )
     }
 
     // MARK: - Inbox
@@ -383,9 +311,8 @@ public class NetworkService {
     public func fetchInboxMessages(
         userId: String,
         limit: Int = 20,
-        cursor: String? = nil,
-        completion: @escaping CompletionHandler<[String: Any]>
-    ) {
+        cursor: String? = nil
+    ) async throws -> [String: Any] {
         var endpoint = "/api/v0/inbox/messages"
         endpoint += "?userId=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
         endpoint += "&limit=\(limit)"
@@ -393,240 +320,161 @@ public class NetworkService {
             endpoint += "&cursor=\(cursor.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? cursor)"
         }
 
-        performRequest(endpoint: endpoint, method: .get, retryAttempts: 1) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success(let data):
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    completion(.success(json))
-                } else {
-                    completion(.failure(.invalidResponse("Invalid inbox JSON")))
-                }
-            case .failure(let error):
-                completion(.failure(error))
-            }
+        let data = try await performRequest(endpoint: endpoint, method: .get, retryAttempts: 1)
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw RelevaError.invalidResponse("Invalid inbox JSON")
         }
+        return json
     }
 
     /// Fetch inbox unread count
-    public func fetchInboxUnreadCount(
-        userId: String,
-        completion: @escaping CompletionHandler<Int>
-    ) {
+    public func fetchInboxUnreadCount(userId: String) async throws -> Int {
         let encodedUserId = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
         let endpoint = "/api/v0/inbox/unread-count?userId=\(encodedUserId)"
 
-        performRequest(endpoint: endpoint, method: .get, retryAttempts: 1) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success(let data):
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    let count = (json["count"] as? NSNumber)?.intValue ?? 0
-                    completion(.success(count))
-                } else {
-                    completion(.failure(.invalidResponse("Unread count fetch failed")))
-                }
-            case .failure(let error):
-                completion(.failure(error))
-            }
+        let data = try await performRequest(endpoint: endpoint, method: .get, retryAttempts: 1)
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw RelevaError.invalidResponse("Unread count fetch failed")
         }
+        return (json["count"] as? NSNumber)?.intValue ?? 0
     }
 
     /// Mark inbox message as read
-    public func inboxMarkAsRead(
-        messageId: String,
-        userId: String,
-        completion: @escaping CompletionHandler<Bool>
-    ) {
-        performRequest(
+    public func inboxMarkAsRead(messageId: String, userId: String) async throws {
+        _ = try await performRequest(
             endpoint: "/api/v0/inbox/messages/\(messageId)/read",
             method: .post,
             body: ["userId": userId],
             retryAttempts: 1
-        ) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success: completion(.success(true))
-            case .failure(let error): completion(.failure(error))
-            }
-        }
+        )
     }
 
     /// Mark all inbox messages as read
-    public func inboxMarkAllAsRead(
-        userId: String,
-        completion: @escaping CompletionHandler<Bool>
-    ) {
-        performRequest(
+    public func inboxMarkAllAsRead(userId: String) async throws {
+        _ = try await performRequest(
             endpoint: "/api/v0/inbox/messages/read-all",
             method: .post,
             body: ["userId": userId],
             retryAttempts: 1
-        ) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success: completion(.success(true))
-            case .failure(let error): completion(.failure(error))
-            }
-        }
+        )
     }
 
     /// Delete inbox message
-    public func inboxDeleteMessage(
-        messageId: String,
-        userId: String,
-        completion: @escaping CompletionHandler<Bool>
-    ) {
-        performRequest(
+    public func inboxDeleteMessage(messageId: String, userId: String) async throws {
+        _ = try await performRequest(
             endpoint: "/api/v0/inbox/messages/\(messageId)",
             method: .delete,
             body: ["userId": userId],
             retryAttempts: 1
-        ) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success: completion(.success(true))
-            case .failure(let error): completion(.failure(error))
-            }
-        }
+        )
     }
 
     /// Track inbox message action
-    public func inboxTrackAction(
-        messageId: String,
-        userId: String,
-        completion: @escaping CompletionHandler<Bool>
-    ) {
-        performRequest(
+    public func inboxTrackAction(messageId: String, userId: String) async throws {
+        _ = try await performRequest(
             endpoint: "/api/v0/inbox/messages/\(messageId)/action",
             method: .post,
             body: ["userId": userId, "devicePlatform": "ios"],
             retryAttempts: 0
-        ) { (result: NetworkResult<Data>) in
-            switch result {
-            case .success: completion(.success(true))
-            case .failure(let error): completion(.failure(error))
-            }
-        }
+        )
     }
-    
+
     // MARK: - Private Methods
 
-    /// Perform network request with retry logic
+    /// Serialize the body, build the request and run it with retry logic.
     private func performRequest(
         endpoint: String,
         method: HTTPMethod,
         body: Any? = nil,
-        retryAttempts: Int,
-        completion: @escaping CompletionHandler<Data>
-    ) {
+        retryAttempts: Int
+    ) async throws -> Data {
+        let request: URLRequest
         do {
             var requestBody: Data?
             if let body = body {
                 requestBody = try JSONSerialization.data(withJSONObject: body, options: [])
             }
 
-            let request = try buildRequest(
+            request = try buildRequest(
                 endpoint: endpoint,
                 method: method,
                 body: requestBody
             )
+        } catch {
+            // Serialization and URL-building failures have always surfaced as `.networkError`,
+            // including the `.invalidConfiguration` that `buildRequest` throws. Preserved rather
+            // than corrected, because callers switch on the kind.
+            throw RelevaError.networkError(error.localizedDescription)
+        }
 
-            if config.enableDebugLogging {
-                print("RelevaSDK: Sending \(method.rawValue) request to \(request.url?.absoluteString ?? "")")
-                if let body = body {
-                    print("RelevaSDK: Request body: \(body)")
+        if config.enableDebugLogging {
+            print("RelevaSDK: Sending \(method.rawValue) request to \(request.url?.absoluteString ?? "")")
+            if let body = body {
+                print("RelevaSDK: Request body: \(body)")
+            }
+        }
+
+        // Outside the `do` above on purpose: the errors below are already `RelevaError`s with a
+        // meaningful kind, and re-wrapping them as `.networkError` would flatten them.
+        return try await executeRequest(request, retryAttempts: retryAttempts)
+    }
+
+    /// Execute URLRequest, retrying transport failures and 5xx responses.
+    private func executeRequest(_ request: URLRequest, retryAttempts: Int) async throws -> Data {
+        var attemptsLeft = retryAttempts
+
+        while true {
+            let retryDelayNanoseconds: UInt64
+
+            do {
+                return try await send(request)
+            } catch let error as RelevaError {
+                // Only 5xx is retried. `.unauthorized`, a 4xx `.serverError` and
+                // `.invalidResponse` are all final, exactly as before.
+                guard attemptsLeft > 0,
+                      case .serverError(let statusCode, _) = error,
+                      (500...599).contains(statusCode) else {
+                    throw error
                 }
+                if config.enableDebugLogging {
+                    print("RelevaSDK: Server error \(statusCode), retrying...")
+                }
+                retryDelayNanoseconds = 2_000_000_000
+            } catch {
+                guard attemptsLeft > 0 else {
+                    throw RelevaError.networkError(error.localizedDescription)
+                }
+                if config.enableDebugLogging {
+                    print("RelevaSDK: Request failed, retrying... (\(attemptsLeft) attempts left)")
+                }
+                retryDelayNanoseconds = 1_000_000_000
             }
 
-            executeRequest(request, retryAttempts: retryAttempts, completion: completion)
-        } catch {
-            completion(.failure(.networkError(error.localizedDescription)))
+            attemptsLeft -= 1
+            try await Task.sleep(nanoseconds: retryDelayNanoseconds)
         }
     }
 
-    /// Execute URLRequest with retry logic
-    private func executeRequest(
-        _ request: URLRequest,
-        retryAttempts: Int,
-        completion: @escaping CompletionHandler<Data>
-    ) {
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
+    /// One attempt: run the request and map the HTTP status onto `RelevaError`.
+    private func send(_ request: URLRequest) async throws -> Data {
+        let (data, response) = try await session.data(for: request)
 
-            // Handle network error
-            if let error = error {
-                if retryAttempts > 0 {
-                    if self.config.enableDebugLogging {
-                        print("RelevaSDK: Request failed, retrying... (\(retryAttempts) attempts left)")
-                    }
-
-                    DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-                        self.executeRequest(request, retryAttempts: retryAttempts - 1, completion: completion)
-                    }
-                } else {
-                    DispatchQueue.main.async {
-                        completion(.failure(.networkError(error.localizedDescription)))
-                    }
-                }
-                return
-            }
-
-            // Handle HTTP response
-            guard let httpResponse = response as? HTTPURLResponse else {
-                DispatchQueue.main.async {
-                    completion(.failure(.invalidResponse("No HTTP response")))
-                }
-                return
-            }
-
-            if self.config.enableDebugLogging {
-                print("RelevaSDK: Response status code: \(httpResponse.statusCode)")
-            }
-
-            // Handle different status codes
-            switch httpResponse.statusCode {
-            case 200...299:
-                // Success
-                guard let data = data else {
-                    DispatchQueue.main.async {
-                        completion(.failure(.invalidResponse("No data received")))
-                    }
-                    return
-                }
-
-                DispatchQueue.main.async {
-                    completion(.success(data))
-                }
-
-            case 401:
-                // Unauthorized
-                DispatchQueue.main.async {
-                    completion(.failure(.unauthorized))
-                }
-
-            case 500...599:
-                // Server error - retry if attempts remaining
-                if retryAttempts > 0 {
-                    if self.config.enableDebugLogging {
-                        print("RelevaSDK: Server error \(httpResponse.statusCode), retrying...")
-                    }
-
-                    DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) {
-                        self.executeRequest(request, retryAttempts: retryAttempts - 1, completion: completion)
-                    }
-                } else {
-                    let message = String(data: data ?? Data(), encoding: .utf8)
-                    DispatchQueue.main.async {
-                        completion(.failure(.serverError(httpResponse.statusCode, message)))
-                    }
-                }
-
-            default:
-                // Other errors
-                let message = String(data: data ?? Data(), encoding: .utf8)
-                DispatchQueue.main.async {
-                    completion(.failure(.serverError(httpResponse.statusCode, message)))
-                }
-            }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw RelevaError.invalidResponse("No HTTP response")
         }
 
-        task.resume()
+        if config.enableDebugLogging {
+            print("RelevaSDK: Response status code: \(httpResponse.statusCode)")
+        }
+
+        switch httpResponse.statusCode {
+        case 200...299:
+            return data
+        case 401:
+            throw RelevaError.unauthorized
+        default:
+            throw RelevaError.serverError(httpResponse.statusCode, String(data: data, encoding: .utf8))
+        }
     }
 
     /// Build push request payload with context
@@ -661,48 +509,8 @@ public class NetworkService {
     }
 }
 
-// MARK: - Async/Await Support
-
-@available(iOS 15.0, *)
-extension NetworkService {
-    /// Send push request using async/await
-    public func sendPushRequest(
-        _ request: [String: Any],
-        context: [String: Any]
-    ) async throws -> RelevaResponse {
-        try await withCheckedThrowingContinuation { continuation in
-            sendPushRequest(request, context: context) { result in
-                continuation.resume(with: result)
-            }
-        }
-    }
-
-    /// Register push token using async/await
-    public func registerPushToken(
-        _ token: String,
-        deviceType: DeviceType,
-        deviceId: String,
-        profileId: String?
-    ) async throws -> Bool {
-        try await withCheckedThrowingContinuation { continuation in
-            registerPushToken(token, deviceType: deviceType, deviceId: deviceId, profileId: profileId) { result in
-                continuation.resume(with: result)
-            }
-        }
-    }
-
-    /// Send engagement events using async/await
-    public func sendEngagementEvents(_ events: [EngagementEvent]) async throws -> Bool {
-        try await withCheckedThrowingContinuation { continuation in
-            sendEngagementEvents(events) { result in
-                continuation.resume(with: result)
-            }
-        }
-    }
-}
-
 // MARK: - SDK Version
 
 struct SDKVersion {
-    static let current = "4.2.0"
+    static let current = "5.0.0"
 }

@@ -145,9 +145,9 @@ final class TrackingRequestConversionTests: XCTestCase {
     /// `<Request: PushRequestConvertible>` parameter would reject a value statically typed
     /// as the protocol, since Swift existentials don't self-conform.
     @MainActor
-    func testTheClientAcceptsEveryConvertibleRequestTypeIncludingAsAnExistentialArray() {
-        // `enableTracking: false` makes `push` resolve synchronously with
-        // `.success(.empty())` without a network call, via the guard at the top of `push`.
+    func testTheClientAcceptsEveryConvertibleRequestTypeIncludingAsAnExistentialArray() async throws {
+        // `enableTracking: false` makes `push` return `.empty()` without a network call
+        // or a suspension, via the guard at the top of `push`.
         // `enablePushNotifications: false` keeps `init` from calling
         // `installPushTokenLifecycleObserver()`, whose observer has no deinit cleanup by design.
         // NOTE: `init` still sets `RelevaClient.shared` if it is nil, and there is no
@@ -166,14 +166,10 @@ final class TrackingRequestConversionTests: XCTestCase {
         XCTAssertEqual(requests.count, 4)
 
         for request in requests {
-            let done = expectation(description: "push completes")
-            client.push(request) { result in
-                if case .failure(let error) = result {
-                    XCTFail("expected push to succeed with tracking disabled, got \(error)")
-                }
-                done.fulfill()
-            }
-            waitForExpectations(timeout: 1)
+            // `try await` rather than a `do`/`catch`: a throw here fails the test with the
+            // error attached, which is what the `XCTFail` in the old completion handler did.
+            let response = try await client.push(request)
+            XCTAssertEqual(response.recommenderCount, 0, "tracking is disabled, so the response is empty")
         }
     }
 }

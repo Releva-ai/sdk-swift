@@ -264,12 +264,15 @@ public class RelevaClient {
         // Uses incrementViews: false so cart updates don't inflate the page-view counter.
         if !isFirstInitialization && cartChanged && config.enableTracking {
             let request = ScreenViewRequest(screenToken: nil, productIds: nil, categories: nil, filter: nil)
-            push(request, incrementViews: false) { result in
-                if self.config.enableDebugLogging {
-                    switch result {
-                    case .success:
+            Task { [weak self] in
+                guard let self = self else { return }
+                do {
+                    _ = try await self.push(request, incrementViews: false)
+                    if self.config.enableDebugLogging {
                         print("RelevaSDK: Cart changes synced to backend")
-                    case .failure(let error):
+                    }
+                } catch {
+                    if self.config.enableDebugLogging {
                         print("RelevaSDK: Failed to sync cart changes - \(error)")
                     }
                 }
@@ -326,12 +329,15 @@ public class RelevaClient {
         // Uses incrementViews: false so wishlist updates don't inflate the page-view counter.
         if !isFirstInitialization && wishlistChanged && config.enableTracking {
             let request = ScreenViewRequest(screenToken: nil, productIds: nil, categories: nil, filter: nil)
-            push(request, incrementViews: false) { result in
-                if self.config.enableDebugLogging {
-                    switch result {
-                    case .success:
+            Task { [weak self] in
+                guard let self = self else { return }
+                do {
+                    _ = try await self.push(request, incrementViews: false)
+                    if self.config.enableDebugLogging {
                         print("RelevaSDK: Wishlist changes synced to backend")
-                    case .failure(let error):
+                    }
+                } catch {
+                    if self.config.enableDebugLogging {
                         print("RelevaSDK: Failed to sync wishlist changes - \(error)")
                     }
                 }
@@ -365,27 +371,19 @@ public class RelevaClient {
     /// typed `any PushRequestConvertible` can be pushed directly; Swift existentials don't
     /// self-conform, so a generic `<Request: PushRequestConvertible>` parameter would reject
     /// exactly that value.
-    /// - Parameters:
-    ///   - request: Push request with page/product context
-    ///   - completion: Completion handler with response
-    public func push(
-        _ request: any PushRequestConvertible,
-        completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void
-    ) {
-        push(request, incrementViews: true, completion: completion)
+    /// - Parameter request: Push request with page/product context
+    /// - Returns: The API response, or an empty response when tracking is disabled
+    @discardableResult
+    public func push(_ request: any PushRequestConvertible) async throws -> RelevaResponse {
+        try await push(request, incrementViews: true)
     }
 
     /// Internal push that lets callers opt out of incrementing the view counter.
     /// Cart and wishlist auto-syncs use `incrementViews: false` to avoid inflating
     /// the page-view count with non-navigation push calls.
-    private func push(
-        _ request: any PushRequestConvertible,
-        incrementViews: Bool,
-        completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void
-    ) {
+    private func push(_ request: any PushRequestConvertible, incrementViews: Bool) async throws -> RelevaResponse {
         guard config.enableTracking else {
-            completion(.success(RelevaResponse.empty()))
-            return
+            return RelevaResponse.empty()
         }
 
         // Ensure lifecycle-based session tracking is initialized
@@ -399,27 +397,34 @@ public class RelevaClient {
         // Get request dictionary
         let requestDict = pushRequest.toDict()
 
-        // Send request
-        networkService.sendPushRequest(requestDict, context: context) { result in
-            // Reset change flags after successful request
-            if case .success(let response) = result {
-                self.resetChangeFlags()
-                // Initialize banners from response
-                if !response.banners.isEmpty {
-                    self.bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
-                }
-                // Initialize stories from response
-                if !response.stories.isEmpty {
-                    self.storyManager?.initialize(newStories: response.stories, scrollPercentageProvider: nil)
-                }
-                // Initialize NPS from response
-                self.npsManager?.initialize(response.nps)
-            }
-            completion(result)
+        // Send request. `NetworkService` is nonisolated, so payload serialization, the transfer
+        // and response decoding all run off the main actor; this method is suspended, not
+        // blocking the main thread, until the decoded response comes back.
+        let response = try await networkService.sendPushRequest(requestDict, context: context)
+
+        // Reset change flags after successful request
+        resetChangeFlags()
+
+        // Initialize banners from response
+        if !response.banners.isEmpty {
+            bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
         }
+        // Initialize stories from response
+        if !response.stories.isEmpty {
+            storyManager?.initialize(newStories: response.stories, scrollPercentageProvider: nil)
+        }
+        // Initialize NPS from response
+        npsManager?.initialize(response.nps)
+
+        return response
     }
 
     // MARK: - Tracking Methods
+
+    // Each of these forwards to `push(_:)`, which owns the `config.enableTracking` check and
+    // returns an empty response when tracking is off — so none of them repeats that guard.
+    // The result is `@discardableResult` because these are usually called for their effect,
+    // but the response carries the banners/stories/NPS the backend returned, so it is offered.
 
     /// Track screen view
     /// - Parameters:
@@ -427,19 +432,14 @@ public class RelevaClient {
     ///   - productIds: Product IDs on screen
     ///   - categories: Categories on screen
     ///   - filter: Applied filter
-    ///   - completion: Completion handler
+    /// - Returns: The API response
+    @discardableResult
     public func trackScreenView(
         screenToken: String? = nil,
         productIds: [String]? = nil,
         categories: [String]? = nil,
-        filter: AbstractFilter? = nil,
-        completion: ((Result<RelevaResponse, RelevaError>) -> Void)? = nil
-    ) {
-        guard config.enableTracking else {
-            completion?(.success(RelevaResponse.empty()))
-            return
-        }
-
+        filter: AbstractFilter? = nil
+    ) async throws -> RelevaResponse {
         let request = ScreenViewRequest(
             screenToken: screenToken,
             productIds: productIds,
@@ -447,31 +447,20 @@ public class RelevaClient {
             filter: filter
         )
 
-        push(request) { result in
-            completion?(result)
-        }
+        return try await push(request)
     }
 
     /// Track product view
     /// - Parameters:
     ///   - product: Viewed product
     ///   - screenToken: Screen identifier
-    ///   - completion: Completion handler
+    /// - Returns: The API response
+    @discardableResult
     public func trackProductView(
         product: ViewedProduct,
-        screenToken: String? = nil,
-        completion: ((Result<RelevaResponse, RelevaError>) -> Void)? = nil
-    ) {
-        guard config.enableTracking else {
-            completion?(.success(RelevaResponse.empty()))
-            return
-        }
-
-        let request = PushRequest.forProductView(product, screenToken: screenToken)
-
-        push(request) { result in
-            completion?(result)
-        }
+        screenToken: String? = nil
+    ) async throws -> RelevaResponse {
+        try await push(PushRequest.forProductView(product, screenToken: screenToken))
     }
 
     /// Track search
@@ -480,19 +469,14 @@ public class RelevaClient {
     ///   - resultProductIds: Product IDs in results
     ///   - screenToken: Screen identifier
     ///   - filter: Applied filter
-    ///   - completion: Completion handler
+    /// - Returns: The API response
+    @discardableResult
     public func trackSearchView(
         query: String,
         resultProductIds: [String]? = nil,
         screenToken: String? = nil,
-        filter: AbstractFilter? = nil,
-        completion: ((Result<RelevaResponse, RelevaError>) -> Void)? = nil
-    ) {
-        guard config.enableTracking else {
-            completion?(.success(RelevaResponse.empty()))
-            return
-        }
-
+        filter: AbstractFilter? = nil
+    ) async throws -> RelevaResponse {
         let request = SearchRequest(
             screenToken: screenToken,
             query: query,
@@ -500,56 +484,33 @@ public class RelevaClient {
             filter: filter
         )
 
-        push(request) { result in
-            completion?(result)
-        }
+        return try await push(request)
     }
 
     /// Track checkout success
     /// - Parameters:
     ///   - orderedCart: Cart that was ordered
     ///   - screenToken: Screen identifier
-    ///   - completion: Completion handler
+    /// - Returns: The API response
+    @discardableResult
     public func trackCheckoutSuccess(
         orderedCart: Cart,
-        screenToken: String? = nil,
-        completion: ((Result<RelevaResponse, RelevaError>) -> Void)? = nil
-    ) {
-        guard config.enableTracking else {
-            completion?(.success(RelevaResponse.empty()))
-            return
-        }
-
-        let request = CheckoutSuccessRequest(
-            screenToken: screenToken,
-            orderedCart: orderedCart
-        )
-
-        push(request) { result in
-            completion?(result)
-        }
+        screenToken: String? = nil
+    ) async throws -> RelevaResponse {
+        try await push(CheckoutSuccessRequest(screenToken: screenToken, orderedCart: orderedCart))
     }
 
     /// Track custom event
     /// - Parameters:
     ///   - event: Custom event
     ///   - screenToken: Screen identifier
-    ///   - completion: Completion handler
+    /// - Returns: The API response
+    @discardableResult
     public func trackCustomEvent(
         _ event: CustomEvent,
-        screenToken: String? = nil,
-        completion: ((Result<RelevaResponse, RelevaError>) -> Void)? = nil
-    ) {
-        guard config.enableTracking else {
-            completion?(.success(RelevaResponse.empty()))
-            return
-        }
-
-        let request = PushRequest.forCustomEvent(event, screenToken: screenToken)
-
-        push(request) { result in
-            completion?(result)
-        }
+        screenToken: String? = nil
+    ) async throws -> RelevaResponse {
+        try await push(PushRequest.forCustomEvent(event, screenToken: screenToken))
     }
 
     // MARK: - Banner Tracking
@@ -570,12 +531,15 @@ public class RelevaClient {
             ]
         ]
 
-        networkService.sendBannerImpression(payload) { result in
-            if self.config.enableDebugLogging {
-                switch result {
-                case .success:
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                try await self.networkService.sendBannerImpression(payload)
+                if self.config.enableDebugLogging {
                     print("RelevaSDK: Banner impression tracked for \(banner.token)")
-                case .failure(let error):
+                }
+            } catch {
+                if self.config.enableDebugLogging {
                     print("RelevaSDK: Failed to track banner impression: \(error)")
                 }
             }
@@ -598,12 +562,15 @@ public class RelevaClient {
             ]
         ]
 
-        networkService.sendBannerAction(payload) { result in
-            if self.config.enableDebugLogging {
-                switch result {
-                case .success:
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                try await self.networkService.sendBannerAction(payload)
+                if self.config.enableDebugLogging {
                     print("RelevaSDK: Banner action '\(action)' tracked for \(banner.token)")
-                case .failure(let error):
+                }
+            } catch {
+                if self.config.enableDebugLogging {
                     print("RelevaSDK: Failed to track banner action: \(error)")
                 }
             }
@@ -613,51 +580,50 @@ public class RelevaClient {
     // MARK: - Push Notifications
 
     /// Register push notification token
+    ///
+    /// Returns `Void` rather than the `Bool` the 4.x completion handler carried: that flag was
+    /// `true` on every path that reached it, so `throws` already says everything it said.
     /// - Parameters:
     ///   - token: FCM token
     ///   - deviceType: Device type (defaults to current)
-    ///   - completion: Completion handler
-    public func registerPushToken(
-        _ token: String,
-        deviceType: DeviceType = .current,
-        completion: ((Result<Bool, RelevaError>) -> Void)? = nil
-    ) {
-        guard config.enablePushNotifications else {
-            completion?(.success(true))
-            return
-        }
+    public func registerPushToken(_ token: String, deviceType: DeviceType = .current) async throws {
+        guard config.enablePushNotifications else { return }
 
         // Ensure deviceId is set before registering
         guard let deviceId = self.deviceId else {
             if config.enableDebugLogging {
                 print("RelevaSDK: ERROR - Cannot register push token without deviceId. Call setDeviceId() first.")
             }
-            completion?(.failure(.missingRequiredField("deviceId must be set before registering push token")))
-            return
+            throw RelevaError.missingRequiredField("deviceId must be set before registering push token")
         }
 
         // Save token
         storage.savePushToken(token, deviceType: deviceType)
         lastPushTokenDeviceType = deviceType
 
-        // Register with backend
-        networkService.registerPushToken(token, deviceType: deviceType, deviceId: deviceId, profileId: profileId) { result in
-            if case .success = result {
-                self.storage.savePushTokenUploadedAt(Date())
-            }
-            if self.config.enableDebugLogging {
-                switch result {
-                case .success:
-                    print("RelevaSDK: ✓ Successfully registered push token for \(deviceType.rawValue)")
-                case .failure(let error):
-                    print("RelevaSDK: ✗ Failed to register push token: \(error.localizedDescription)")
-                }
-            }
-            completion?(result)
-        }
-
         if config.enableDebugLogging {
             print("RelevaSDK: Registering push token for \(deviceType.rawValue)...")
+        }
+
+        // Register with backend
+        do {
+            try await networkService.registerPushToken(
+                token,
+                deviceType: deviceType,
+                deviceId: deviceId,
+                profileId: profileId
+            )
+        } catch {
+            if config.enableDebugLogging {
+                print("RelevaSDK: ✗ Failed to register push token: \(error.localizedDescription)")
+            }
+            throw error
+        }
+
+        storage.savePushTokenUploadedAt(Date())
+
+        if config.enableDebugLogging {
+            print("RelevaSDK: ✓ Successfully registered push token for \(deviceType.rawValue)")
         }
     }
 
@@ -689,41 +655,46 @@ public class RelevaClient {
 
         provider { [weak self] token in
             Task { @MainActor in
-                guard let self = self else { return }
-
-                guard let token = token, !token.isEmpty else {
-                    self.isRefreshingPushToken = false
-                    if self.config.enableDebugLogging {
-                        print("RelevaSDK: refreshPushToken - provider returned empty token")
-                    }
-                    return
-                }
-
-                // Re-read storage inside the Task: the provider call is async, and an
-                // explicit `registerPushToken` from the host could have mutated `stored`
-                // in the meantime. Computing `tokenChanged` against a fresh snapshot
-                // keeps the change-detection consistent with `lastUpload`.
-                let stored = self.storage.getPushToken()
-                let deviceType = self.lastPushTokenDeviceType ?? stored?.deviceType ?? .current
-                let tokenChanged = (stored?.token != token)
-                let lastUpload = self.storage.getPushTokenUploadedAt()
-                let isStale = lastUpload.map { Date().timeIntervalSince($0) > RelevaClient.pushTokenRefreshInterval } ?? true
-
-                guard tokenChanged || isStale else {
-                    self.isRefreshingPushToken = false
-                    if self.config.enableDebugLogging {
-                        print("RelevaSDK: refreshPushToken - token unchanged and uploaded recently, skipping")
-                    }
-                    return
-                }
-
-                self.registerPushToken(token, deviceType: deviceType) { [weak self] _ in
-                    Task { @MainActor in
-                        self?.isRefreshingPushToken = false
-                    }
-                }
+                await self?.completePushTokenRefresh(token)
             }
         }
+    }
+
+    /// The second half of `refreshPushToken()`, run once the provider has answered.
+    ///
+    /// The `defer` is what makes the in-flight guard correct: it clears on every exit,
+    /// including the `throws` from `registerPushToken`, which the 4.x nested-completion
+    /// version only managed because its completion fired on both branches.
+    private func completePushTokenRefresh(_ token: String?) async {
+        defer { isRefreshingPushToken = false }
+
+        guard let token = token, !token.isEmpty else {
+            if config.enableDebugLogging {
+                print("RelevaSDK: refreshPushToken - provider returned empty token")
+            }
+            return
+        }
+
+        // Re-read storage here rather than in `refreshPushToken`: the provider call is
+        // asynchronous, and an explicit `registerPushToken` from the host could have mutated
+        // `stored` in the meantime. Computing `tokenChanged` against a fresh snapshot keeps
+        // the change-detection consistent with `lastUpload`.
+        let stored = storage.getPushToken()
+        let deviceType = lastPushTokenDeviceType ?? stored?.deviceType ?? .current
+        let tokenChanged = (stored?.token != token)
+        let lastUpload = storage.getPushTokenUploadedAt()
+        let isStale = lastUpload.map { Date().timeIntervalSince($0) > RelevaClient.pushTokenRefreshInterval } ?? true
+
+        guard tokenChanged || isStale else {
+            if config.enableDebugLogging {
+                print("RelevaSDK: refreshPushToken - token unchanged and uploaded recently, skipping")
+            }
+            return
+        }
+
+        // Failures are already logged by `registerPushToken`; a background refresh has
+        // nobody to report to, so it is swallowed here exactly as it was in 4.x.
+        try? await registerPushToken(token, deviceType: deviceType)
     }
 
     /// Subscribe to `didBecomeActive` so that every app launch / foreground triggers
@@ -822,16 +793,12 @@ public class RelevaClient {
     // MARK: - NPS
 
     /// Submit an NPS survey response.
-    /// Failures are swallowed with one retry - the thank-you screen is shown regardless.
-    public func submitNpsResponse(
-        token: String,
-        score: Int,
-        comment: String? = nil,
-        completion: ((Result<Bool, RelevaError>) -> Void)? = nil
-    ) {
+    ///
+    /// Retried once on failure. The survey UI shows its thank-you screen regardless, so a
+    /// caller that does not care about delivery can `try?` this.
+    public func submitNpsResponse(token: String, score: Int, comment: String? = nil) async throws {
         guard (0...10).contains(score) else {
-            completion?(.failure(.invalidConfiguration("NPS score must be between 0 and 10")))
-            return
+            throw RelevaError.invalidConfiguration("NPS score must be between 0 and 10")
         }
 
         var payload: [String: Any] = [
@@ -844,16 +811,11 @@ public class RelevaClient {
             payload["comment"] = comment
         }
 
-        networkService.sendNpsSubmission(payload, token: token) { result in
-            switch result {
-            case .success:
-                completion?(.success(true))
-            case .failure:
-                // One silent retry
-                self.networkService.sendNpsSubmission(payload, token: token) { retryResult in
-                    completion?(retryResult)
-                }
-            }
+        do {
+            try await networkService.sendNpsSubmission(payload, token: token)
+        } catch {
+            // One silent retry, then the second failure is the caller's to see.
+            try await networkService.sendNpsSubmission(payload, token: token)
         }
     }
 
@@ -881,12 +843,15 @@ public class RelevaClient {
             "attributions": attributions
         ]
 
-        networkService.sendPushEvent(payload) { result in
-            if self.config.enableDebugLogging {
-                switch result {
-                case .success:
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                try await self.networkService.sendPushEvent(payload)
+                if self.config.enableDebugLogging {
                     print("RelevaSDK: Story action '\(action)' tracked for \(story.token)")
-                case .failure(let error):
+                }
+            } catch {
+                if self.config.enableDebugLogging {
                     print("RelevaSDK: Failed to track story action: \(error)")
                 }
             }
@@ -1000,51 +965,6 @@ public class RelevaClient {
         if !mergeProfileIds.isEmpty {
             mergeProfileIds = []
             storage.clearMergeProfileIds()
-        }
-    }
-}
-
-// MARK: - Async/Await Support
-
-@available(iOS 15.0, *)
-extension RelevaClient {
-    /// Send push request using async/await
-    ///
-    /// See the completion-handler `push(_:completion:)` for why this takes
-    /// `any PushRequestConvertible` rather than a generic parameter.
-    public func push(_ request: any PushRequestConvertible) async throws -> RelevaResponse {
-        try await withCheckedThrowingContinuation { continuation in
-            push(request) { result in
-                continuation.resume(with: result)
-            }
-        }
-    }
-
-    /// Track screen view using async/await
-    public func trackScreenView(
-        screenToken: String? = nil,
-        productIds: [String]? = nil,
-        categories: [String]? = nil,
-        filter: AbstractFilter? = nil
-    ) async throws -> RelevaResponse {
-        try await withCheckedThrowingContinuation { continuation in
-            trackScreenView(
-                screenToken: screenToken,
-                productIds: productIds,
-                categories: categories,
-                filter: filter
-            ) { result in
-                continuation.resume(with: result)
-            }
-        }
-    }
-
-    /// Register push token using async/await
-    public func registerPushToken(_ token: String, deviceType: DeviceType = .current) async throws -> Bool {
-        try await withCheckedThrowingContinuation { continuation in
-            registerPushToken(token, deviceType: deviceType) { result in
-                continuation.resume(with: result)
-            }
         }
     }
 }

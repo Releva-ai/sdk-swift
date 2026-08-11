@@ -6,9 +6,6 @@ import XCTest
 /// class comes back out (success decode, 401, non-2xx, transport failure, retry).
 final class NetworkServiceTests: XCTestCase {
     private var session: URLSession!
-
-    /// Held for the lifetime of the test: `NetworkService` captures itself weakly in its
-    /// `dataTask` callbacks, so a service that goes out of scope silently never completes.
     private var service: NetworkService!
 
     override func setUp() {
@@ -19,10 +16,10 @@ final class NetworkServiceTests: XCTestCase {
 
     /// `invalidateAndCancel()`, not `finishTasksAndInvalidate()`, and before `reset()`:
     /// `StubURLProtocol`'s state is `static`, so a request still in flight when a test
-    /// ends writes into the *next* test's fixture. That only happens after a
-    /// `waitForExpectations` timeout, which is exactly when a second, misattributed
-    /// failure is least welcome. Cancelling first means nothing can still be writing
-    /// when the shared state is cleared.
+    /// ends writes into the *next* test's fixture. Awaiting every call makes that far
+    /// less likely than it was under completion handlers, but a cancelled `Task.sleep`
+    /// in `executeRequest` can still leave the loop unwinding, so cancelling first is
+    /// what makes it impossible rather than merely unlikely.
     override func tearDown() {
         session?.invalidateAndCancel()
         session = nil
@@ -46,23 +43,28 @@ final class NetworkServiceTests: XCTestCase {
         try XCTUnwrap(string.data(using: .utf8))
     }
 
+    /// The error `work` threw, or `nil` if it returned. Replaces the `NetworkResult`
+    /// switches: `XCTAssertThrowsError` has no `async` overload, so every failure-path
+    /// test would otherwise repeat the same `do`/`catch`.
+    private func captureError(_ work: () async throws -> Void) async -> Error? {
+        do {
+            try await work()
+            return nil
+        } catch {
+            return error
+        }
+    }
+
     // MARK: - Request shape
 
-    func testPushRequestPostsToPushEndpointWithHeadersAndPayload() throws {
+    func testPushRequestPostsToPushEndpointWithHeadersAndPayload() async throws {
         let body = try json(#"{"recommenders":[{"token":"t1","name":"n1","response":[]}],"banners":[]}"#)
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: body) }
 
-        let done = expectation(description: "push completes")
-        var result: NetworkService.NetworkResult<RelevaResponse>?
-
-        service.sendPushRequest(
+        let response = try await service.sendPushRequest(
             ["page": ["url": "https://example.com/product/1"]],
             context: ["profile": ["id": "user-1"]]
-        ) {
-            result = $0
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
+        )
 
         let request = try XCTUnwrap(StubURLProtocol.receivedRequests.first)
         XCTAssertEqual(request.url?.absoluteString, "https://us.releva.ai/api/v0/push")
@@ -84,36 +86,27 @@ final class NetworkServiceTests: XCTestCase {
         XCTAssertEqual(client["platform"] as? String, "ios")
         XCTAssertEqual(client["version"] as? String, SDKVersion.current)
 
-        switch try XCTUnwrap(result) {
-        case .success(let response):
-            XCTAssertEqual(response.recommenderCount, 1)
-            XCTAssertEqual(response.recommenders.first?.token, "t1")
-        case .failure(let error):
-            XCTFail("expected success, got \(error)")
-        }
+        XCTAssertEqual(response.recommenderCount, 1)
+        XCTAssertEqual(response.recommenders.first?.token, "t1")
     }
 
     // Overlaps `EndpointOverrideTests.testEndpointOverrideTakesPrecedence`, which pins the same
     // precedence at the `getBaseURL()` seam. Kept here too because the two seams can drift; see
     // `testClearingTheEndpointOverrideSendsTheNextRequestBackToTheRealm` below for the
     // previously-uncovered wire-level case of clearing the override.
-    func testRequestsGoToTheEndpointOverrideRatherThanTheCustomEndpoint() throws {
+    func testRequestsGoToTheEndpointOverrideRatherThanTheCustomEndpoint() async throws {
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data("{}".utf8)) }
 
         service = makeService(config: RelevaConfig(customEndpoint: "https://custom.example.com"))
         service.setEndpointOverride("https://override.example.com")
 
-        let done = expectation(description: "token registration completes")
-        service.registerPushToken("fcm-token", deviceType: .ios, deviceId: "device-1", profileId: "user-1") { _ in
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
+        try await service.registerPushToken("fcm-token", deviceType: .ios, deviceId: "device-1", profileId: "user-1")
 
         let request = try XCTUnwrap(StubURLProtocol.receivedRequests.first)
         XCTAssertEqual(request.url?.absoluteString, "https://override.example.com/api/v0/appPush/tokens")
     }
 
-    func testClearingTheEndpointOverrideSendsTheNextRequestBackToTheRealm() throws {
+    func testClearingTheEndpointOverrideSendsTheNextRequestBackToTheRealm() async throws {
         // `EndpointOverrideTests.testClearEndpointOverride` already pins this at the
         // `getBaseURL()` seam; this pins it at the wire, which is the seam a
         // resolver-level bug wouldn't necessarily show up at.
@@ -122,27 +115,18 @@ final class NetworkServiceTests: XCTestCase {
         service.setEndpointOverride("https://override.example.com")
         service.setEndpointOverride(nil)
 
-        let done = expectation(description: "token registration completes")
-        service.registerPushToken("fcm-token", deviceType: .ios, deviceId: "device-1", profileId: "user-1") { _ in
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
+        try await service.registerPushToken("fcm-token", deviceType: .ios, deviceId: "device-1", profileId: "user-1")
 
         let request = try XCTUnwrap(StubURLProtocol.receivedRequests.first)
         XCTAssertEqual(request.url?.absoluteString, "https://us.releva.ai/api/v0/appPush/tokens")
     }
 
-    func testRegisterPushTokenPostsTheTokenPayload() throws {
+    func testRegisterPushTokenPostsTheTokenPayload() async throws {
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data("{}".utf8)) }
 
-        let done = expectation(description: "token registration completes")
-        var result: NetworkService.NetworkResult<Bool>?
-
-        service.registerPushToken("fcm-token", deviceType: .ios, deviceId: "device-1", profileId: nil) {
-            result = $0
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
+        // Returning normally is the success signal now that the `Bool` is gone; it was
+        // `true` on every path that reached the old completion handler.
+        try await service.registerPushToken("fcm-token", deviceType: .ios, deviceId: "device-1", profileId: nil)
 
         let request = try XCTUnwrap(StubURLProtocol.receivedRequests.first)
         XCTAssertEqual(request.url?.absoluteString, "https://us.releva.ai/api/v0/appPush/tokens")
@@ -153,27 +137,13 @@ final class NetworkServiceTests: XCTestCase {
         XCTAssertEqual(payload["deviceType"] as? String, "ios")
         XCTAssertEqual(payload["deviceId"] as? String, "device-1")
         XCTAssertNil(payload["profileId"], "a nil profileId must be omitted, not sent as null")
-
-        switch try XCTUnwrap(result) {
-        case .success(let ok):
-            XCTAssertTrue(ok)
-        case .failure(let error):
-            XCTFail("expected success, got \(error)")
-        }
     }
 
-    func testInboxUnreadCountPercentEncodesUserIdAndReadsCount() throws {
+    func testInboxUnreadCountPercentEncodesUserIdAndReadsCount() async throws {
         let body = try json(#"{"count":7}"#)
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: body) }
 
-        let done = expectation(description: "unread count completes")
-        var result: NetworkService.NetworkResult<Int>?
-
-        service.fetchInboxUnreadCount(userId: "user one") {
-            result = $0
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
+        let count = try await service.fetchInboxUnreadCount(userId: "user one")
 
         let request = try XCTUnwrap(StubURLProtocol.receivedRequests.first)
         XCTAssertEqual(
@@ -181,16 +151,10 @@ final class NetworkServiceTests: XCTestCase {
             "https://us.releva.ai/api/v0/inbox/unread-count?userId=user%20one"
         )
         XCTAssertEqual(request.httpMethod, "GET")
-
-        switch try XCTUnwrap(result) {
-        case .success(let count):
-            XCTAssertEqual(count, 7)
-        case .failure(let error):
-            XCTFail("expected success, got \(error)")
-        }
+        XCTAssertEqual(count, 7)
     }
 
-    func testEngagementEventsFireDeduplicatedGetCallbacks() throws {
+    func testEngagementEventsFireDeduplicatedGetCallbacks() async throws {
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data()) }
 
         let events = [
@@ -199,14 +163,7 @@ final class NetworkServiceTests: XCTestCase {
             EngagementEvent(type: .delivered, callbackUrl: "https://example.com/cb/2", notificationId: "n3")
         ]
 
-        let done = expectation(description: "engagement events complete")
-        var result: NetworkService.NetworkResult<Bool>?
-
-        service.sendEngagementEvents(events) {
-            result = $0
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
+        try await service.sendEngagementEvents(events)
 
         let requests = StubURLProtocol.receivedRequests
         XCTAssertEqual(requests.count, 2, "the two events sharing a callback URL must collapse into one GET")
@@ -215,19 +172,12 @@ final class NetworkServiceTests: XCTestCase {
             ["https://example.com/cb/1", "https://example.com/cb/2"]
         )
         XCTAssertEqual(Set(requests.compactMap { $0.httpMethod }), ["GET"])
-
-        switch try XCTUnwrap(result) {
-        case .success(let ok):
-            XCTAssertTrue(ok)
-        case .failure(let error):
-            XCTFail("expected success, got \(error)")
-        }
     }
 
     // MARK: - Engagement callback fan-out
 
     /// One callback failing must neither cancel its siblings nor be reported as success.
-    func testEngagementEventsFailWhenOneCallbackHitsATransportError() throws {
+    func testEngagementEventsFailWhenOneCallbackHitsATransportError() async {
         StubURLProtocol.stub { request in
             if request.url?.absoluteString == "https://example.com/cb/2" {
                 return .failure(URLError(.notConnectedToInternet))
@@ -235,16 +185,16 @@ final class NetworkServiceTests: XCTestCase {
             return .response(statusCode: 200, body: Data())
         }
 
-        let result = try sendEngagementEvents(callbackUrls: [
+        let thrown = await sendEngagementEvents(callbackUrls: [
             "https://example.com/cb/1",
             "https://example.com/cb/2"
         ])
 
         XCTAssertEqual(StubURLProtocol.receivedRequests.count, 2, "a failing callback must not stop the others")
-        assertBatchFailed(result)
+        assertBatchFailed(thrown)
     }
 
-    func testEngagementEventsFailWhenOneCallbackReturnsAnErrorStatus() throws {
+    func testEngagementEventsFailWhenOneCallbackReturnsAnErrorStatus() async {
         StubURLProtocol.stub { request in
             if request.url?.absoluteString == "https://example.com/cb/2" {
                 return .response(statusCode: 500, body: Data())
@@ -252,18 +202,21 @@ final class NetworkServiceTests: XCTestCase {
             return .response(statusCode: 200, body: Data())
         }
 
-        let result = try sendEngagementEvents(callbackUrls: [
+        let thrown = await sendEngagementEvents(callbackUrls: [
             "https://example.com/cb/1",
             "https://example.com/cb/2"
         ])
 
         XCTAssertEqual(StubURLProtocol.receivedRequests.count, 2)
-        assertBatchFailed(result)
+        assertBatchFailed(thrown)
     }
 
-    /// The path the `allSucceeded` data race lived on: several `URLSession` completion
-    /// handlers, running concurrently on its delegate queue, all recording a failure.
-    func testEngagementEventsFailWhenSeveralCallbacksFailAtOnce() throws {
+    /// The path the `allSucceeded` data race lived on before 3.1.1's lock, and before this
+    /// release replaced the lock with a `TaskGroup`: several callbacks failing at once.
+    /// The verdicts are now per-child return values folded by `for await`, so there is no
+    /// shared flag left to race on — but the case is still the one a regression would
+    /// break first, so it stays covered.
+    func testEngagementEventsFailWhenSeveralCallbacksFailAtOnce() async {
         StubURLProtocol.stub { request in
             switch request.url?.absoluteString ?? "" {
             case "https://example.com/cb/2":
@@ -277,7 +230,7 @@ final class NetworkServiceTests: XCTestCase {
             }
         }
 
-        let result = try sendEngagementEvents(callbackUrls: [
+        let thrown = await sendEngagementEvents(callbackUrls: [
             "https://example.com/cb/1",
             "https://example.com/cb/2",
             "https://example.com/cb/3",
@@ -285,21 +238,20 @@ final class NetworkServiceTests: XCTestCase {
         ])
 
         XCTAssertEqual(StubURLProtocol.receivedRequests.count, 4)
-        assertBatchFailed(result)
+        assertBatchFailed(thrown)
     }
 
-    /// `URL(string:)` failing takes `continue` before `group.enter()`
-    /// (`NetworkService.swift:260`), so it never calls `recordFailure()`. That makes a
-    /// malformed URL indistinguishable from a fully-delivered one to the caller — both
-    /// report `.success(true)`, with only an `enableDebugLogging` `print` behind the
-    /// loss. This test pins that as the *current* behaviour, not the desired contract;
-    /// making it call `recordFailure()` instead would be a real behaviour change and
-    /// is out of scope for a race fix.
-    func testEngagementEventsSkipAnUnparseableCallbackUrl() throws {
+    /// `URL(string:)` failing takes `continue` before `group.addTask`, so no child task is
+    /// ever created for it and nothing contributes a `false` verdict. That makes a malformed
+    /// URL indistinguishable from a fully-delivered one to the caller — both return without
+    /// throwing, with only an `enableDebugLogging` `print` behind the loss. This test pins
+    /// that as the *current* behaviour, not the desired contract; making it count as a
+    /// failure would be a real behaviour change and is out of scope for the async migration.
+    func testEngagementEventsSkipAnUnparseableCallbackUrl() async {
         XCTAssertNil(URL(string: Self.unparseableCallbackUrl), "the fixture must be one URL(string:) rejects")
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data()) }
 
-        let result = try sendEngagementEvents(callbackUrls: [
+        let thrown = await sendEngagementEvents(callbackUrls: [
             Self.unparseableCallbackUrl,
             "https://example.com/cb/1"
         ])
@@ -309,21 +261,25 @@ final class NetworkServiceTests: XCTestCase {
             ["https://example.com/cb/1"],
             "the unparseable URL is skipped, the rest of the batch still fires"
         )
-        assertBatchSucceeded(result)
+        assertBatchSucceeded(thrown)
     }
 
-    /// `group.notify` with no `enter()` at all fires immediately, so this pins that the
-    /// caller still hears back exactly once (the helper's expectation fails on a second call).
-    /// Same caveat as the test above: a batch that delivered *nothing* still reports
-    /// `.success(true)`, pinned as current behaviour rather than endorsed as desired.
-    func testEngagementEventsCompleteOnceWhenEveryCallbackUrlIsUnparseable() throws {
+    /// An empty `TaskGroup`'s `for await` finishes immediately, so this pins that the caller
+    /// still gets an answer rather than hanging. Same caveat as the test above: a batch that
+    /// delivered *nothing* still returns without throwing, pinned as current behaviour rather
+    /// than endorsed as desired.
+    ///
+    /// Under completion handlers this also carried the "called back exactly once" assertion,
+    /// which `await` now guarantees structurally — a single resumption of a single call — so
+    /// that half of the test is gone rather than restated.
+    func testEngagementEventsCompleteOnceWhenEveryCallbackUrlIsUnparseable() async {
         XCTAssertNil(URL(string: Self.unparseableCallbackUrl), "the fixture must be one URL(string:) rejects")
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data()) }
 
-        let result = try sendEngagementEvents(callbackUrls: [Self.unparseableCallbackUrl])
+        let thrown = await sendEngagementEvents(callbackUrls: [Self.unparseableCallbackUrl])
 
         XCTAssertTrue(StubURLProtocol.receivedRequests.isEmpty, "nothing parseable to fire")
-        assertBatchSucceeded(result)
+        assertBatchSucceeded(thrown)
     }
 
     // MARK: - Engagement callback helpers
@@ -331,189 +287,107 @@ final class NetworkServiceTests: XCTestCase {
     /// A callback URL `URL(string:)` rejects, taking `sendEngagementEvents`' skip path.
     private static let unparseableCallbackUrl = ""
 
-    /// Sends one event per callback URL and returns the single result.
-    ///
-    /// `XCTestExpectation` fails on over-fulfilment, but only if the extra `fulfill()`
-    /// lands before the test method returns — `waitForExpectations` itself returns on
-    /// the first call. That's a real but narrow window, not an airtight once-only
-    /// guarantee; the actual "exactly once" evidence for the cases above is that a
-    /// second `completion` call would also overwrite `result` with a second value,
-    /// which the assertions below would then be exercising nondeterministically.
-    private func sendEngagementEvents(
-        callbackUrls: [String]
-    ) throws -> NetworkService.NetworkResult<Bool> {
+    /// Sends one event per callback URL and returns the error it threw, or `nil`.
+    private func sendEngagementEvents(callbackUrls: [String]) async -> Error? {
         let events = callbackUrls.map { EngagementEvent(type: .clicked, callbackUrl: $0) }
-
-        let done = expectation(description: "engagement events complete")
-        var result: NetworkService.NetworkResult<Bool>?
-
-        service.sendEngagementEvents(events) {
-            result = $0
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
-
-        return try XCTUnwrap(result)
+        return await captureError { try await service.sendEngagementEvents(events) }
     }
 
     /// Asserts the one failure `sendEngagementEvents` reports, message included: every
-    /// reason a callback can fail collapses into this single result.
+    /// reason a callback can fail collapses into this single error.
     private func assertBatchFailed(
-        _ result: NetworkService.NetworkResult<Bool>,
+        _ thrown: Error?,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        switch result {
-        case .success:
+        guard let thrown = thrown else {
             XCTFail("expected failure", file: file, line: line)
-        case .failure(let error):
-            if case .networkError(let message) = error {
-                XCTAssertEqual(message, "Failed to send some events", file: file, line: line)
-            } else {
-                XCTFail("expected .networkError, got \(error)", file: file, line: line)
-            }
+            return
         }
+
+        guard let relevaError = thrown as? RelevaError,
+              case .networkError(let message) = relevaError else {
+            XCTFail("expected .networkError, got \(thrown)", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(message, "Failed to send some events", file: file, line: line)
     }
 
     private func assertBatchSucceeded(
-        _ result: NetworkService.NetworkResult<Bool>,
+        _ thrown: Error?,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        switch result {
-        case .success(let ok):
-            XCTAssertTrue(ok, file: file, line: line)
-        case .failure(let error):
-            XCTFail("expected success, got \(error)", file: file, line: line)
+        if let thrown = thrown {
+            XCTFail("expected success, got \(thrown)", file: file, line: line)
         }
     }
 
     // MARK: - Response mapping
 
-    func testUnauthorizedResponseMapsToUnauthorized() throws {
+    func testUnauthorizedResponseMapsToUnauthorized() async throws {
         StubURLProtocol.stub { _ in .response(statusCode: 401, body: Data()) }
 
-        let done = expectation(description: "inbox action completes")
-        var result: NetworkService.NetworkResult<Bool>?
+        let thrown = await captureError { try await service.inboxTrackAction(messageId: "m1", userId: "user-1") }
 
-        service.inboxTrackAction(messageId: "m1", userId: "user-1") {
-            result = $0
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
-
-        switch try XCTUnwrap(result) {
-        case .success:
-            XCTFail("expected failure")
-        case .failure(let error):
-            if case .unauthorized = error {} else {
-                XCTFail("expected .unauthorized, got \(error)")
-            }
-        }
+        XCTAssertEqual(RelevaErrorKind(try XCTUnwrap(thrown)), .unauthorized)
     }
 
-    func testUnexpectedStatusCodeMapsToServerErrorCarryingTheBody() throws {
+    func testUnexpectedStatusCodeMapsToServerErrorCarryingTheBody() async throws {
         let body = try json(#"{"error":"no such message"}"#)
         StubURLProtocol.stub { _ in .response(statusCode: 404, body: body) }
 
-        let done = expectation(description: "inbox action completes")
-        var result: NetworkService.NetworkResult<Bool>?
+        let thrown = await captureError { try await service.inboxTrackAction(messageId: "m1", userId: "user-1") }
 
-        service.inboxTrackAction(messageId: "m1", userId: "user-1") {
-            result = $0
-            done.fulfill()
+        let relevaError = try XCTUnwrap(thrown as? RelevaError)
+        guard case .serverError(let code, let message) = relevaError else {
+            XCTFail("expected .serverError, got \(relevaError)")
+            return
         }
-        waitForExpectations(timeout: 5)
-
-        switch try XCTUnwrap(result) {
-        case .success:
-            XCTFail("expected failure")
-        case .failure(let error):
-            if case .serverError(let code, let message) = error {
-                XCTAssertEqual(code, 404)
-                XCTAssertEqual(message, #"{"error":"no such message"}"#)
-            } else {
-                XCTFail("expected .serverError, got \(error)")
-            }
-        }
+        XCTAssertEqual(code, 404)
+        XCTAssertEqual(message, #"{"error":"no such message"}"#)
     }
 
-    func testTransportFailureMapsToNetworkError() throws {
+    func testTransportFailureMapsToNetworkError() async throws {
         StubURLProtocol.stub { _ in .failure(URLError(.notConnectedToInternet)) }
 
         // inboxTrackAction is the one endpoint with retryAttempts: 0, so this asserts the
         // terminal mapping without waiting out a retry backoff.
-        let done = expectation(description: "inbox action completes")
-        var result: NetworkService.NetworkResult<Bool>?
-
-        service.inboxTrackAction(messageId: "m1", userId: "user-1") {
-            result = $0
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
+        let thrown = await captureError { try await service.inboxTrackAction(messageId: "m1", userId: "user-1") }
 
         XCTAssertEqual(StubURLProtocol.receivedRequests.count, 1, "retryAttempts: 0 must not retry")
-        switch try XCTUnwrap(result) {
-        case .success:
-            XCTFail("expected failure")
-        case .failure(let error):
-            if case .networkError = error {} else {
-                XCTFail("expected .networkError, got \(error)")
-            }
-        }
+        XCTAssertEqual(RelevaErrorKind(try XCTUnwrap(thrown)), .networkError)
     }
 
-    func testUndecodableSuccessBodyMapsToInvalidResponse() throws {
+    func testUndecodableSuccessBodyMapsToInvalidResponse() async throws {
         StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data("not json".utf8)) }
 
-        let done = expectation(description: "push completes")
-        var result: NetworkService.NetworkResult<RelevaResponse>?
+        let thrown = await captureError { _ = try await service.sendPushRequest([:], context: [:]) }
 
-        service.sendPushRequest([:], context: [:]) {
-            result = $0
-            done.fulfill()
-        }
-        waitForExpectations(timeout: 5)
-
-        switch try XCTUnwrap(result) {
-        case .success:
-            XCTFail("expected failure")
-        case .failure(let error):
-            if case .invalidResponse = error {} else {
-                XCTFail("expected .invalidResponse, got \(error)")
-            }
-        }
+        XCTAssertEqual(RelevaErrorKind(try XCTUnwrap(thrown)), .invalidResponse)
     }
 
-    func testServerErrorIsRetriedAndThenSurfaced() throws {
+    func testServerErrorIsRetriedAndThenSurfaced() async throws {
         StubURLProtocol.stub { _ in .response(statusCode: 500, body: Data("boom".utf8)) }
 
         // sendNpsSubmission passes retryAttempts: 1, so a 5xx is retried exactly once
         // after a 2 s backoff before the error is surfaced.
-        let done = expectation(description: "nps submission completes")
-        var result: NetworkService.NetworkResult<Bool>?
-
-        service.sendNpsSubmission(["score": 9], token: "nps-token") {
-            result = $0
-            done.fulfill()
+        let thrown = await captureError {
+            try await service.sendNpsSubmission(["score": 9], token: "nps-token")
         }
-        waitForExpectations(timeout: 20)
 
         XCTAssertEqual(StubURLProtocol.receivedRequests.count, 2, "a 5xx must be retried once")
         XCTAssertEqual(
             StubURLProtocol.receivedRequests.first?.url?.absoluteString,
             "https://us.releva.ai/api/v0/nps/nps-token/submissions"
         )
-        switch try XCTUnwrap(result) {
-        case .success:
-            XCTFail("expected failure")
-        case .failure(let error):
-            if case .serverError(let code, let message) = error {
-                XCTAssertEqual(code, 500)
-                XCTAssertEqual(message, "boom")
-            } else {
-                XCTFail("expected .serverError, got \(error)")
-            }
+        let relevaError = try XCTUnwrap(thrown as? RelevaError)
+        guard case .serverError(let code, let message) = relevaError else {
+            XCTFail("expected .serverError, got \(relevaError)")
+            return
         }
+        XCTAssertEqual(code, 500)
+        XCTAssertEqual(message, "boom")
     }
 }

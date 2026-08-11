@@ -65,93 +65,85 @@ public class InboxService: ObservableObject {
         self.profileId = profileId
     }
 
+    // Every mutating method below runs its whole body in a `Task { @MainActor ... }`. That
+    // replaces the `if Thread.isMainThread { work() } else { DispatchQueue.main.async(...) }`
+    // hop each one used to open with, and the `DispatchQueue.main.async` each network callback
+    // used to close with: `state` is `@Published` and read by SwiftUI, so it may only be
+    // touched on the main actor, and now the compiler is the thing enforcing that.
+    //
+    // One behaviour change falls out of it: when called *from* the main thread the optimistic
+    // update used to apply synchronously, before the call returned. It now lands on the next
+    // main-actor turn instead. Nothing in the SDK reads `state` synchronously after calling
+    // these, and SwiftUI observers see the same values either way.
+
     /// Fetch first page of messages + unread count in parallel.
     public func refresh() {
-        let work = { [weak self] in
-            guard let self = self, self.initialized, let userId = self.profileId else { return }
+        Task { @MainActor [weak self] in
+            guard let self = self, self.initialized,
+                  let userId = self.profileId,
+                  let network = self.networkService else { return }
 
             self.state.isLoading = true
 
-            let group = DispatchGroup()
-            var fetchedMessages: [InboxMessage]?
-            var fetchedCursor: String?
-            var fetchedUnread: Int?
+            // `async let` keeps the two requests in flight together, as the `DispatchGroup` did.
+            async let messagesJson = network.fetchInboxMessages(userId: userId)
+            async let unreadCount = network.fetchInboxUnreadCount(userId: userId)
 
-            group.enter()
-            self.networkService?.fetchInboxMessages(userId: userId) { result in
-                if case .success(let json) = result {
-                    let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
-                    fetchedMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
-                    fetchedCursor = json["nextCursor"] as? String
-                }
-                group.leave()
+            let json = try? await messagesJson
+            let unread = try? await unreadCount
+
+            if let json = json {
+                let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
+                let nextCursor = json["nextCursor"] as? String
+                self.state.messages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
+                self.state.nextCursor = nextCursor
+                self.state.hasMore = nextCursor != nil
+                self.state.lastFetchTime = Date()
             }
-
-            group.enter()
-            self.networkService?.fetchInboxUnreadCount(userId: userId) { result in
-                if case .success(let count) = result {
-                    fetchedUnread = count
-                }
-                group.leave()
+            if let unread = unread {
+                self.state.unreadCount = unread
             }
-
-            group.notify(queue: .main) { [weak self] in
-                guard let self = self else { return }
-
-                if let messages = fetchedMessages {
-                    self.state.messages = messages
-                    self.state.nextCursor = fetchedCursor
-                    self.state.hasMore = fetchedCursor != nil
-                    self.state.lastFetchTime = Date()
-                }
-                if let unread = fetchedUnread {
-                    self.state.unreadCount = unread
-                }
-                self.state.isLoading = false
-                self.persistState()
-            }
+            self.state.isLoading = false
+            self.persistState()
         }
-        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Fetch next page using nextCursor and append to list.
     public func loadMore() {
-        let work = { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self = self, self.initialized, !self.state.isLoading, self.state.hasMore,
-                  let userId = self.profileId else { return }
+                  let userId = self.profileId,
+                  let network = self.networkService else { return }
 
             self.state.isLoading = true
 
-            self.networkService?.fetchInboxMessages(userId: userId, cursor: self.state.nextCursor) { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-
-                    switch result {
-                    case .success(let json):
-                        let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
-                        let newMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
-                        let nextCursor = json["nextCursor"] as? String
-
-                        self.state.messages.append(contentsOf: newMessages)
-                        self.state.nextCursor = nextCursor
-                        self.state.hasMore = nextCursor != nil
-                        self.state.lastFetchTime = Date()
-                        self.state.isLoading = false
-                        self.persistState()
-
-                    case .failure:
-                        self.state.isLoading = false
-                    }
-                }
+            guard let json = try? await network.fetchInboxMessages(
+                userId: userId,
+                cursor: self.state.nextCursor
+            ) else {
+                self.state.isLoading = false
+                return
             }
+
+            let messagesArray = (json["messages"] as? [[String: Any]]) ?? []
+            let newMessages = messagesArray.compactMap { InboxMessage.from(dict: $0) }
+            let nextCursor = json["nextCursor"] as? String
+
+            self.state.messages.append(contentsOf: newMessages)
+            self.state.nextCursor = nextCursor
+            self.state.hasMore = nextCursor != nil
+            self.state.lastFetchTime = Date()
+            self.state.isLoading = false
+            self.persistState()
         }
-        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Mark single message as read (optimistic update).
     public func markAsRead(_ messageId: String) {
-        let work = { [weak self] in
-            guard let self = self, self.initialized, let userId = self.profileId else { return }
+        Task { @MainActor [weak self] in
+            guard let self = self, self.initialized,
+                  let userId = self.profileId,
+                  let network = self.networkService else { return }
 
             guard let index = self.state.messages.firstIndex(where: { $0.id == messageId }) else { return }
             if self.state.messages[index].read { return }
@@ -164,27 +156,24 @@ public class InboxService: ObservableObject {
             self.state.messages[index].read = true
             self.state.unreadCount = max(0, self.state.unreadCount - 1)
 
-            self.networkService?.inboxMarkAsRead(messageId: messageId, userId: userId) { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    if case .failure = result {
-                        if let idx = self.state.messages.firstIndex(where: { $0.id == messageId }) {
-                            self.state.messages[idx].read = originalRead
-                        }
-                        self.state.unreadCount = originalCount
-                    } else {
-                        self.persistState()
-                    }
+            do {
+                try await network.inboxMarkAsRead(messageId: messageId, userId: userId)
+                self.persistState()
+            } catch {
+                if let idx = self.state.messages.firstIndex(where: { $0.id == messageId }) {
+                    self.state.messages[idx].read = originalRead
                 }
+                self.state.unreadCount = originalCount
             }
         }
-        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Mark all messages as read (optimistic update).
     public func markAllAsRead() {
-        let work = { [weak self] in
-            guard let self = self, self.initialized, let userId = self.profileId else { return }
+        Task { @MainActor [weak self] in
+            guard let self = self, self.initialized,
+                  let userId = self.profileId,
+                  let network = self.networkService else { return }
 
             // Snapshot for rollback
             let originalReadStates = self.state.messages.map { ($0.id, $0.read) }
@@ -196,29 +185,26 @@ public class InboxService: ObservableObject {
             }
             self.state.unreadCount = 0
 
-            self.networkService?.inboxMarkAllAsRead(userId: userId) { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    if case .failure = result {
-                        for (id, wasRead) in originalReadStates {
-                            if let idx = self.state.messages.firstIndex(where: { $0.id == id }) {
-                                self.state.messages[idx].read = wasRead
-                            }
-                        }
-                        self.state.unreadCount = originalCount
-                    } else {
-                        self.persistState()
+            do {
+                try await network.inboxMarkAllAsRead(userId: userId)
+                self.persistState()
+            } catch {
+                for (id, wasRead) in originalReadStates {
+                    if let idx = self.state.messages.firstIndex(where: { $0.id == id }) {
+                        self.state.messages[idx].read = wasRead
                     }
                 }
+                self.state.unreadCount = originalCount
             }
         }
-        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Delete a message (optimistic update).
     public func deleteMessage(_ messageId: String) {
-        let work = { [weak self] in
-            guard let self = self, self.initialized, let userId = self.profileId else { return }
+        Task { @MainActor [weak self] in
+            guard let self = self, self.initialized,
+                  let userId = self.profileId,
+                  let network = self.networkService else { return }
 
             guard let index = self.state.messages.firstIndex(where: { $0.id == messageId }) else { return }
 
@@ -232,28 +218,24 @@ public class InboxService: ObservableObject {
                 self.state.unreadCount = max(0, self.state.unreadCount - 1)
             }
 
-            self.networkService?.inboxDeleteMessage(messageId: messageId, userId: userId) { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    if case .failure = result {
-                        self.state.messages = originalMessages
-                        self.state.unreadCount = originalCount
-                    } else {
-                        self.persistState()
-                    }
-                }
+            do {
+                try await network.inboxDeleteMessage(messageId: messageId, userId: userId)
+                self.persistState()
+            } catch {
+                self.state.messages = originalMessages
+                self.state.unreadCount = originalCount
             }
         }
-        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Track message action (tap/click). Fire-and-forget.
     public func trackAction(_ messageId: String) {
-        let work = { [weak self] in
-            guard let self = self, self.initialized, let userId = self.profileId else { return }
-            self.networkService?.inboxTrackAction(messageId: messageId, userId: userId) { _ in }
+        Task { @MainActor [weak self] in
+            guard let self = self, self.initialized,
+                  let userId = self.profileId,
+                  let network = self.networkService else { return }
+            try? await network.inboxTrackAction(messageId: messageId, userId: userId)
         }
-        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     /// Look up an inbox message by its `inboxMessageId`.
