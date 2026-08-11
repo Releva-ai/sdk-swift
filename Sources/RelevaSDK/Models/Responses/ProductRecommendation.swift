@@ -69,7 +69,7 @@ public struct ProductRecommendation: Codable, Equatable, Sendable {
 
     /// Check if product has a discount
     public var hasDiscount: Bool {
-        return discount != nil && discount! > 0
+        return (discount ?? 0) > 0
     }
 
     /// Calculate the actual discount percentage if not provided
@@ -86,12 +86,12 @@ public struct ProductRecommendation: Codable, Equatable, Sendable {
 
     /// Check if product has an image
     public var hasImage: Bool {
-        return imageUrl != nil && !imageUrl!.isEmpty
+        return !(imageUrl ?? "").isEmpty
     }
 
     /// Check if product has a URL
     public var hasUrl: Bool {
-        return url != nil && !url!.isEmpty
+        return !(url ?? "").isEmpty
     }
 
     // MARK: - Codable

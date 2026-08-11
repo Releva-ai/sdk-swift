@@ -38,10 +38,10 @@ public class NpsManagerService {
             guard let self = self else { return }
             self.config = config
 
-            if self.suppressedThisSession || config == nil { return }
+            guard !self.suppressedThisSession, let config = config else { return }
             if self.triggered { return }
 
-            let hasCustomEventTriggers = config!.triggers.contains { $0.type == "customEvent" }
+            let hasCustomEventTriggers = config.triggers.contains { $0.type == "customEvent" }
 
             if !hasCustomEventTriggers {
                 self.fireTrigger()

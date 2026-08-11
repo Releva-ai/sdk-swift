@@ -1,3 +1,10 @@
+# Promotes every warning to an error, so any violation fails the `SwiftLint` CI
+# job. Kept here rather than as a `--strict` flag in ci.yml so that `make lint`
+# cannot drift into being more lenient than CI. Note that this also promotes the
+# explicit `force_cast` / `force_try` severities below — under `strict` there is
+# no such thing as an advisory violation.
+strict: true
+
 disabled_rules:
   - line_length
   - identifier_name

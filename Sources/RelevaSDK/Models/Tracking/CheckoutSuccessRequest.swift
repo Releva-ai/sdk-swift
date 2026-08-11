@@ -114,7 +114,7 @@ public struct CheckoutSuccessRequest: PushRequestConvertible {
         }
 
         // Validate order ID exists
-        if orderedCart.orderId == nil || orderedCart.orderId!.isEmpty {
+        if (orderedCart.orderId ?? "").isEmpty {
             throw RelevaError.missingRequiredField("Order ID is required for checkout success")
         }
 

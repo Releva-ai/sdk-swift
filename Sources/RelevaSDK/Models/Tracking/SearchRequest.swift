@@ -153,7 +153,7 @@ public struct SearchRequest: PushRequestConvertible {
 
     /// Check if the search has results
     public var hasResults: Bool {
-        return resultProductIds != nil && !resultProductIds!.isEmpty
+        return !(resultProductIds ?? []).isEmpty
     }
 
     /// Get the number of results
@@ -202,7 +202,7 @@ public struct SearchRequest: PushRequestConvertible {
         // `PushRequest.validate()` grows a check that isn't cart-specific — this bypasses it.
 
         // Search requests should have at least a query
-        if query == nil || query!.isEmpty {
+        if (query ?? "").isEmpty {
             throw RelevaError.missingRequiredField("Search query cannot be empty")
         }
     }

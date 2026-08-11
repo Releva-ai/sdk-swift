@@ -106,12 +106,12 @@ public struct CartProduct: Codable, Equatable, Hashable, Sendable {
 
     /// Check if the product has a valid price
     public var hasPrice: Bool {
-        return price != nil && price! > 0
+        return (price ?? 0) > 0
     }
 
     /// Check if the product has a valid quantity
     public var hasQuantity: Bool {
-        return quantity != nil && quantity! > 0
+        return (quantity ?? 0) > 0
     }
 
     // MARK: - Validation

@@ -12,11 +12,15 @@ final class SessionServiceTests: XCTestCase {
 
     private var storage: StorageService!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         // Isolated UserDefaults suite per test — prevents cross-test pollution.
         let suiteName = "SessionServiceTests_\(UUID().uuidString)"
-        storage = StorageService(userDefaults: UserDefaults(suiteName: suiteName)!)
+        let defaults = try XCTUnwrap(
+            UserDefaults(suiteName: suiteName),
+            "could not create an isolated defaults suite"
+        )
+        storage = StorageService(userDefaults: defaults)
         // Always start from a clean slate.
         SessionService.shared.dispose()
         // Restore the real threshold in case a previous test changed it.

@@ -262,7 +262,7 @@ public struct PushInfo: Codable, Equatable, Sendable {
 
     /// Check if VAPID key is available
     public var hasVapidKey: Bool {
-        return vapidPublicKey != nil && !vapidPublicKey!.isEmpty
+        return !(vapidPublicKey ?? "").isEmpty
     }
 
     // MARK: - Serialization

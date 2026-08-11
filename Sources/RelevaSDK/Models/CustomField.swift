@@ -37,9 +37,11 @@ public struct CustomField<T: Codable & Equatable & Hashable>: Codable, Equatable
     public func toDict() -> [String: Any] {
         var dict: [String: Any] = ["key": key]
 
-        if T.self == Date.self {
+        // One conditional cast in place of a `T.self == Date.self` test plus a force cast.
+        // `T` is constrained to `Codable & Equatable & Hashable`, so the cast succeeds for
+        // exactly the instantiations the type test used to select: `T == Date`.
+        if let dateValues = values as? [Date] {
             // Convert dates to ISO8601 strings
-            let dateValues = values as! [Date]
             dict["values"] = dateValues.map { ISO8601DateFormatter().string(from: $0) }
         } else {
             dict["values"] = values

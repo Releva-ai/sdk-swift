@@ -56,7 +56,7 @@ extension CustomEventProduct {
 
     /// Check if the product has a valid quantity
     public var hasQuantity: Bool {
-        return quantity != nil && quantity! > 0
+        return (quantity ?? 0) > 0
     }
 
     /// Create a new product with updated quantity

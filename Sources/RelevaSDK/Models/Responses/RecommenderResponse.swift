@@ -43,7 +43,7 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
 
     /// Check if recommender has tags
     public var hasTags: Bool {
-        return tags != nil && !tags!.isEmpty
+        return !(tags ?? []).isEmpty
     }
 
     /// Check if recommender has a template
