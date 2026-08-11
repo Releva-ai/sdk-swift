@@ -98,4 +98,59 @@ jobs:
             -scheme "${{ steps.scheme.outputs.name }}" \
             -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
             -clonedSourcePackagesDirPath .spm \
+            -enableCodeCoverage YES \
+            -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Report code coverage
+        # Runs even when the test step above failed: that's precisely when the
+        # per-test failure detail in TestResults.xcresult (uploaded below) is
+        # worth having, and the floor check gives a red run a second, more
+        # informative reason to be red instead of silently skipping.
+        # `!cancelled()`, not `always()` - a cancelled run shouldn't spend
+        # runner time in xccov and shouldn't fail the coverage floor check
+        # instead of just reporting as cancelled.
+        #
+        # The floor itself now lives in scripts/coverage.sh as
+        # DEFAULT_MIN_LINE_COVERAGE, not here - a copy on each side of this
+        # call is exactly what let the two drift apart before.
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          bash scripts/coverage.sh TestResults.xcresult
+
+      - name: Zip test result bundle
+        # Also runs on failure: a failed run is exactly when the per-test
+        # detail inside the bundle (not just the coverage summary above) is
+        # worth downloading. `!cancelled()`, not `always()`, for the same
+        # reason as the step above. Guarded on existence, same as
+        # scripts/coverage.sh, for the build-failed-before-the-bundle-existed
+        # case - the upload step's `if-no-files-found: warn` then covers it.
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          if [ -e TestResults.xcresult ]; then
+            # upload-artifact strips the common ancestor directory from
+            # whatever `path` points at, so uploading the bundle's contents
+            # directly loses the `.xcresult` wrapper - the download won't
+            # open in Xcode without manually reconstructing it. Zipping
+            # first keeps it a double-clickable bundle on the other end.
+            ditto -c -k --sequesterRsrc --keepParent TestResults.xcresult TestResults.xcresult.zip
+          fi
+
+      - name: Upload test result bundle
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          # No ".zip" in the artifact name: upload-artifact zips whatever it is
+          # given and serves the download as <name>.zip, so naming the artifact
+          # after the file makes the download TestResults.xcresult.zip.zip.
+          # "test-results" gives test-results.zip -> the bundle zip -> bundle.
+          name: test-results
+          path: TestResults.xcresult.zip
+          if-no-files-found: warn
+          # An -enableCodeCoverage bundle for a build that compiles Firebase
+          # from source isn't small, and this now uploads on every PR sync
+          # and every push to master. A week is plenty to download one to see
+          # why a run went red.
+          retention-days: 7
