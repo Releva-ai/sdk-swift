@@ -43,10 +43,10 @@ enum BannerChrome {
                                 design: design,
                                 maxWidth: screenWidth
                             ) { url in
-                                    viewModel.dismissPopup(banner, track: false)
-                                    viewModel.trackClick(banner)
-                                    onLinkTap(url)
-                                }
+                                viewModel.dismissPopup(banner, track: false)
+                                viewModel.trackClick(banner)
+                                onLinkTap(url)
+                            }
                         }
                     }
                     .frame(minHeight: geometry.size.height)
@@ -114,10 +114,10 @@ enum BannerChrome {
                                 maxWidth: flyoutWidth,
                                 transparentBody: hasBodyBgImage
                             ) { url in
-                                    viewModel.dismissFlyout(banner, track: false)
-                                    viewModel.trackClick(banner)
-                                    onLinkTap(url)
-                                }
+                                viewModel.dismissFlyout(banner, track: false)
+                                viewModel.trackClick(banner)
+                                onLinkTap(url)
+                            }
                         }
                     }
                 }
@@ -165,9 +165,9 @@ enum BannerChrome {
                     design: design,
                     maxWidth: UIScreen.main.bounds.width - 32
                 ) { url in
-                        viewModel.trackClick(banner)
-                        onLinkTap(url)
-                    }
+                    viewModel.trackClick(banner)
+                    onLinkTap(url)
+                }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .padding(isBottom ? .bottom : .top, safeAreaInset)

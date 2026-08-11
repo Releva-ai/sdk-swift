@@ -73,15 +73,23 @@ final class NpsPresenterTests: XCTestCase {
         drainMainQueue()
         waitUntil("the survey is presented") { host.presentedViewController != nil }
 
+        let firstSurvey = presenter.surveyController
         presenter.stop()
-        XCTAssertNil(
+        // `close(animated:)` only clears `surveyController` from the dismiss completion, so a
+        // sheet UIKit declines to dismiss (still `isBeingPresented`) is not orphaned — see
+        // `NpsPresenter.close`. That completion needs the transition to actually finish, which
+        // this test host's windows (no `UIWindowScene`) never do, so it stays set here rather
+        // than going to `nil`; see `PresentationTestSupport.makeVisibleWindow`.
+        XCTAssertNotNil(
             presenter.surveyController,
-            "stop() must let go of the survey it asked UIKit to take down"
+            "the presenter must not let go of the survey until UIKit confirms the dismissal"
         )
 
         NpsDisplayController.shared.showNps(NpsConfig(token: "nps-2", question: "And now?"))
         drainMainQueue()
 
-        XCTAssertNil(presenter.surveyController, "a stopped presenter must not show a survey")
+        // Stopped: the cancellable is torn down, so `present` never runs for the later survey at
+        // all — `surveyController` is exactly what it was left holding above, not a new sheet.
+        XCTAssertTrue(presenter.surveyController === firstSurvey, "a stopped presenter must not show a survey")
     }
 }

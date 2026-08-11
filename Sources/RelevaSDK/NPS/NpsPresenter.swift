@@ -104,9 +104,22 @@ public final class NpsPresenter {
     private func close(animated: Bool) {
         guard let controller = surveyController else { return }
 
-        // Let go of it first: whether UIKit honours the dismissal or not, this presenter is done
-        // with this survey.
-        surveyController = nil
-        controller.presentingViewController?.dismiss(animated: animated)
+        // Nil when the presentation never took or the sheet is already gone — including a swipe
+        // dismissal, which never routes through this method at all — so nothing to dismiss and
+        // nothing to clean up either.
+        guard let presenting = controller.presentingViewController else {
+            surveyController = nil
+            return
+        }
+
+        // Only let go of the reference once UIKit confirms the dismissal actually happened, the
+        // same shape as `BannerPresenter.syncOverlay`: a sheet still `isBeingPresented` (skipped
+        // or submitted during its own presentation) declines `dismiss` and only logs, so clearing
+        // `surveyController` up front would leave nothing able to reach the orphaned sheet again.
+        // A declined dismissal leaves `surveyController` set, so `present`'s own guard retries it
+        // when the next survey arrives instead of stacking a second sheet on top.
+        presenting.dismiss(animated: animated) { [weak self] in
+            self?.surveyController = nil
+        }
     }
 }

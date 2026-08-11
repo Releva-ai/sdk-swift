@@ -110,8 +110,16 @@ public final class BannerPresenter {
         viewModel.stop()
 
         if let controller = overlayController {
-            overlayController = nil
+            // Only let go of the reference once UIKit has actually taken the overlay down: a
+            // controller still `isBeingPresented` (reachable if `stop()` runs mid-transition, on
+            // a fast tab switch) declines `dismiss` and only logs, so clearing `overlayController`
+            // unconditionally here would orphan it on screen with nothing left to reach it. A
+            // declined dismissal leaves `overlayController` set, so the next `start()`'s first
+            // reconcile inherits the problem instead of the user does — see `syncOverlay`.
             controller.presentingViewController?.dismiss(animated: false)
+            if controller.presentingViewController == nil {
+                overlayController = nil
+            }
         }
 
         for slot in barSlots {
@@ -166,15 +174,27 @@ public final class BannerPresenter {
         } else {
             guard let controller = overlayController else { return }
 
-            // Let go of it first: whether UIKit honours the dismissal or not, this presenter is
-            // done with this overlay, and the next banner gets a fresh one.
-            overlayController = nil
             // Nil when the presentation never took or something else already took the overlay
             // down — nothing to dismiss then, and nothing to clean up either.
-            controller.presentingViewController?.dismiss(animated: true) { [weak self] in
+            guard let presenting = controller.presentingViewController else {
+                overlayController = nil
+                return
+            }
+
+            // Only let go of the reference from the dismiss completion — the one place that
+            // knows the dismissal actually happened. A controller still `isBeingPresented` (the
+            // user taps close as it fades in, or the host's `viewWillDisappear` fires on a fast
+            // tab switch, both inside the brief `.crossDissolve`) declines `dismiss` and only
+            // logs; clearing `overlayController` up front, as before, would then leave nothing
+            // able to reach the orphaned overlay ever again. If the dismissal is declined here,
+            // this completion never runs, `overlayController` stays set, and the next reconcile
+            // either finds it still presented (re-issuing the dismiss when not needed) or finds
+            // `presentingViewController == nil` by then and drops it via the guard above.
+            presenting.dismiss(animated: true) { [weak self] in
                 // `cancellable` is the started flag: a completion that lands after `stop()`
                 // must not put a banner back up.
                 guard let self = self, self.cancellable != nil else { return }
+                self.overlayController = nil // it really is gone
                 // A banner that arrived while the dismissal was in flight gets its overlay here:
                 // `present` on a controller mid-dismissal is the one thing UIKit reliably
                 // refuses, so that reconcile has to happen after the transition, not during it.
