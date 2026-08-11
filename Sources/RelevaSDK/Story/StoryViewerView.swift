@@ -23,17 +23,16 @@ public struct StoryViewerView: View {
     }
 
     private var activeColor: Color {
-        DesignRenderer.parseColor(story.progressIndicatorColor) ?? .white
+        DesignRenderer.parseColor(css: story.progressIndicatorColor) ?? .white
     }
 
     private var inactiveColor: Color {
-        DesignRenderer.parseColor(story.progressIndicatorInactiveColor) ?? Color.white.opacity(0.3)
+        DesignRenderer.parseColor(css: story.progressIndicatorInactiveColor) ?? Color.white.opacity(0.3)
     }
 
     private var slideBackgroundColor: Color {
         guard let design = currentSlide.design,
-              let body = design["body"] as? [String: Any],
-              let values = body["values"] as? [String: Any] else { return .black }
+              let values = design["body"]?["values"] else { return .black }
         return DesignRenderer.parseColor(values["backgroundColor"]) ?? .black
     }
 

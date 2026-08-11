@@ -88,25 +88,25 @@ struct NpsSurveyView: View {
     private var primaryColor: Color {
         let isDark = colorScheme == .dark
         if isDark, let darkColor = nps.appearance.dark?.primaryColor {
-            return DesignRenderer.parseColor(darkColor) ?? DesignRenderer.parseColor(nps.appearance.primaryColor) ?? Color(red: 108/255, green: 63/255, blue: 196/255)
+            return DesignRenderer.parseColor(css: darkColor) ?? DesignRenderer.parseColor(css: nps.appearance.primaryColor) ?? Color(red: 108/255, green: 63/255, blue: 196/255)
         }
-        return DesignRenderer.parseColor(nps.appearance.primaryColor) ?? Color(red: 108/255, green: 63/255, blue: 196/255)
+        return DesignRenderer.parseColor(css: nps.appearance.primaryColor) ?? Color(red: 108/255, green: 63/255, blue: 196/255)
     }
 
     private var bgColor: Color {
         let isDark = colorScheme == .dark
         if isDark, let darkColor = nps.appearance.dark?.backgroundColor {
-            return DesignRenderer.parseColor(darkColor) ?? .white
+            return DesignRenderer.parseColor(css: darkColor) ?? .white
         }
-        return DesignRenderer.parseColor(nps.appearance.backgroundColor) ?? .white
+        return DesignRenderer.parseColor(css: nps.appearance.backgroundColor) ?? .white
     }
 
     private var textColor: Color {
         let isDark = colorScheme == .dark
         if isDark, let darkColor = nps.appearance.dark?.textColor {
-            return DesignRenderer.parseColor(darkColor) ?? Color(white: 0.1)
+            return DesignRenderer.parseColor(css: darkColor) ?? Color(white: 0.1)
         }
-        return DesignRenderer.parseColor(nps.appearance.textColor) ?? Color(white: 0.1)
+        return DesignRenderer.parseColor(css: nps.appearance.textColor) ?? Color(white: 0.1)
     }
 
     var body: some View {

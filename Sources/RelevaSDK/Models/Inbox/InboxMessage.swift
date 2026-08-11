@@ -1,10 +1,10 @@
 import Foundation
 
 /// An inbox message from the Releva API
-public struct InboxMessage: Identifiable {
+public struct InboxMessage: Identifiable, Sendable {
     public let id: String
     public let title: String
-    public let design: [String: Any]
+    public let design: [String: JSONValue]
     public var read: Bool
     public let createdAt: Date
     public let inboxMessageId: Int
@@ -12,7 +12,7 @@ public struct InboxMessage: Identifiable {
     public init(
         id: String,
         title: String,
-        design: [String: Any],
+        design: [String: JSONValue],
         read: Bool,
         createdAt: Date,
         inboxMessageId: Int
@@ -47,7 +47,7 @@ public struct InboxMessage: Identifiable {
         return InboxMessage(
             id: id,
             title: dict["title"] as? String ?? "",
-            design: dict["design"] as? [String: Any] ?? [:],
+            design: (dict["design"] as? [String: Any]).map { [String: JSONValue](any: $0) } ?? [:],
             read: dict["read"] as? Bool ?? false,
             createdAt: createdAt,
             inboxMessageId: (dict["inboxMessageId"] as? NSNumber)?.intValue ?? 0
@@ -59,7 +59,7 @@ public struct InboxMessage: Identifiable {
         return [
             "id": id,
             "title": title,
-            "design": design,
+            "design": design.anyValue,
             "read": read,
             "createdAt": InboxMessage.dateFormatter.string(from: createdAt),
             "inboxMessageId": inboxMessageId

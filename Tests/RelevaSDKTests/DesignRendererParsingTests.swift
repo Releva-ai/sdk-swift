@@ -287,12 +287,12 @@ final class DesignRendererParsingTests: XCTestCase {
             "url": "https://cdn.example.com/bg.jpg",
             "size": "custom",
             "customSize": ["100%", "auto"]
-        ] as [String: Any]))
+        ]))
         let fixed = try XCTUnwrap(DesignRenderer.parseBackgroundImage([
             "url": "https://cdn.example.com/bg.jpg",
             "size": "custom",
             "customSize": ["100%", "50%"]
-        ] as [String: Any]))
+        ]))
 
         XCTAssertEqual(fullWidth.contentMode, .fit, "a percentage width with an automatic height is a width fit")
         XCTAssertEqual(fixed.contentMode, .fill)
@@ -339,17 +339,17 @@ final class DesignRendererParsingTests: XCTestCase {
             "url": "https://cdn.example.com/bg.jpg",
             "position": "custom",
             "customPosition": ["10%", "20%"]
-        ] as [String: Any]))
+        ]))
         let bottomTrailing = try XCTUnwrap(DesignRenderer.parseBackgroundImage([
             "url": "https://cdn.example.com/bg.jpg",
             "position": "custom",
             "customPosition": ["90%", "80%"]
-        ] as [String: Any]))
+        ]))
         let middle = try XCTUnwrap(DesignRenderer.parseBackgroundImage([
             "url": "https://cdn.example.com/bg.jpg",
             "position": "custom",
             "customPosition": ["50%", "50%"]
-        ] as [String: Any]))
+        ]))
 
         XCTAssertEqual(topLeading.alignment, .topLeading)
         XCTAssertEqual(bottomTrailing.alignment, .bottomTrailing)
@@ -359,7 +359,7 @@ final class DesignRendererParsingTests: XCTestCase {
     func testBackgroundImageNeedsAUsableUrl() {
         XCTAssertNil(DesignRenderer.parseBackgroundImage(nil))
         XCTAssertNil(DesignRenderer.parseBackgroundImage("https://cdn.example.com/bg.jpg"), "the value must be an object")
-        XCTAssertNil(DesignRenderer.parseBackgroundImage([String: Any]()), "no url, no background")
+        XCTAssertNil(DesignRenderer.parseBackgroundImage(JSONValue.object([:])), "no url, no background")
         XCTAssertNil(DesignRenderer.parseBackgroundImage(["url": ""]), "an empty url is not a background")
         XCTAssertNil(DesignRenderer.parseBackgroundImage(["url": 42]), "a non-string url is not a background")
     }
@@ -370,14 +370,14 @@ final class DesignRendererParsingTests: XCTestCase {
         let banner = BannerResponse(token: "t", design: [
             "body": [
                 "values": ["backgroundColor": "#ffffff", "contentWidth": "600px"],
-                "rows": [Any]()
-            ] as [String: Any]
+                "rows": []
+            ]
         ])
 
         let values = DesignRenderer.getDesignBodyValues(banner)
 
-        XCTAssertEqual(values["backgroundColor"] as? String, "#ffffff")
-        XCTAssertEqual(values["contentWidth"] as? String, "600px")
+        XCTAssertEqual(values["backgroundColor"]?.stringValue, "#ffffff")
+        XCTAssertEqual(values["contentWidth"]?.stringValue, "600px")
     }
 
     func testDesignBodyValuesAreEmptyWhenTheDesignIsMissingOrMalformed() {
@@ -386,11 +386,11 @@ final class DesignRendererParsingTests: XCTestCase {
             "a banner without a design has no body values"
         )
         XCTAssertTrue(
-            DesignRenderer.getDesignBodyValues(BannerResponse(token: "t", design: ["rows": [Any]()])).isEmpty,
+            DesignRenderer.getDesignBodyValues(BannerResponse(token: "t", design: ["rows": []])).isEmpty,
             "a design without a body has no body values"
         )
         XCTAssertTrue(
-            DesignRenderer.getDesignBodyValues(BannerResponse(token: "t", design: ["body": ["rows": [Any]()]])).isEmpty,
+            DesignRenderer.getDesignBodyValues(BannerResponse(token: "t", design: ["body": ["rows": []]])).isEmpty,
             "a body without values has no body values"
         )
     }

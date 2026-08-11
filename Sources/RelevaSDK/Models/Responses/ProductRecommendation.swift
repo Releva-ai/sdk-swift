@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a recommended product from the API
-public struct ProductRecommendation: Codable, Equatable {
+public struct ProductRecommendation: Codable, Equatable, Sendable {
 
     // MARK: - Properties
 
@@ -18,10 +18,10 @@ public struct ProductRecommendation: Codable, Equatable {
     public let currency: String?
 
     /// Custom fields
-    public let custom: [String: Any]?
+    public let custom: [String: JSONValue]?
 
     /// Additional data
-    public let data: [String: Any]?
+    public let data: [String: JSONValue]?
 
     /// Product description
     public let description: String?
@@ -119,10 +119,8 @@ public struct ProductRecommendation: Codable, Equatable {
 
         currency = try container.decodeIfPresent(String.self, forKey: .currency)
 
-        // custom and data are set to nil as [String: Any] cannot be decoded with standard Codable
-        // If needed, implement custom decoding using JSONSerialization
-        custom = nil
-        data = nil
+        custom = try container.decodeIfPresent([String: JSONValue].self, forKey: .custom)
+        data = try container.decodeIfPresent([String: JSONValue].self, forKey: .data)
 
         description = try container.decodeIfPresent(String.self, forKey: .description)
         discount = try container.decodeIfPresent(Double.self, forKey: .discount)
@@ -198,7 +196,9 @@ public struct ProductRecommendation: Codable, Equatable {
 
         try container.encodeIfPresent(currency, forKey: .currency)
 
-        // Note: custom and data encoding would need special handling for Any types
+        try container.encodeIfPresent(custom, forKey: .custom)
+        try container.encodeIfPresent(data, forKey: .data)
+
         try container.encodeIfPresent(description, forKey: .description)
         try container.encodeIfPresent(discount, forKey: .discount)
         try container.encodeIfPresent(discountPercent, forKey: .discountPercent)

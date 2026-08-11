@@ -176,8 +176,8 @@ public struct BannerDisplayModifier: ViewModifier {
     @ViewBuilder
     private func flyoutBannerView(for banner: BannerResponse) -> some View {
         let bodyValues = DesignRenderer.getDesignBodyValues(banner)
-        let bgImageMap = bodyValues["backgroundImage"] as? [String: Any]
-        let hasBodyBgImage = bgImageMap != nil && !(bgImageMap?["url"] as? String ?? "").isEmpty
+        let bgImageMap = bodyValues["backgroundImage"]
+        let hasBodyBgImage = !(bgImageMap?["url"]?.stringValue ?? "").isEmpty
         let overlayColor = getOverlayColor(banner)
         let isLeft = banner.displayPosition == "left"
         let flyoutWidth = UIScreen.main.bounds.width * 0.8

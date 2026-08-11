@@ -1,7 +1,7 @@
 import Foundation
 
 /// Banner response from Releva API
-public struct BannerResponse {
+public struct BannerResponse: Sendable {
 
     // MARK: - Properties
 
@@ -51,10 +51,10 @@ public struct BannerResponse {
     public let advancedStyling: Bool?
 
     /// CSS style overrides
-    public let cssStyles: [String: Any]
+    public let cssStyles: [String: JSONValue]
 
     /// Unlayer design JSON
-    public let design: [String: Any]?
+    public let design: [String: JSONValue]?
 
     /// Legacy content
     public let content: String?
@@ -66,7 +66,7 @@ public struct BannerResponse {
     public let targetUrl: String?
 
     /// Additional metadata
-    public let meta: [String: Any]?
+    public let meta: [String: JSONValue]?
 
     // MARK: - Initializers
 
@@ -86,12 +86,12 @@ public struct BannerResponse {
         displayStrategy: String? = "afterbegin",
         displayPosition: String? = nil,
         advancedStyling: Bool? = false,
-        cssStyles: [String: Any] = [:],
-        design: [String: Any]? = nil,
+        cssStyles: [String: JSONValue] = [:],
+        design: [String: JSONValue]? = nil,
         content: String? = nil,
         imageUrl: String? = nil,
         targetUrl: String? = nil,
-        meta: [String: Any]? = nil
+        meta: [String: JSONValue]? = nil
     ) {
         self.token = token
         self.bannerId = bannerId
@@ -136,12 +136,12 @@ public struct BannerResponse {
             displayStrategy: dict["displayStrategy"] as? String ?? "afterbegin",
             displayPosition: dict["displayPosition"] as? String,
             advancedStyling: dict["advancedStyling"] as? Bool ?? false,
-            cssStyles: dict["cssStyles"] as? [String: Any] ?? [:],
-            design: dict["design"] as? [String: Any],
+            cssStyles: (dict["cssStyles"] as? [String: Any]).map { [String: JSONValue](any: $0) } ?? [:],
+            design: (dict["design"] as? [String: Any]).map { [String: JSONValue](any: $0) },
             content: dict["content"] as? String,
             imageUrl: dict["imageUrl"] as? String,
             targetUrl: dict["targetUrl"] as? String,
-            meta: dict["meta"] as? [String: Any]
+            meta: (dict["meta"] as? [String: Any]).map { [String: JSONValue](any: $0) }
         )
     }
 
@@ -164,12 +164,12 @@ public struct BannerResponse {
         if let displayStrategy = displayStrategy { dict["displayStrategy"] = displayStrategy }
         if let displayPosition = displayPosition { dict["displayPosition"] = displayPosition }
         if let advancedStyling = advancedStyling { dict["advancedStyling"] = advancedStyling }
-        if !cssStyles.isEmpty { dict["cssStyles"] = cssStyles }
-        if let design = design { dict["design"] = design }
+        if !cssStyles.isEmpty { dict["cssStyles"] = cssStyles.anyValue }
+        if let design = design { dict["design"] = design.anyValue }
         if let content = content { dict["content"] = content }
         if let imageUrl = imageUrl { dict["imageUrl"] = imageUrl }
         if let targetUrl = targetUrl { dict["targetUrl"] = targetUrl }
-        if let meta = meta { dict["meta"] = meta }
+        if let meta = meta { dict["meta"] = meta.anyValue }
         return dict
     }
 }

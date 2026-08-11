@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a recommender response containing product recommendations
-public struct RecommenderResponse: Codable, Equatable {
+public struct RecommenderResponse: Codable, Equatable, Sendable {
 
     // MARK: - Properties
 
@@ -12,7 +12,7 @@ public struct RecommenderResponse: Codable, Equatable {
     public let name: String
 
     /// Metadata dictionary
-    public let meta: [String: Any]?
+    public let meta: [String: JSONValue]?
 
     /// Associated tags
     public let tags: [String]?
@@ -69,9 +69,7 @@ public struct RecommenderResponse: Codable, Equatable {
         token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
 
-        // meta is set to nil as [String: Any] cannot be decoded with standard Codable
-        // If needed, implement custom decoding using JSONSerialization
-        meta = nil
+        meta = try container.decodeIfPresent([String: JSONValue].self, forKey: .meta)
 
         tags = try container.decodeIfPresent([String].self, forKey: .tags)
         cssSelector = try container.decodeIfPresent(String.self, forKey: .cssSelector)
@@ -87,7 +85,7 @@ public struct RecommenderResponse: Codable, Equatable {
         try container.encode(token, forKey: .token)
         try container.encode(name, forKey: .name)
 
-        // Note: meta encoding would need special handling for Any types
+        try container.encodeIfPresent(meta, forKey: .meta)
         try container.encodeIfPresent(tags, forKey: .tags)
         try container.encodeIfPresent(cssSelector, forKey: .cssSelector)
         try container.encodeIfPresent(displayStrategy, forKey: .displayStrategy)
