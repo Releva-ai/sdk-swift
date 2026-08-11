@@ -59,13 +59,13 @@ Native iOS SDK for integrating Releva's AI-powered e-commerce personalization pl
 
 - iOS 15.0+ (`firebase-ios-sdk` 12.x declares the same iOS 15 floor, so which
   Firebase major you resolve does not move this)
-- Xcode 16.2+ if you cap `firebase-ios-sdk` to `"11.15.0"..<"12.0.0"` in your
-  own manifest. SPM otherwise resolves the newest Firebase your constraints
-  allow, and Firebase 12 raises its own toolchain floor within the 12.x series
-  (12.12.0 needs Xcode 26.2 as of writing) — see
+- Xcode: whatever the Firebase version you resolve requires. SPM picks the
+  newest `firebase-ios-sdk` your own constraints allow, and Firebase raises its
+  toolchain floor over time — including within the 12.x series — so check
   [Firebase's iOS release notes](https://firebase.google.com/support/release-notes/ios)
-  for the current requirement. This package's requirement,
-  `>= 11.15.0, < 13.0.0`, permits either major.
+  for the version you land on. This package accepts `>= 11.15.0, < 13.0.0`, so
+  capping yourself to `"11.15.0"..<"12.0.0"` is a supported way to stay on an
+  older toolchain: Xcode 16.2 is enough for `firebase-ios-sdk` 11.15.
 - Swift 5.7 language mode or later (the package declares `swift-tools-version: 5.7`)
 
 ## Installation
@@ -96,8 +96,8 @@ dependencies: [
     // manifest declares directly, so a transitive resolve is not enough.
     //
     // Firebase 11 and 12 both work. `from: "11.15.0"` would also resolve, but
-    // it means `< 12.0.0`, so it pins you to Firebase 11 (see Requirements
-    // above for the toolchain each major needs).
+    // it means `< 12.0.0`, so it pins you to Firebase 11 — which is a
+    // reasonable choice on an older Xcode; see Requirements above.
     .package(url: "https://github.com/firebase/firebase-ios-sdk.git", "11.15.0"..<"13.0.0")
 ]
 ```
