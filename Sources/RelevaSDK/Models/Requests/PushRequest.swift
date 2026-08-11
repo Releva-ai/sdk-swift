@@ -193,12 +193,18 @@ public struct PushRequest: PushRequestConvertible {
 
     /// Validate the request
     ///
-    /// Only the cart is checked: `toDict()` omits an empty `events` list rather than
-    /// emitting one, so the payload can never carry an empty events array to reject.
+    /// Only `cart` and `wishlist` are checked: `toDict()` omits an empty `events` list
+    /// rather than emitting one, so the payload can never carry an empty events array
+    /// to reject.
     /// - Throws: RelevaError if validation fails
     public func validate() throws {
         if let cart = cart {
             for product in cart.products {
+                try product.validate()
+            }
+        }
+        if let wishlist = wishlist {
+            for product in wishlist {
                 try product.validate()
             }
         }

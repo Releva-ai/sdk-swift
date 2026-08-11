@@ -115,6 +115,15 @@ final class EngagementTrackingServiceTests: XCTestCase {
         XCTAssertEqual(stats.eventTypes, ["delivered": 2, "opened": 1])
     }
 
+    // `startTracking()` arms a `Timer`, which only ever fires on the run loop of the
+    // thread that scheduled it. Swift Testing/XCTest hop async tests across the
+    // cooperative thread pool between suspension points, so without pinning this test
+    // to a single, consistent run loop, `stats.isTracking` can be read from a thread
+    // whose run loop never got a chance to process the timer's registration. `@MainActor`
+    // keeps the whole test (and `startTracking()`/`stopTracking()`, both of which touch
+    // the timer) on the main run loop for its full duration, matching how a host app
+    // actually calls this API.
+    @MainActor
     func testStartTrackingIsReflectedInIsTracking() async {
         service.startTracking()
         defer { service.stopTracking() }
@@ -126,13 +135,21 @@ final class EngagementTrackingServiceTests: XCTestCase {
 
     func testEngagementStatisticsEqualityComparesAllFields() {
         let base = EngagementStatistics(
-            pendingCount: 1, isTracking: false, isSending: false,
-            batchSize: 10, batchInterval: 30, eventTypes: ["delivered": 1]
+            pendingCount: 1,
+            isTracking: false,
+            isSending: false,
+            batchSize: 10,
+            batchInterval: 30,
+            eventTypes: ["delivered": 1]
         )
         let same = base
         let differentCount = EngagementStatistics(
-            pendingCount: 2, isTracking: false, isSending: false,
-            batchSize: 10, batchInterval: 30, eventTypes: ["delivered": 1]
+            pendingCount: 2,
+            isTracking: false,
+            isSending: false,
+            batchSize: 10,
+            batchInterval: 30,
+            eventTypes: ["delivered": 1]
         )
 
         XCTAssertEqual(base, same)
@@ -168,13 +185,16 @@ final class EngagementTrackingServiceTests: XCTestCase {
         service.trackEvent(EngagementEvent(type: .clicked, callbackUrl: "https://example.com/cb"))
 
         // `processBatch` bridges into an unstructured `Task` for the network call, which
-        // `getPendingEventCount` cannot wait on directly, so poll briefly rather than
-        // asserting on the very next queue turn.
-        let count = try await pollUntil(timeout: 2.0) {
+        // `getPendingEventCount` cannot wait on directly, so poll rather than asserting on
+        // the very next queue turn. The queue backing `processBatch` runs at `.background`
+        // QoS (`EngagementTrackingService.queue`), which a loaded CI runner can starve for
+        // well over a second behind higher-priority work; 5s gives that queue room to be
+        // scheduled without weakening what's actually asserted below.
+        let drained = try await pollUntil(timeout: 5.0) {
             await self.service.getPendingEventCount() == 0
         }
 
-        XCTAssertTrue(count, "a delivered .clicked event must be removed from the pending queue")
+        XCTAssertTrue(drained, "a delivered .clicked event must be removed from the pending queue")
         XCTAssertEqual(StubURLProtocol.receivedRequests.first?.url?.absoluteString, "https://example.com/cb")
     }
 

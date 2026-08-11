@@ -229,6 +229,14 @@ final class PushRequestTests: XCTestCase {
         }
     }
 
+    func testValidatePropagatesWishlistProductValidationFailures() {
+        let request = PushRequest().setWishlist([WishlistProduct(id: "")])
+
+        XCTAssertThrowsError(try request.validate()) { error in
+            XCTAssertEqual(RelevaErrorKind(error), .missingRequiredField, "unexpected error: \(error)")
+        }
+    }
+
     // MARK: - Factory methods
 
     func testForScreenViewSetsOnlyTheToken() throws {

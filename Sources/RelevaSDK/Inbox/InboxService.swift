@@ -22,6 +22,14 @@ public class InboxService: ObservableObject {
     private var initialized = false
     private var foregroundObserver: NSObjectProtocol?
 
+    /// Guards `refresh()` against a second, overlapping `refresh()` call. Deliberately
+    /// separate from `state.isLoading`, which `loadMore()` also sets: sharing one flag
+    /// meant a `refresh()` triggered by a silent push (`handleSyncSignal()`) or a stale
+    /// check (`refreshIfStale()`) was dropped for the entire duration of an unrelated
+    /// `loadMore()` pagination request, with no retry and no way for the UI to tell.
+    /// `loadMore()` still guards on `state.isLoading`, so it is unaffected.
+    private var isRefreshing = false
+
     private init() {}
 
     /// Initialize with network and storage services. Call after setProfileId().
@@ -79,16 +87,19 @@ public class InboxService: ObservableObject {
     /// Fetch first page of messages + unread count in parallel.
     public func refresh() {
         Task { @MainActor [weak self] in
-            // `loadMore` has always guarded on `!self.state.isLoading`; `refresh` gets the
-            // same guard now. Under the old `DispatchGroup` an overlapping `refresh()` had
-            // the same race, but `async` widens the window from "two callbacks" to "two
-            // whole suspended `Task`s" — without this, whichever response lands second wins
-            // `state.messages` even if it started first, and the loser's `isLoading = false`
-            // can unblock `loadMore()` against a cursor the other call is about to replace.
-            guard let self = self, self.initialized, !self.state.isLoading,
+            // Guards against a second, overlapping `refresh()` only — not against
+            // `loadMore()`. `isRefreshing` is its own flag precisely so a push-triggered
+            // `handleSyncSignal()` or a `refreshIfStale()` is never dropped just because
+            // pagination happens to be in flight; 4.x always ran `refresh()` unconditionally,
+            // and that is the safer default for a signal saying "the inbox changed."
+            // `state.isLoading` is still set below so a `ProgressView` bound to it behaves
+            // the same as before, and it still blocks `loadMore()` while a refresh replaces
+            // `state.messages` out from under it.
+            guard let self = self, self.initialized, !self.isRefreshing,
                   let userId = self.profileId,
                   let network = self.networkService else { return }
 
+            self.isRefreshing = true
             self.state.isLoading = true
 
             // `async let` keeps the two requests in flight together, as the `DispatchGroup` did.
@@ -113,6 +124,7 @@ public class InboxService: ObservableObject {
                 self.state.unreadCount = unread
             }
             self.state.isLoading = false
+            self.isRefreshing = false
             self.persistState()
         }
     }

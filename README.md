@@ -210,7 +210,18 @@ client.push(request) { _ in }
 Task { try? await client.push(request) }
 ```
 
-From a SwiftUI view, `.task` is the natural context and needs no `Task`:
+From a SwiftUI view, prefer an unstructured `Task` for anything that must be
+delivered even if the user navigates away quickly — it has no parent to be
+cancelled by:
+
+```swift
+// 5.0.0
+ContentView()
+    .onAppear { Task { try? await client.trackScreenView(screenToken: "home") } }
+```
+
+`.task { }` is available too and needs no `Task`, but ties the call's lifetime to
+the view:
 
 ```swift
 // 5.0.0
@@ -220,10 +231,13 @@ ContentView()
 
 > **Note:** `.task { }` ties the call's lifetime to the view — SwiftUI cancels it when
 > the view disappears, and `URLSession` honours that cancellation. In 4.x the underlying
-> `URLSessionDataTask` was not tied to the view and delivered regardless. For an event
-> that must be delivered even if the user navigates away quickly, use an unstructured
-> `Task { try? await client.trackScreenView(screenToken: "home") }` instead — it has no
-> parent to be cancelled by.
+> `URLSessionDataTask` was not tied to the view and delivered regardless. A cancellation
+> surfaces the same way any other transport failure does: as `RelevaError.networkError`
+> carrying the underlying error's description, not as a distinct case — check
+> `Task.isCancelled` at the call site if you need to tell "cancelled" apart from "the
+> network failed" rather than switching on the thrown error. For an event that must be
+> delivered even if the user navigates away quickly, use the unstructured `Task { }`
+> form above instead.
 
 Push-token registration. `registerPushToken` used to report a `Bool`; that flag was
 `true` on every path that reached the handler, so `throws` already carries
