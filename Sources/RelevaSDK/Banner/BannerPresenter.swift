@@ -105,8 +105,10 @@ public final class BannerPresenter {
     /// leaves any presented overlay on screen with nothing left to dismiss it — bracket `start()`
     /// / `stop()` with the host's appearance callbacks as shown above to avoid that. A `stop()`
     /// whose dismissal UIKit declines lands in the same place when the presenter is never started
-    /// again, which a nav pop or a host dismissal during the overlay's brief `.crossDissolve`
-    /// reaches.
+    /// again, which a nav pop during the overlay's brief `.crossDissolve` reaches: a pop is not a
+    /// dismissal, so it is not refused the way that dismiss was, and the overlay is presented from
+    /// a context above the popped host — typically the `UINavigationController` — so it stays on
+    /// screen while the host and this presenter go.
     public func stop() {
         cancellable?.cancel()
         cancellable = nil
