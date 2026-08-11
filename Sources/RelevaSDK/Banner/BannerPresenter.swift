@@ -103,7 +103,10 @@ public final class BannerPresenter {
     /// This does not run on `deinit`. A presenter released while started (the host deallocated
     /// without a matching `viewWillDisappear`, or an app that simply forgets to call `stop()`)
     /// leaves any presented overlay on screen with nothing left to dismiss it — bracket `start()`
-    /// / `stop()` with the host's appearance callbacks as shown above to avoid that.
+    /// / `stop()` with the host's appearance callbacks as shown above to avoid that. A `stop()`
+    /// whose dismissal UIKit declines lands in the same place when the presenter is never started
+    /// again, which a nav pop or a host dismissal during the overlay's brief `.crossDissolve`
+    /// reaches.
     public func stop() {
         cancellable?.cancel()
         cancellable = nil
@@ -113,9 +116,13 @@ public final class BannerPresenter {
             // Only let go of the reference once UIKit has actually taken the overlay down: a
             // controller still `isBeingPresented` (reachable if `stop()` runs mid-transition, on
             // a fast tab switch) declines `dismiss` and only logs, so clearing `overlayController`
-            // unconditionally here would orphan it on screen with nothing left to reach it. A
-            // declined dismissal leaves `overlayController` set, so the next `start()`'s first
-            // reconcile inherits the problem instead of the user does — see `syncOverlay`.
+            // unconditionally here would orphan it on screen with nothing left to reach it. What
+            // recovers from a declined dismissal is the next `start()` *of this presenter*: the
+            // reference is still the live one, so its first reconcile keeps the overlay and the
+            // presenter can take it down again when the banner is closed. Nothing runs in
+            // between — the subscription is cancelled above, so `reconcile` cannot fire — which
+            // means a presenter that is never started again leaves the overlay up, the same
+            // outcome as the missing `deinit` in this method's doc comment.
             controller.presentingViewController?.dismiss(animated: false)
             if controller.presentingViewController == nil {
                 overlayController = nil

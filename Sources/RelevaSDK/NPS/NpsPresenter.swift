@@ -119,8 +119,10 @@ public final class NpsPresenter {
         // Unlike `BannerPresenter`, nothing here retries a declined dismiss: `present`'s guard
         // just returns while `surveyController` still points at the orphaned sheet, so it — and
         // every survey after it — stays unshown for the rest of the app session.
-        // `BannerPresenter` doesn't have this gap because `reconcile` runs on every banner event
-        // and its `isNeeded: false` branch re-issues the dismiss; nothing plays that role here.
+        // `BannerPresenter` doesn't have this gap while it is running, because `reconcile` runs on
+        // every banner event and its `isNeeded: false` branch re-issues the dismiss; nothing plays
+        // that role here. (A dismiss declined by `BannerPresenter.stop()` has no recovery there
+        // either, since `stop()` cancels the subscription before it dismisses — see that method.)
         // Recovery is user-driven only: a `.pageSheet` is swipe-dismissable, which is what keeps
         // this from being worse than the banner case. See the CHANGELOG's "Known limitations".
         //
