@@ -75,24 +75,30 @@ final class NpsPresenterTests: XCTestCase {
 
         let firstSurvey = presenter.surveyController
         presenter.stop()
-        // `close(animated:)` only clears `surveyController` from the dismiss completion, so a
-        // sheet UIKit declines to dismiss (still `isBeingPresented`) is not orphaned — see
-        // `NpsPresenter.close`. That completion needs the transition to actually finish, which
-        // this test host's windows (no `UIWindowScene`) never do; see
-        // `PresentationTestSupport.makeVisibleWindow`. Asserting `!= nil` here would only pin
-        // that harness limitation rather than presenter behaviour, so the identity check below —
-        // still the same instance stop() found, not something a late reconcile replaced it with
-        // — is the transition-independent fact instead.
+        // `close(animated:)` either drops `surveyController` (the sheet was already gone, or the
+        // dismissal took effect at once) or keeps it until the dismiss completion runs, so that a
+        // sheet UIKit declined to dismiss is not orphaned beyond reach — see `NpsPresenter.close`.
+        // Which branch runs depends on a transition this test host never finishes (no
+        // `UIWindowScene`; see `PresentationTestSupport.makeVisibleWindow`), and either is
+        // correct. Asserting on one of them would pin the harness rather than the presenter; what
+        // holds on both is that nothing *else* took the property over.
         XCTAssertTrue(
-            presenter.surveyController === firstSurvey,
-            "the presenter must not let go of the survey until UIKit confirms the dismissal"
+            presenter.surveyController == nil || presenter.surveyController === firstSurvey,
+            "a stopped presenter must not leave a different survey behind"
         )
 
         NpsDisplayController.shared.showNps(NpsConfig(token: "nps-2", question: "And now?"))
         drainMainQueue()
 
         // Stopped: the cancellable is torn down, so `present` never runs for the later survey at
-        // all — `surveyController` is exactly what it was left holding above, not a new sheet.
-        XCTAssertTrue(presenter.surveyController === firstSurvey, "a stopped presenter must not show a survey")
+        // all and the property is left exactly as the assertion above found it. A subscription
+        // that outlived `stop()` would show up here as a third value — neither `nil` nor the
+        // first survey — though only on the branch where `close` had already released the
+        // reference, since `present`'s own guard refuses a second sheet while the first still
+        // reports a `presentingViewController`.
+        XCTAssertTrue(
+            presenter.surveyController == nil || presenter.surveyController === firstSurvey,
+            "a stopped presenter must not show a survey"
+        )
     }
 }

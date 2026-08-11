@@ -196,15 +196,16 @@ final class BannerPresenterTests: XCTestCase {
 
         let stale = fixture.presenter.overlayController
         fixture.presenter.stop()
-        // As in the dismiss tests above, `stop()` only clears `overlayController` once
-        // `controller.presentingViewController` reads back `nil` — which needs the dismissal to
-        // have actually finished, and this test host's transitions never do. That does not stop
-        // this test from asserting the transition-independent half: whatever `overlayController`
-        // is now, it must be the same instance stop() found, not a second overlay a late
-        // reconcile put up — the same technique `NpsPresenterTests`'
-        // `testStopTakesTheSurveyDownAndIgnoresLaterOnes` uses.
+        // `stop()` either lets go of `overlayController` (the dismissal took effect immediately)
+        // or keeps it (UIKit declined, so the reference is all that can still reach the overlay);
+        // both are branches the source deliberately has, and which one runs depends on the
+        // transition, which this test host never finishes. Either is fine here. What must not
+        // happen is a third value: an overlay a late reconcile put up. The impression assertion
+        // at the end of this test is the stronger statement about the subscription being gone;
+        // this one is about nothing new reaching the screen.
+        let overlay = fixture.presenter.overlayController
         XCTAssertTrue(
-            fixture.presenter.overlayController === stale,
+            overlay == nil || overlay === stale,
             "a stopped presenter must not put anything back on screen"
         )
         XCTAssertTrue(fixture.host.children.isEmpty, "the bar slots must come off with the presenter")
@@ -220,19 +221,23 @@ final class BannerPresenterTests: XCTestCase {
     }
 
     /// `stop()`'s doc comment and the CHANGELOG both promise that the view model's banner state
-    /// survives a `stop()` / `start()` round trip, so a retained popup does not get counted
-    /// twice. The *presentation* half of that round trip cannot be exercised here: `stop()`
-    /// only clears `overlayController` once `presentingViewController` reads back `nil`, which
-    /// needs the declined dismiss's completion to have run, and this test host's transitions
-    /// never complete (no `UIWindowScene` — see `PresentationTestSupport.makeVisibleWindow`). So
-    /// `syncOverlay`'s `isNeeded: true` branch on the `start()` below finds `overlayController`
-    /// still set from before `stop()`, fails its `overlayController == nil` guard, and returns
-    /// without presenting anything — a controller reference asserted `!= nil` afterwards would
-    /// pass on the pre-`stop()` controller, whether or not `start()` presents anything at all.
-    /// What *is* observable, and would fail if `start()`'s guard against a second impression
-    /// regressed: `viewModel.stop()` only cancels the subscription, so `displayedBanners`
-    /// survives and `handleBanner`'s `guard !displayedBanners.contains` is what keeps the
-    /// impression count at one.
+    /// survives a `stop()` / `start()` round trip, so a banner still held from before the stop
+    /// does not get counted twice. `viewModel.stop()` only cancels the subscription, leaving
+    /// `displayedBanners` populated, and `handleBanner`'s `guard !displayedBanners.contains` is
+    /// what absorbs the banner when it comes round again.
+    ///
+    /// The re-delivery below is what makes that mechanism observable at all:
+    /// `BannerDisplayController.bannerPublisher` is a `PassthroughSubject` with no replay, so
+    /// `start()` on its own receives nothing and no code between it and the assertion can reach
+    /// `trackImpression` — the count would hold with `displayedBanners` cleared, with the guard
+    /// deleted, or with `start()` doing nothing at all. A fresh `BannerResponse` carrying a
+    /// token that is already in the set is exactly the production case: the set is keyed on
+    /// token, not on instance.
+    ///
+    /// The *presentation* half of the round trip is deliberately not asserted: `stop()` only
+    /// clears `overlayController` once `presentingViewController` reads back `nil`, which needs
+    /// the declined dismiss's completion to have run, and this test host's transitions never
+    /// complete — see `PresentationTestSupport.makeVisibleWindow`.
     @MainActor
     func testStopThenStartDoesNotCountASecondImpressionForTheRetainedBanner() {
         let fixture = makeFixture()
@@ -245,6 +250,7 @@ final class BannerPresenterTests: XCTestCase {
 
         fixture.presenter.stop()
         fixture.presenter.start()
+        BannerDisplayController.shared.showBanner(banner("popup-1", displayType: "popup"))
         drainMainQueue()
 
         XCTAssertEqual(fixture.tracker.impressions, ["popup-1"], "the retained banner is not counted twice")

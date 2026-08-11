@@ -123,6 +123,14 @@ public final class NpsPresenter {
         // and its `isNeeded: false` branch re-issues the dismiss; nothing plays that role here.
         // Recovery is user-driven only: a `.pageSheet` is swipe-dismissable, which is what keeps
         // this from being worse than the banner case. See the CHANGELOG's "Known limitations".
+        //
+        // Note that `present`'s guard reads the same relationship, and `presentingViewController`
+        // stays non-nil for the whole of an *ordinary* dismissal too, not just a declined one. So
+        // a survey arriving in the fraction of a second after a skip or a submit is dropped as
+        // well — `npsPublisher` is a `PassthroughSubject` and this completion does not look for a
+        // pending survey, so that event is simply lost. Unlike the declined case that is
+        // self-limiting: `surveyController` is cleared by the time the survey after it arrives,
+        // so only the one inside the transition window goes unshown.
         presenting.dismiss(animated: animated) { [weak self] in
             // Identity-checked rather than an unconditional clear: `present` can replace
             // `surveyController` with a new sheet before this completion lands (a fast
