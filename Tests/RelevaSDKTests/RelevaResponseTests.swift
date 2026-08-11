@@ -67,6 +67,27 @@ final class RelevaResponseTests: XCTestCase {
         XCTAssertEqual(response.nps?.token, "nps-1")
     }
 
+    /// `RecommenderResponseTests` pins that a wrong-shape `meta` decodes to `nil` on the
+    /// `RecommenderResponse` itself, but the claim the CHANGELOG and PR description actually
+    /// make is one level up: that field going bad must not cost the rest of the envelope. A
+    /// sub-type test can't see that composition; this is where it would show up if a future
+    /// edit (tightening `try?` back to `try`, say) silently reopened a whole-response failure.
+    func testAWrongShapeRecommenderMetaDoesNotTakeDownTheRestOfTheResponse() throws {
+        let json = """
+        {
+            "recommenders": [{"token": "r-1", "name": "n", "meta": [], "response": []}],
+            "banners": [{"token": "b-1"}],
+            "nps": {"token": "nps-1", "question": "Rate us?"}
+        }
+        """
+
+        let response = try JSONDecoder().decode(RelevaResponse.self, from: Data(json.utf8))
+
+        XCTAssertNil(response.recommenders.first?.meta)
+        XCTAssertEqual(response.banners.map(\.token), ["b-1"], "one open-ended field must not cost the banners")
+        XCTAssertEqual(response.nps?.token, "nps-1")
+    }
+
     func testParseResponseWithoutNpsOrStories() throws {
         let json = """
         {
