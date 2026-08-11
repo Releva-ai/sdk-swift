@@ -6,15 +6,20 @@
 	     see PrivacyManifestTests, which pins the entries this file must and must
 	     not contain. When you add a tracking call or a new field to the push
 	     payload, update this file in the same commit. -->
-	<!-- false, signed off by Releva (2026-08-11) and not a placeholder. The
-	     collected data is used for first-party personalisation and measurement
-	     within the integrating app; server-side conversion forwarding to ad
-	     platforms is treated as the integrator's own measurement rather than
-	     Apple-defined tracking (linking with third-party data for targeted
-	     advertising, or sharing with a data broker). Revisit if the SDK itself
-	     ever starts sending to an ad network, or if data is shared onward in a
-	     way that meets that definition — and note that flipping this to true
-	     also means flipping the per-datatype Tracking flags below. -->
+	<!-- false, signed off by Releva (2026-08-11) and not a placeholder. Apple's
+	     test is linking this app's user or device data with data collected from
+	     other companies' apps, websites or offline properties "for targeted
+	     advertising or advertising measurement purposes", or sharing user or
+	     device data with a data broker — note the advertising-measurement limb,
+	     which a conversion feed implicates most directly. This SDK posts to
+	     Releva's own endpoint and nowhere else; whether an account forwards
+	     conversions onward to an ad platform is configuration on Releva's
+	     infrastructure, not a call site in this repository, and is treated as
+	     processing on the integrator's behalf. Revisit when that configuration
+	     changes, not only when this code does: the answer can flip with no
+	     commit in this repository, so confirm it per integration before each
+	     submission. Flipping this to true also means flipping the per-datatype
+	     Tracking flags below. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<!-- Deliberately empty, and it must stay empty unless someone accepts the
@@ -22,8 +27,12 @@
 	     when the user has not granted App Tracking Transparency permission.
 	     Listing releva.ai or a <realm>.releva.ai host would therefore silently
 	     break tracking, push-token registration and personalisation for every
-	     user who declines the ATT prompt — the SDK's only endpoints are those
-	     hosts (see NetworkService.getBaseURL()). -->
+	     user who declines the ATT prompt. Empty is also correct on the merits:
+	     the SDK's hosts are its own API endpoint (<realm>.releva.ai by default,
+	     or whatever the public RelevaConfig.customEndpoint points at — see
+	     NetworkService.getBaseURL()) and, in the extension, the attachment URL
+	     carried in the push payload. None of them is an ad network or a
+	     tracking host. -->
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
 	<!-- Purposes: ProductPersonalization + AppFunctionality + Analytics.
@@ -148,8 +157,14 @@
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<!-- StorageService is the SDK's only required-reason API use: it reads and
-		     writes its own `rlv_`-prefixed keys in UserDefaults.standard (no
-		     suiteName, so no App Group), which is what CA92.1 covers. -->
+		     writes its own `rlv_`-prefixed keys in UserDefaults, which is what
+		     CA92.1 covers. The suite is .standard because RelevaClient calls
+		     StorageService() with no argument (Core/RelevaClient.swift), not
+		     because the type forbids one — init(userDefaults:) is public. If that
+		     call site ever passes an App Group suite (to share state with the
+		     notification extension), 1C8F.1 has to join the reasons array; an
+		     integrator who constructs StorageService against their own suite owes
+		     that answer in their own manifest, not this one. -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>

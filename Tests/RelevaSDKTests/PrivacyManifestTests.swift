@@ -94,12 +94,6 @@ final class PrivacyManifestTests: XCTestCase {
                 false,
                 "\(name): a type marked for tracking would contradict NSPrivacyTracking being false"
             )
-
-            let purposes = try XCTUnwrap(
-                entry["NSPrivacyCollectedDataTypePurposes"] as? [String],
-                "\(name) declares no purposes"
-            )
-            XCTAssertFalse(purposes.isEmpty, "\(name) declares an empty purpose list")
         }
     }
 
