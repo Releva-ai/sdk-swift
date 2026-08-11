@@ -149,10 +149,14 @@ final class TrackingRequestConversionTests: XCTestCase {
     func testTheClientAcceptsEveryConvertibleRequestTypeIncludingAsAnExistentialArray() {
         // `enableTracking: false` makes `push` resolve synchronously with
         // `.success(.empty())` without a network call (RelevaClient.swift's push guard).
+        // `enablePushNotifications: false` keeps `init` from installing the
+        // didBecomeActive observer (`:733`), which has no deinit cleanup by design.
+        // NOTE: `init` still sets `RelevaClient.shared` if it is nil (`:128`), and there
+        // is no reset API — this is the only test in the suite that constructs a client.
         let client = RelevaClient(
             realm: "test",
             accessToken: "test-token",
-            config: RelevaConfig(enableTracking: false)
+            config: RelevaConfig(enableTracking: false, enablePushNotifications: false)
         )
         let requests: [any PushRequestConvertible] = [
             PushRequest().screenView("home"),

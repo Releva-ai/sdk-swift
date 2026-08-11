@@ -210,15 +210,17 @@ let request = ScreenViewRequest(screenToken: "cart")
 let withCart = request.pushRequest.setCart(snapshot)
 let payload = withCart.toDict()
 let localized = request.pushRequest.locale("en_US")
-client.push(withCart) // the request the client sees is whatever you pass it — a
-                       // tracking request's own cart, if any, is not read by push
+client.push(withCart) // a ScreenViewRequest/SearchRequest carries no cart of its
+                       // own; only what you pass in (like withCart here) is read
 ```
 
-`cart` is the concrete case worth calling out on its own, since it's the one
-where 3.x kept compiling with different behavior (setting a property that was
-silently never read) rather than failing to compile. There is no
-`PushRequestConvertible` member that replaces it; build a `PushRequest` and
-`setCart` on that instead, as above.
+`cart` is the one worth calling out on its own, because deleting the line is not a
+no-op. In 3.x the tracking request *was* a `PushRequest`, so `buildContext` read
+`request.cart ?? cart` and forced `context["cartChanged"] = true` whenever the
+request carried a cart (`RelevaClient.swift:951`, `:954`) — the snapshot really was
+transmitted. In 4.0.0 the property is gone from the tracking requests, so the line
+fails to compile; carry the cart over with `setCart` on a `PushRequest` as above
+rather than dropping it.
 
 `RelevaClient` is a non-final `public class`, so changing `push(_:completion:)`
 and `push(_:) async` from taking the `PushRequest` base class to taking

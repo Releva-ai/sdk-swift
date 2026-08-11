@@ -101,6 +101,9 @@ public struct CheckoutSuccessRequest: PushRequestConvertible {
     /// Validate the checkout success request
     /// - Throws: RelevaError if validation fails
     public func validate() throws {
+        // Inlined from `PushRequest.validate()` rather than delegating to it, so this has to
+        // stay in sync with that body by hand. Revisit if it grows a check that isn't
+        // cart-specific — this bypasses it.
         for product in orderedCart.products {
             try product.validate()
         }
