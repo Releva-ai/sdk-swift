@@ -550,7 +550,10 @@ final class RecommenderResponseTests: XCTestCase {
 
         let meta = try XCTUnwrap(object["meta"] as? [String: Any])
         XCTAssertEqual(meta["algorithm"] as? String, "collaborative-filtering")
-        XCTAssertEqual(meta["modelVersion"] as? Int, 3, "a JSON integer must not be re-encoded as 3.0")
+        // `NSNumber as? Int` is exact-value-preserving, not type-preserving, so this says the value
+        // survived, not that it was written as `3` rather than `3.0`. The format itself is pinned by
+        // `JSONValueTests.testAJsonIntegerSurvivesDecodeThenEncodeUnchanged`, which compares bytes.
+        XCTAssertEqual(meta["modelVersion"] as? Int, 3)
 
         let products = try XCTUnwrap(object["response"] as? [[String: Any]])
         let first = try XCTUnwrap(products.first)

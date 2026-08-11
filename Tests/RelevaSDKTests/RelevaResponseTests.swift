@@ -83,6 +83,7 @@ final class RelevaResponseTests: XCTestCase {
 
         let response = try JSONDecoder().decode(RelevaResponse.self, from: Data(json.utf8))
 
+        XCTAssertEqual(response.recommenders.map(\.token), ["r-1"], "the recommender itself must survive, not just the banners")
         XCTAssertNil(response.recommenders.first?.meta)
         XCTAssertEqual(response.banners.map(\.token), ["b-1"], "one open-ended field must not cost the banners")
         XCTAssertEqual(response.nps?.token, "nps-1")

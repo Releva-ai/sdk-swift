@@ -163,6 +163,18 @@ that hold them are `Sendable`.
 The memberwise `init` of each of those types takes the new type in the same
 position; no parameter was added, removed or reordered.
 
+### Changed method signatures
+
+| Symbol | 3.x | 4.0.0 |
+|---|---|---|
+| `DesignRenderer.render(design:maxWidth:transparentBody:onLinkTap:)` | `design: [String: Any]` | `design: [String: JSONValue]` |
+| `DesignRenderer.getDesignBodyValues(_:)` | `-> [String: Any]` | `-> [String: JSONValue]` |
+
+Those two are the rendering entry points, so any code that renders an inbox or
+banner design outside the SDK's own views calls them directly. Pass
+`[String: JSONValue](any: someFoundationDictionary)` if you are holding a design
+you decoded yourself with `JSONSerialization`.
+
 `DesignRenderer`'s parsing helpers take `JSONValue?` instead of `Any?` for the
 same reason. `DesignRenderer.parseColor` is the one that changed shape: it is now
 `parseColor(_ value: JSONValue?)`, with `parseColor(css: String?)` for a colour
