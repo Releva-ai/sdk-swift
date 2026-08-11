@@ -21,8 +21,16 @@ let package = Package(
         )
     ],
     dependencies: [
-        // Firebase dependency (optional - only if using FCM)
-        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "11.15.0")
+        // Firebase dependency (optional - only if using FCM).
+        //
+        // An explicit range, not `from:`: `from:` means `.upToNextMajor`, so it
+        // capped this at `< 12.0.0` and left the graph unsatisfiable for an app
+        // already on Firebase 12. Spanning both majors rather than raising the
+        // floor to 12 keeps consumers still on 11.x resolving. Revisit when
+        // Firebase 13 ships: the bound is a precaution, not a known
+        // incompatibility — the one API this package compiles against is
+        // `Messaging.serviceExtension().populateNotificationContent(...)`.
+        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", "11.15.0"..<"13.0.0")
     ],
     targets: [
         // Main SDK target

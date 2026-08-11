@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.2] - 2026-08-11
+
+### Fixed
+
+- **Firebase 12 consumers could not resolve this package at all.** The `firebase-ios-sdk` dependency was declared as `from: "11.15.0"`, and `from:` is shorthand for `.upToNextMajor(from:)` — `>= 11.15.0, < 12.0.0` — so an app that declares `firebase-ios-sdk` itself (which the README now tells integrators to do) on any 12.x version got an unsatisfiable dependency graph, not a warning. The requirement is now the explicit range `"11.15.0"..<"13.0.0"`, so Firebase 11 and 12 both resolve. The alternative, moving the floor to `from: "12.0.0"`, was rejected: this package's floor was only raised to 11.15 in `[3.0.0]`, and nothing here needs Firebase 12 — the sole Firebase API it compiles against is `Messaging.serviceExtension().populateNotificationContent(...)` in `RelevaNotificationExtension`, which is unchanged across both majors (`RelevaSDK` itself imports no Firebase module; the `Messaging.messaging()` mentions in `RelevaClient` are doc comments about what the host app must wire up). No public API and no behaviour changes, and the target-level `.product(name: "FirebaseMessaging", ...)` declarations needed no edit — a product dependency carries no version of its own.
+
+### Changed
+
+- **The README no longer names a single Xcode floor**, because with two Firebase majors in range there isn't one: SPM resolves the newest `firebase-ios-sdk` a consumer's own constraints allow, and Firebase raises its toolchain floor over time, including within the 12.x series. Requirements now refers the reader to Firebase's own iOS release notes for the floor of the version they land on, and records that capping to `"11.15.0"..<"12.0.0"` remains a supported way to stay on Xcode 16.2. The one toolchain pair either file still states is `firebase-ios-sdk` 11.15 needing Xcode 16.2, which is safe to write down because 11.15 is a frozen release; Firebase's floors for the *active* 12.x series are deliberately left to the release notes, since those move on Firebase's schedule rather than this package's. The iOS floor is unaffected — `firebase-ios-sdk` 12.x declares iOS 15, the same as this package. The Installation snippets widen to the same range for the dependency the integrator declares themselves, since `from: "11.15.0"` there resolves fine but silently pins them to Firebase 11.
+
 ## [3.1.1] - 2026-08-11
 
 ### Fixed
