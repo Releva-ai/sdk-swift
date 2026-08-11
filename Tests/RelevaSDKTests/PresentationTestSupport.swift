@@ -33,12 +33,16 @@ extension XCTestCase {
     ///
     /// Visible because a view controller in no on-screen hierarchy cannot reliably present.
     ///
-    /// A previous version of this helper hard-asserted that `connectedScenes` yields a
-    /// `UIWindowScene`, on the theory that xcodebuild's generated SPM test host always has one.
-    /// It doesn't here: that assertion failed every single test that calls this helper — all of
-    /// `BannerPresenterTests` and `NpsPresenterTests`, and nothing else — because this test host
-    /// has no scene manifest, so `connectedScenes` is empty. Attach a scene when one exists;
-    /// `makeKeyAndVisible()` still puts the window on screen without one.
+    /// **What this window can and cannot do**, measured on CI rather than assumed — two runs on
+    /// this branch established it. xcodebuild's generated SPM test host has no scene manifest, so
+    /// `UIApplication.shared.connectedScenes` is empty and the window gets no `windowScene`.
+    /// `present` still does its bookkeeping synchronously in that state — which controller is
+    /// presented, its modal style, and the whole presentation chain are all observable — but the
+    /// *transitions never complete*: the presented controller stays `isBeingPresented`, and UIKit
+    /// then refuses both a `dismiss` of it and a `present` from it. So a test here may assert on
+    /// what a presenter put on screen and what it reported, and must not wait for a presentation
+    /// or a dismissal to have *finished*. Covering the latter needs a test host app owning a real
+    /// `UIWindowScene`, which this package does not have.
     ///
     /// The caller must keep the returned window alive for the length of the test and hide it
     /// afterwards; a key window left behind is the next test's root.
@@ -73,10 +77,11 @@ extension XCTestCase {
 
     /// Returns as soon as `condition` holds, failing the test if it has not within `timeout`.
     ///
-    /// Presentation and dismissal are animated, so they finish over several turns of the run loop
-    /// rather than on the one that asked for them, and no marker can be queued behind an
-    /// animation the way `drainMainQueue` queues behind a `DispatchQueue.main.async`. Pumping the
-    /// run loop returns the moment the condition holds instead of sleeping out a budget.
+    /// For the UIKit side of a presentation, which no marker can be queued behind the way
+    /// `drainMainQueue` queues behind a `DispatchQueue.main.async`. Pumping the run loop returns
+    /// the moment the condition holds instead of sleeping out a budget. Only ever used for
+    /// conditions that a presentation *reaches* — never for one having finished, which cannot
+    /// happen here; see `makeVisibleWindow`.
     @MainActor
     func waitUntil(
         _ description: String,

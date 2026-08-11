@@ -47,12 +47,12 @@ public final class BannerPresenter {
     let viewModel = BannerDisplayViewModel()
 
     private var cancellable: AnyCancellable?
-    private var overlayController: UIHostingController<BannerOverlayView>?
-    private var isDismissingOverlay = false
+    /// The presented overlay, or `nil` when nothing is up. Internal rather than private so a
+    /// test can assert on what the presenter put up and then let go of — UIKit's own transitions
+    /// do not complete in this package's test host, so the presenter's side of a dismissal is
+    /// observable there and UIKit's is not.
+    private(set) var overlayController: UIHostingController<BannerOverlayView>?
     private var barSlots: [BarSlot] = []
-    /// Bounds the retry below so a host that can never present (rather than one mid-transition)
-    /// does not spin forever redoing the same failing `present`.
-    private var presentRetriesRemaining = 2
 
     /// - Parameters:
     ///   - host: The view controller the banners are shown over. Held weakly.
@@ -80,7 +80,6 @@ public final class BannerPresenter {
         guard cancellable == nil, let host = host else { return }
 
         installBarSlots(in: host)
-        presentRetriesRemaining = 2
         viewModel.start(tracker: tracker, targetSelector: "", overlayOnly: true, onLinkTap: onLinkTap)
 
         // `receive(on:)` so a reconcile sees the view model's committed state: `@Published`
@@ -111,7 +110,6 @@ public final class BannerPresenter {
         cancellable = nil
         viewModel.stop()
 
-        isDismissingOverlay = false
         if let controller = overlayController {
             overlayController = nil
             controller.presentingViewController?.dismiss(animated: false)
@@ -132,18 +130,26 @@ public final class BannerPresenter {
         measureBars()
     }
 
+    /// Puts the overlay up or takes it down so that what is on screen matches the view model.
+    ///
+    /// Deliberately keeps no state of its own beyond `overlayController`: every decision below
+    /// is read back from UIKit, so there is no flag that can disagree with what is actually
+    /// presented. In particular a `present` UIKit declines — it only logs, it does not throw —
+    /// leaves an `overlayController` whose `presentingViewController` is `nil`, which the next
+    /// reconcile drops and retries rather than treating as already on screen. Reaching the
+    /// screen sooner than that would mean waiting out whichever animated transition got in the
+    /// way, and this package has no way to exercise that path in a test (see
+    /// `PresentationTestSupport.makeVisibleWindow`), so it is a documented limitation rather
+    /// than unverified code.
     private func syncOverlay(isNeeded: Bool) {
         if isNeeded {
             if let existing = overlayController, existing.presentingViewController == nil {
-                // The last attempt never took: `topMostPresentedViewController` can hand back a
-                // controller whose own dismissal was still in flight, in which case `present`
-                // logged "already presenting" and did nothing — or something else (an app modal
-                // above the overlay, say) already dismissed it. Either way there is nothing to
-                // reuse; drop it so the block below tries again instead of no-oping forever on
-                // the `overlayController == nil` guard.
+                // Either the last `present` never took, or something else (an app modal above
+                // the overlay, say) already dismissed it. Nothing to reuse; drop it so the
+                // block below tries again instead of no-oping forever on the guard.
                 overlayController = nil
             }
-            guard overlayController == nil, !isDismissingOverlay, let host = host else { return }
+            guard overlayController == nil, let host = host else { return }
 
             let controller = UIHostingController(
                 rootView: BannerOverlayView(viewModel: viewModel, onLinkTap: onLinkTap)
@@ -158,55 +164,21 @@ public final class BannerPresenter {
             // presented above it in the meantime — the usual trade-off of dismissing via
             // `presentingViewController` rather than tracking the exact controller to close.
             host.topMostPresentedViewController.present(controller, animated: true)
-
-            if controller.presentingViewController == nil {
-                // The presentation did not take — UIKit only logs, e.g. when
-                // `topMostPresentedViewController` handed back a controller whose own dismissal
-                // was still in flight. `reconcile` only runs again on the next `@Published`
-                // banner change, so without a retry this banner would sit in the view model,
-                // drawn nowhere, until an unrelated banner event happened to arrive. `present`
-                // sets `presentingViewController` synchronously when it takes, so this is
-                // observable right here.
-                overlayController = nil
-                if presentRetriesRemaining > 0 {
-                    presentRetriesRemaining -= 1
-                    DispatchQueue.main.async { [weak self] in
-                        // `cancellable` is the started flag: a retry landing after `stop()` must
-                        // not put a banner back up.
-                        guard let self = self, self.cancellable != nil else { return }
-                        self.syncOverlay(
-                            isNeeded: self.viewModel.popupBanner != nil || self.viewModel.flyoutBanner != nil
-                        )
-                    }
-                }
-                // A host that can never present (rather than one mid-transition) gives up here
-                // instead of retrying indefinitely; the banner stays pending until the next
-                // banner event, same as before this retry existed.
-            } else {
-                // A later failure gets its own fresh budget rather than draining across
-                // unrelated banners.
-                presentRetriesRemaining = 2
-            }
         } else {
             guard let controller = overlayController else { return }
 
-            // If the presentation above never took, or something else already took the overlay
-            // down, there is nothing to dismiss — and the completion below would never run,
-            // latching `isDismissingOverlay` on and silently blocking every later popup/flyout
-            // until a `stop()` / `start()` cycle.
-            guard let presenting = controller.presentingViewController else {
-                overlayController = nil
-                return
-            }
-
+            // Let go of it first: whether UIKit honours the dismissal or not, this presenter is
+            // done with this overlay, and the next banner gets a fresh one.
             overlayController = nil
-            isDismissingOverlay = true
-            presenting.dismiss(animated: true) { [weak self] in
+            // Nil when the presentation never took or something else already took the overlay
+            // down — nothing to dismiss then, and nothing to clean up either.
+            controller.presentingViewController?.dismiss(animated: true) { [weak self] in
                 // `cancellable` is the started flag: a completion that lands after `stop()`
                 // must not put a banner back up.
                 guard let self = self, self.cancellable != nil else { return }
-                self.isDismissingOverlay = false
-                // A banner that arrived mid-dismissal was skipped above, so re-check.
+                // A banner that arrived while the dismissal was in flight gets its overlay here:
+                // `present` on a controller mid-dismissal is the one thing UIKit reliably
+                // refuses, so that reconcile has to happen after the transition, not during it.
                 let hasOverlay = self.viewModel.popupBanner != nil || self.viewModel.flyoutBanner != nil
                 self.syncOverlay(isNeeded: hasOverlay)
             }

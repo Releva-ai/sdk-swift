@@ -8,6 +8,9 @@ import XCTest
 /// presentation: which surveys reach the screen, and that a stopped presenter leaves nothing
 /// behind. Driven through `NpsDisplayController.shared`, the singleton `NpsManagerService`
 /// publishes to in production.
+///
+/// As in `BannerPresenterTests`, the assertions are on what the presenter did, not on UIKit
+/// having finished a transition — see `PresentationTestSupport.makeVisibleWindow`.
 final class NpsPresenterTests: XCTestCase {
 
     @MainActor
@@ -72,11 +75,14 @@ final class NpsPresenterTests: XCTestCase {
         waitUntil("the survey is presented") { host.presentedViewController != nil }
 
         presenter.stop()
-        waitUntil("the survey is dismissed") { host.presentedViewController == nil }
+        XCTAssertNil(
+            presenter.surveyController,
+            "stop() must let go of the survey it asked UIKit to take down"
+        )
 
         NpsDisplayController.shared.showNps(NpsConfig(token: "nps-2", question: "And now?"))
         drainMainQueue()
 
-        XCTAssertNil(host.presentedViewController, "a stopped presenter must not show a survey")
+        XCTAssertNil(presenter.surveyController, "a stopped presenter must not show a survey")
     }
 }

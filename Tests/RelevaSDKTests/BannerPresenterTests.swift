@@ -17,6 +17,10 @@ private struct BannerFixture {
 /// which banners it accepts, what it puts on screen for each of them, and that the shared
 /// tracking still fires — driven through `BannerDisplayController.shared`, the singleton
 /// `BannerManagerService` publishes to in production.
+///
+/// They assert on what the presenter did and what it reported, never on UIKit having *finished* a
+/// presentation or a dismissal: transitions do not complete in this test host, and
+/// `PresentationTestSupport.makeVisibleWindow` records exactly what that does and does not cost.
 final class BannerPresenterTests: XCTestCase {
 
     // MARK: - Presenting
@@ -39,35 +43,27 @@ final class BannerPresenterTests: XCTestCase {
         XCTAssertEqual(fixture.host.presentedViewController?.modalPresentationStyle, .overFullScreen)
     }
 
+    /// The presenter presents from `host.topMostPresentedViewController` so that a banner
+    /// arriving while the app already has a modal up lands over it instead of failing with
+    /// "already presenting". That choice of target is the presenter's own logic, so it is tested
+    /// directly: presenting the overlay onto the modal end to end would need the modal's
+    /// transition to complete first, which this test host cannot do.
     @MainActor
-    func testPopupIsPresentedOverAnExistingModalRatherThanFailing() {
-        let fixture = makeFixture()
-        // The app already has something up before a banner arrives — the case
-        // `topMostPresentedViewController` exists for. Dismiss it before the presenter, so it
-        // doesn't leak into whatever runs the window next, the way `takeDown` alone would leave
-        // it — `takeDown` only stops the presenter and hides the window.
+    func testTheOverlayTargetIsTheFrontmostModalRatherThanTheHost() {
+        let host = UIViewController()
+        let window = makeVisibleWindow(rootViewController: host)
+        // Not dismissed: a dismissal would not complete here either. The modal goes away with
+        // the host when the window does.
+        defer { window.isHidden = true }
+
         let existingModal = UIViewController()
-        defer {
-            existingModal.dismiss(animated: false)
-            takeDown(fixture)
-        }
-        fixture.host.present(existingModal, animated: false)
-        waitUntil("the existing modal is presented") { fixture.host.presentedViewController != nil }
+        host.present(existingModal, animated: false)
+        waitUntil("the existing modal is presented") { host.presentedViewController != nil }
 
-        fixture.presenter.start()
-        BannerDisplayController.shared.showBanner(banner("popup-1", displayType: "popup"))
-        drainMainQueue()
-
-        XCTAssertEqual(fixture.tracker.impressions, ["popup-1"])
-        waitUntil("the overlay is presented over the existing modal") {
-            existingModal.presentedViewController != nil
-        }
         XCTAssertTrue(
-            existingModal.presentedViewController is UIHostingController<BannerOverlayView>,
-            "the overlay must land on top of the existing modal, not fail silently"
+            host.topMostPresentedViewController === existingModal,
+            "a banner must be presented over the modal the app already has up, not from the host underneath it"
         )
-        // And not stacked directly on the host, underneath the existing modal.
-        XCTAssertTrue(fixture.host.presentedViewController === existingModal)
     }
 
     @MainActor
@@ -137,65 +133,10 @@ final class BannerPresenterTests: XCTestCase {
         drainMainQueue()
 
         XCTAssertEqual(fixture.tracker.actions, ["popup-1:bannerClose"])
-        waitUntil("the overlay is dismissed") { fixture.host.presentedViewController == nil }
-    }
-
-    @MainActor
-    func testANewPopupAfterDismissalIsPresentedAgain() {
-        let fixture = makeFixture()
-        defer { takeDown(fixture) }
-
-        let first = banner("popup-1", displayType: "popup")
-        fixture.presenter.start()
-        BannerDisplayController.shared.showBanner(first)
-        drainMainQueue()
-        waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
-
-        fixture.presenter.viewModel.dismissPopup(first)
-        drainMainQueue()
-        waitUntil("the overlay is dismissed") { fixture.host.presentedViewController == nil }
-
-        // A normal dismiss-then-repopulate round trip: the overlay was presented normally, so
-        // `presentingViewController` finds it and the dismiss completion clears the flag before
-        // this arrives either way. `testAPopupAfterTheOverlayWasDismissedExternallyIsStillPresented`
-        // below is the one that pins the latch itself, which needs the overlay gone before the
-        // presenter tries to dismiss it.
-        BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
-        drainMainQueue()
-
-        XCTAssertEqual(fixture.tracker.impressions, ["popup-1", "popup-2"])
-        waitUntil("the overlay is presented again") { fixture.host.presentedViewController != nil }
-    }
-
-    @MainActor
-    func testAPopupAfterTheOverlayWasDismissedExternallyIsStillPresented() {
-        let fixture = makeFixture()
-        defer { takeDown(fixture) }
-
-        let first = banner("popup-1", displayType: "popup")
-        fixture.presenter.start()
-        BannerDisplayController.shared.showBanner(first)
-        drainMainQueue()
-        waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
-
-        // Behind the presenter's back — something else dismissed the chain the overlay was in,
-        // so `syncOverlay` finds a controller with no `presentingViewController` when it goes to
-        // dismiss it.
-        fixture.host.dismiss(animated: false)
-        waitUntil("the overlay is gone") { fixture.host.presentedViewController == nil }
-
-        // Pre-fix this set `isDismissingOverlay = true` and skipped the completion that clears
-        // it, wedging the presenter for the rest of its life.
-        fixture.presenter.viewModel.dismissPopup(first)
-        drainMainQueue()
-
-        BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
-        drainMainQueue()
-
-        XCTAssertEqual(fixture.tracker.impressions, ["popup-1", "popup-2"])
-        waitUntil("the next popup still reaches the screen") {
-            fixture.host.presentedViewController != nil
-        }
+        XCTAssertNil(
+            fixture.presenter.overlayController,
+            "the presenter must let go of the overlay it asked UIKit to take down"
+        )
     }
 
     @MainActor
@@ -213,7 +154,10 @@ final class BannerPresenterTests: XCTestCase {
         drainMainQueue()
 
         XCTAssertEqual(fixture.tracker.actions, ["flyout-1:bannerClose"])
-        waitUntil("the overlay is dismissed") { fixture.host.presentedViewController == nil }
+        XCTAssertNil(
+            fixture.presenter.overlayController,
+            "the presenter must let go of the overlay it asked UIKit to take down"
+        )
     }
 
     @MainActor
@@ -247,7 +191,10 @@ final class BannerPresenterTests: XCTestCase {
         waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
 
         fixture.presenter.stop()
-        waitUntil("the overlay is dismissed") { fixture.host.presentedViewController == nil }
+        XCTAssertNil(
+            fixture.presenter.overlayController,
+            "stop() must let go of the overlay it asked UIKit to take down"
+        )
         XCTAssertTrue(fixture.host.children.isEmpty, "the bar slots must come off with the presenter")
 
         BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
@@ -258,7 +205,10 @@ final class BannerPresenterTests: XCTestCase {
             ["popup-1"],
             "a stopped presenter must not count banners"
         )
-        XCTAssertNil(fixture.host.presentedViewController)
+        XCTAssertNil(
+            fixture.presenter.overlayController,
+            "a stopped presenter must not put anything back on screen"
+        )
     }
 
     // MARK: - Fixtures
