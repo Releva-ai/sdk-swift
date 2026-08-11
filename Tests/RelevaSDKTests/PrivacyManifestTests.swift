@@ -103,13 +103,50 @@ final class PrivacyManifestTests: XCTestCase {
         }
     }
 
+    func testPurposesMatchTheSignedOffDeclaration() throws {
+        // ProductPersonalization + AppFunctionality + Analytics. Analytics was
+        // signed off by Releva (2026-08-11): Customer Insights (RFM scoring,
+        // cohort analysis, funnels, audience performance) is built on exactly
+        // these identifiers and events.
+        let behavioural = [
+            "NSPrivacyCollectedDataTypePurposeAnalytics",
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeProductPersonalization"
+        ]
+        let expected: [String: [String]] = [
+            "NSPrivacyCollectedDataTypeUserID": behavioural,
+            "NSPrivacyCollectedDataTypeDeviceID": behavioural,
+            "NSPrivacyCollectedDataTypeProductInteraction": behavioural,
+            "NSPrivacyCollectedDataTypeSearchHistory": behavioural,
+            "NSPrivacyCollectedDataTypePurchaseHistory": behavioural,
+            // Deliberately no Analytics: the NPS free-text comment is read
+            // individually by a marketer, not aggregated into an audience
+            // measure, so the Analytics purpose is not justifiable for it.
+            "NSPrivacyCollectedDataTypeOtherUserContent": [
+                "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+        ]
+
+        for entry in try collectedDataTypes() {
+            let name = try XCTUnwrap(entry["NSPrivacyCollectedDataType"] as? String)
+            let purposes = try XCTUnwrap(entry["NSPrivacyCollectedDataTypePurposes"] as? [String])
+
+            XCTAssertEqual(
+                purposes.sorted(),
+                expected[name]?.sorted(),
+                "\(name): purposes are a signed-off declaration that flows into every host app's App Store Connect answers — changing this set should be a deliberate, reviewed edit, including removing Analytics or adding it to OtherUserContent"
+            )
+        }
+    }
+
     func testContactDetailsAreNotDeclared() throws {
         let declared = try collectedDataTypes().compactMap { $0["NSPrivacyCollectedDataType"] as? String }
 
         for contactType in [
             "NSPrivacyCollectedDataTypeEmailAddress",
             "NSPrivacyCollectedDataTypePhoneNumber",
-            "NSPrivacyCollectedDataTypeName"
+            "NSPrivacyCollectedDataTypeName",
+            "NSPrivacyCollectedDataTypePhysicalAddress"
         ] {
             XCTAssertFalse(
                 declared.contains(contactType),

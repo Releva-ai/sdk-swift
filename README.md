@@ -1025,14 +1025,18 @@ The SDK ships an Apple privacy manifest at `Sources/RelevaSDK/PrivacyInfo.xcpriv
 
 **Collected data types**, all marked as linked to the user's identity (everything carries `profileId` / `deviceId`) and none marked as used for tracking:
 
-| Type | What it is |
-| --- | --- |
-| User ID | the `profileId` you set via `setProfileId(_:)` |
-| Device ID | the `deviceId` you set via `setDeviceId(_:)`, the FCM push token, and the session ID (a UUID persisted across launches as `rlv_session_id`) |
-| Product Interaction | screen and product views, cart and wishlist contents, custom events, banner/story/NPS impressions and clicks |
-| Search History | the query string you pass to `trackSearchView(query:...)` |
-| Purchase History | order ID, products, quantities, prices and total from `trackCheckoutSuccess(...)` |
-| Other User Content | the optional free-text `comment` on `submitNpsResponse(...)` |
+| Type | What it is | Purposes |
+| --- | --- | --- |
+| User ID | the `profileId` you set via `setProfileId(_:)` | Product personalization, App functionality, Analytics |
+| Device ID | the `deviceId` you set via `setDeviceId(_:)`, the FCM push token, and the session ID (a fresh UUID minted on every cold start and stored as `rlv_session_id`, but never read back on the next launch — it does not persist an identifier across launches) | Product personalization, App functionality, Analytics |
+| Product Interaction | screen and product views, cart and wishlist contents, custom events, banner/story/NPS impressions and clicks | Product personalization, App functionality, Analytics |
+| Search History | the query string you pass to `trackSearchView(query:...)` | Product personalization, App functionality, Analytics |
+| Purchase History | order ID, products, quantities, prices and total from `trackCheckoutSuccess(...)` | Product personalization, App functionality, Analytics |
+| Other User Content | the optional free-text `comment` on `submitNpsResponse(...)` | App functionality |
+
+`Analytics` is on the five behavioural types because Releva's Customer Insights features (RFM scoring, cohort analysis, funnels, audience performance) are built on exactly those identifiers and events. It is deliberately **not** on Other User Content: the NPS comment is read individually by a marketer rather than aggregated into an audience measure.
+
+Note that Device ID plus the Analytics purpose is precisely the combination App Store Connect's App Privacy questionnaire flags when asking whether data is used to track. It does not contradict `NSPrivacyTracking` being `false` — purpose and tracking are independent keys, and this SDK's tracking determination is documented above — but expect the question to come up when you fill in your own answers.
 
 The SDK does **not** collect email addresses, phone numbers, names or postal addresses. It has not accepted profile attributes since v2.0.0; it identifies users solely by the `profileId` you set.
 

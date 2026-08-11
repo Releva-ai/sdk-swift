@@ -60,9 +60,13 @@
 		</dict>
 		<!-- The `deviceId` the integrator sets via RelevaClient.setDeviceId(_:),
 		     the FCM push token uploaded by registerPushToken(_:deviceType:), and
-		     the session ID: a UUID generated per session and persisted across
-		     launches as rlv_session_id (StorageService.swift), sent as
-		     context.sessionId on every request. -->
+		     the session ID: a fresh UUID minted on every cold start
+		     (SessionService.startNewSession()) and stored as rlv_session_id
+		     (StorageService.swift) only so the current session's calls agree on
+		     one value, sent as context.sessionId on every request. The stored
+		     value is never read back on the next launch, so it does not persist
+		     an identifier across launches — the durable device identifier is
+		     `deviceId`, already covered above. -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeDeviceID</string>
