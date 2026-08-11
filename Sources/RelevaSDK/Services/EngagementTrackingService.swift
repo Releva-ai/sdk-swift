@@ -41,8 +41,22 @@ public class EngagementTrackingService {
         loadPendingEvents()
     }
 
+    // `deinit` deliberately does *not* call `stopTracking()`. That reaches `processBatch()`,
+    // which does `queue.async { self… }` — escaping `self` out of an object whose `deinit` is
+    // already running. Swift does not resurrect, so the memory is freed the moment `deinit`
+    // returns and the `.background` queue then dereferences it. Nothing in the SDK ever
+    // released this service (`RelevaClient` holds one for the process lifetime), so the
+    // use-after-free was unreachable until `EngagementTrackingServiceTests` started building
+    // and dropping one per test — at which point it crashed the test bundle.
+    //
+    // No pending event is lost by not flushing here: `trackEvent(_:)` persists each event
+    // through `storage.addPendingEngagementEvent(_:)` as it arrives, and `init` reloads them.
+    //
+    // Invalidating the timer is all that remains, and in practice it is already `nil`: a
+    // scheduled `Timer` retains `self` through its closure, so reaching `deinit` at all means
+    // `stopTracking()` has run.
     deinit {
-        stopTracking()
+        batchTimer?.invalidate()
     }
 
     // MARK: - Public Methods

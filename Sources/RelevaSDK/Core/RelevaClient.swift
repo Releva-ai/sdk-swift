@@ -263,18 +263,22 @@ public class RelevaClient {
         // Automatically sync cart changes to backend (skip on first initialization).
         // Uses incrementViews: false so cart updates don't inflate the page-view counter.
         //
-        // The cart is snapshotted into the request *here*, synchronously, rather than read
-        // from `self.cart` once the `Task` runs. Two `setCart` calls in the same turn each
-        // open their own `Task`, and both would otherwise read whatever `self.cart` holds by
-        // the time either runs — the *final* cart, twice, with the first call's cart never
-        // reported. Pinning it to the request makes each push carry the cart that was
-        // current when that specific call was made, matching the synchronous 4.x behaviour.
-        if !isFirstInitialization && cartChanged && config.enableTracking {
-            let request = PushRequest().setCart(cart)
+        // `preparePush` runs *here*, synchronously, and only the transfer is deferred to the
+        // `Task`. 4.x built the payload inline for the same reason — only its completion
+        // handler was asynchronous — and building it inside the `Task` instead would let
+        // anything that happens later in the same run-loop turn rewrite what goes on the
+        // wire: a second `setCart` (both pushes would carry the final cart), or a
+        // `setProfileId(_:skipMergeWithPreviousProfileId: true)` (this cart would arrive
+        // under the *new* profile, with no merge to stitch it back). Pinning the whole
+        // prepared payload, rather than just the cart, is what makes that hold for the
+        // identity fields too.
+        if !isFirstInitialization && cartChanged {
+            let request = ScreenViewRequest(screenToken: nil, productIds: nil, categories: nil, filter: nil)
+            guard let prepared = preparePush(request, incrementViews: false) else { return }
             Task { [weak self] in
                 guard let self = self else { return }
                 do {
-                    _ = try await self.push(request, incrementViews: false)
+                    _ = try await self.send(prepared)
                     if self.config.enableDebugLogging {
                         print("RelevaSDK: Cart changes synced to backend")
                     }
@@ -334,14 +338,15 @@ public class RelevaClient {
 
         // Automatically sync wishlist changes to backend (skip on first initialization).
         // Uses incrementViews: false so wishlist updates don't inflate the page-view counter.
-        // Snapshotted into the request for the same reason `setCart` snapshots the cart:
+        // Prepared synchronously for the same reason `setCart` prepares synchronously:
         // see the comment there.
-        if !isFirstInitialization && wishlistChanged && config.enableTracking {
-            let request = PushRequest().setWishlist(products)
+        if !isFirstInitialization && wishlistChanged {
+            let request = ScreenViewRequest(screenToken: nil, productIds: nil, categories: nil, filter: nil)
+            guard let prepared = preparePush(request, incrementViews: false) else { return }
             Task { [weak self] in
                 guard let self = self else { return }
                 do {
-                    _ = try await self.push(request, incrementViews: false)
+                    _ = try await self.send(prepared)
                     if self.config.enableDebugLogging {
                         print("RelevaSDK: Wishlist changes synced to backend")
                     }
@@ -391,25 +396,44 @@ public class RelevaClient {
     /// Cart and wishlist auto-syncs use `incrementViews: false` to avoid inflating
     /// the page-view count with non-navigation push calls.
     private func push(_ request: any PushRequestConvertible, incrementViews: Bool) async throws -> RelevaResponse {
-        guard config.enableTracking else {
+        guard let prepared = preparePush(request, incrementViews: incrementViews) else {
             return RelevaResponse.empty()
         }
+        return try await send(prepared)
+    }
+
+    /// A payload and its context, both already assembled from `@MainActor` client state.
+    private struct PreparedPush {
+        let payload: [String: Any]
+        let context: [String: Any]
+    }
+
+    /// The synchronous half of `push`: everything that reads main-actor client state.
+    ///
+    /// Split out so a caller that cannot `await` — `setCart` / `setWishlist` — can still pin
+    /// the *whole* payload at the moment it is called and defer only the transfer. Returns
+    /// `nil` when tracking is off, which is the `RelevaResponse.empty()` case for `push`.
+    private func preparePush(_ request: any PushRequestConvertible, incrementViews: Bool) -> PreparedPush? {
+        guard config.enableTracking else { return nil }
 
         // Ensure lifecycle-based session tracking is initialized
         SessionService.shared.initialize(storage: storage, npsManager: npsManager)
 
         let pushRequest = request.pushRequest
 
-        // Build context
-        let context = buildContext(for: pushRequest, incrementViews: incrementViews)
+        return PreparedPush(
+            payload: pushRequest.toDict(),
+            context: buildContext(for: pushRequest, incrementViews: incrementViews)
+        )
+    }
 
-        // Get request dictionary
-        let requestDict = pushRequest.toDict()
-
-        // Send request. `NetworkService` is nonisolated, so payload serialization, the transfer
-        // and response decoding all run off the main actor; this method is suspended, not
-        // blocking the main thread, until the decoded response comes back.
-        let response = try await networkService.sendPushRequest(requestDict, context: context)
+    /// The asynchronous half of `push`: the transfer, plus the main-actor bookkeeping that
+    /// depends on the response.
+    private func send(_ prepared: PreparedPush) async throws -> RelevaResponse {
+        // `NetworkService` is nonisolated, so payload serialization, the transfer and response
+        // decoding all run off the main actor; this method is suspended, not blocking the main
+        // thread, until the decoded response comes back.
+        let response = try await networkService.sendPushRequest(prepared.payload, context: prepared.context)
 
         // Reset change flags after successful request
         resetChangeFlags()
@@ -805,8 +829,9 @@ public class RelevaClient {
     ///
     /// Retried once on failure here, on top of the one retry `NetworkService` already gives
     /// every 5xx — so a persistent server error produces up to four requests over roughly
-    /// 4 seconds of combined backoff before this throws. The survey UI shows its thank-you
-    /// screen regardless, so a caller that does not care about delivery can `try?` this.
+    /// 4 seconds of combined backoff before this throws. A cancelled task is the exception
+    /// and is not retried. The survey UI shows its thank-you screen regardless, so a caller
+    /// that does not care about delivery can `try?` this.
     public func submitNpsResponse(token: String, score: Int, comment: String? = nil) async throws {
         guard (0...10).contains(score) else {
             throw RelevaError.invalidConfiguration("NPS score must be between 0 and 10")
@@ -825,7 +850,11 @@ public class RelevaClient {
         do {
             try await networkService.sendNpsSubmission(payload, token: token)
         } catch {
-            // One silent retry, then the second failure is the caller's to see.
+            // One silent retry, then the second failure is the caller's to see. A cancelled
+            // task is not retried: `NetworkService` maps cancellation to `RelevaError`, so the
+            // error itself no longer identifies it, but the retry would be a request the
+            // caller has already asked to abandon.
+            if Task.isCancelled { throw error }
             try await networkService.sendNpsSubmission(payload, token: token)
         }
     }
@@ -930,10 +959,9 @@ public class RelevaClient {
         }
 
         // Wishlist
-        let wishlistToUse = request.wishlist ?? wishlist
-        if let wishlist = wishlistToUse {
+        if let wishlist = wishlist {
             context["wishlist"] = ["products": wishlist.map { $0.toDict() }]
-            context["wishlistChanged"] = wishlistChanged || request.wishlist != nil
+            context["wishlistChanged"] = wishlistChanged
         }
 
         // Merge profile IDs

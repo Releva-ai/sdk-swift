@@ -93,13 +93,21 @@ public class InboxService: ObservableObject {
             // pagination happens to be in flight; 4.x always ran `refresh()` unconditionally,
             // and that is the safer default for a signal saying "the inbox changed."
             // `state.isLoading` is still set below so a `ProgressView` bound to it behaves
-            // the same as before, and it still blocks `loadMore()` while a refresh replaces
-            // `state.messages` out from under it.
+            // the same as before. It stops a `loadMore()` that has not started yet; it does
+            // nothing about one already in flight, which can still resume after this refresh
+            // and append a page from the pre-refresh cursor. That race is unchanged from 4.x,
+            // whose `refresh()` had no guard at all and cleared `state.isLoading` from
+            // `group.notify`, and closing it needs a generation stamp on `state` that this
+            // release does not add.
             guard let self = self, self.initialized, !self.isRefreshing,
                   let userId = self.profileId,
                   let network = self.networkService else { return }
 
             self.isRefreshing = true
+            // `defer` rather than a bare assignment at the end: nothing returns early between
+            // here and there today, but a `guard` added into this body later would otherwise
+            // wedge `refresh()` off for the rest of the process.
+            defer { self.isRefreshing = false }
             self.state.isLoading = true
 
             // `async let` keeps the two requests in flight together, as the `DispatchGroup` did.
@@ -124,7 +132,6 @@ public class InboxService: ObservableObject {
                 self.state.unreadCount = unread
             }
             self.state.isLoading = false
-            self.isRefreshing = false
             self.persistState()
         }
     }

@@ -115,14 +115,13 @@ final class EngagementTrackingServiceTests: XCTestCase {
         XCTAssertEqual(stats.eventTypes, ["delivered": 2, "opened": 1])
     }
 
-    // `startTracking()` arms a `Timer`, which only ever fires on the run loop of the
-    // thread that scheduled it. Swift Testing/XCTest hop async tests across the
-    // cooperative thread pool between suspension points, so without pinning this test
-    // to a single, consistent run loop, `stats.isTracking` can be read from a thread
-    // whose run loop never got a chance to process the timer's registration. `@MainActor`
-    // keeps the whole test (and `startTracking()`/`stopTracking()`, both of which touch
-    // the timer) on the main run loop for its full duration, matching how a host app
-    // actually calls this API.
+    // `@MainActor` is not about the assertion — `batchTimer` is assigned synchronously by
+    // `startTracking()`, so `isTracking` reads `true` whatever thread ran it. It is about
+    // the `Timer` itself: scheduled on a cooperative-pool thread it is attached to a run
+    // loop nothing ever runs, so it could never fire, and `stopTracking()` after the
+    // `await` can land on a different thread than the one that installed it, which is not
+    // where `invalidate()` is allowed to be called. Pinning the test to the main actor
+    // keeps both on the main run loop, which is where a host app calls this API from.
     @MainActor
     func testStartTrackingIsReflectedInIsTracking() async {
         service.startTracking()

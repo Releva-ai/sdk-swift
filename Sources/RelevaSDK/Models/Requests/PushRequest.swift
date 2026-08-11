@@ -26,11 +26,6 @@ public struct PushRequest: PushRequestConvertible {
     /// Optional cart for checkout success
     public var cart: Cart?
 
-    /// Optional wishlist snapshot, held aside the same way `cart` is. Lets a caller pin
-    /// the wishlist that was current *when the request was built* rather than whatever
-    /// `RelevaClient` holds when the context is actually assembled.
-    public var wishlist: [WishlistProduct]?
-
     // MARK: - Initializers
 
     /// Initialize an empty push request
@@ -129,15 +124,6 @@ public struct PushRequest: PushRequestConvertible {
         return copy
     }
 
-    /// Set wishlist explicitly, snapshotting it at build time rather than at send time.
-    /// - Parameter wishlist: The wishlist products to set
-    /// - Returns: A copy with the wishlist applied
-    public func setWishlist(_ wishlist: [WishlistProduct]) -> PushRequest {
-        var copy = self
-        copy.wishlist = wishlist
-        return copy
-    }
-
     // MARK: - Additional Builder Methods
 
     /// Set page blocks with tags
@@ -193,18 +179,12 @@ public struct PushRequest: PushRequestConvertible {
 
     /// Validate the request
     ///
-    /// Only `cart` and `wishlist` are checked: `toDict()` omits an empty `events` list
-    /// rather than emitting one, so the payload can never carry an empty events array
-    /// to reject.
+    /// Only the cart is checked: `toDict()` omits an empty `events` list rather than
+    /// emitting one, so the payload can never carry an empty events array to reject.
     /// - Throws: RelevaError if validation fails
     public func validate() throws {
         if let cart = cart {
             for product in cart.products {
-                try product.validate()
-            }
-        }
-        if let wishlist = wishlist {
-            for product in wishlist {
                 try product.validate()
             }
         }
