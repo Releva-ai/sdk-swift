@@ -31,7 +31,12 @@ let package = Package(
             dependencies: [
                 .product(name: "FirebaseMessaging", package: "firebase-ios-sdk", condition: .when(platforms: [.iOS]))
             ],
-            path: "Sources/RelevaSDK"
+            path: "Sources/RelevaSDK",
+            // `.copy`, not `.process`: the manifest must reach the product
+            // byte-for-byte, and no platform build rule applies to `.xcprivacy`
+            // anyway. Either way it lands at the root of the generated
+            // `RelevaSDK_RelevaSDK.bundle`, which is where Apple reads it from.
+            resources: [.copy("PrivacyInfo.xcprivacy")]
         ),
         // Notification Service Extension target
         .target(

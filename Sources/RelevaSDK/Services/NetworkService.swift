@@ -678,5 +678,5 @@ extension NetworkService {
 // MARK: - SDK Version
 
 struct SDKVersion {
-    static let current = "3.0.0"
+    static let current = "3.1.0"
 }
