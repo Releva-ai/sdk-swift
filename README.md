@@ -1039,6 +1039,202 @@ The inbox also refreshes automatically when the app returns to the foreground (v
 | `createdAt` | `Date` | When the message was delivered. Messages are sorted newest-first. |
 | `inboxMessageId` | `Int` | ID of the source message template. Use for push notification routing. |
 
+## UIKit Integration
+
+Every visual feature works from a plain `UIViewController` — no SwiftUI view hierarchy required. Banners and NPS surveys have presenters that mirror the SwiftUI modifiers; stories and inbox messages are SwiftUI views you host yourself in a `UIHostingController`.
+
+Each snippet below is complete and compiles as written, given the imports shown.
+
+### Banners in UIKit
+
+`BannerPresenter` is the UIKit counterpart of `.bannerDisplay(client:targetSelector:onLinkTap:)`. It hosts the same SwiftUI banner views and reports impressions, clicks and dismissals through the same code, so tracking is identical on both paths.
+
+```swift
+import RelevaSDK
+import UIKit
+
+final class HomeViewController: UIViewController {
+    private var banners: BannerPresenter?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        guard let client = RelevaClient.shared else { return }
+
+        banners = BannerPresenter(host: self, client: client) { [weak self] url in
+            self?.handleDeepLink(url)
+        }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        banners?.start()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        banners?.stop()
+    }
+
+    private func handleDeepLink(_ url: String) {
+        // Your routing.
+    }
+}
+```
+
+`start()` and `stop()` are the UIKit equivalents of SwiftUI's `onAppear` and `onDisappear`. Call them from the appearance callbacks as above — otherwise the presenter keeps putting banners over a screen the user has already left.
+
+Popup, flyout and bar banners are displayed. **Static and replace banners are not**: they belong inline in your own content, which a presenter has no way to place them in, so they are ignored — including for impression tracking, so your reports are not inflated by banners nobody saw. Use the SwiftUI modifier if you need those types.
+
+How they are presented:
+
+- Popups and flyouts share one `.overFullScreen` modal, presented from the frontmost view controller. A banner arriving while your app already has a sheet up appears over it instead of failing to present, and two banners arriving together stack inside that one modal exactly as they do in SwiftUI.
+- Bar banners are child view controllers pinned to the top or bottom safe area, so the rest of the screen stays usable while a bar is up.
+
+### NPS Surveys in UIKit
+
+`NpsPresenter` is the UIKit counterpart of `.npsDisplay(onSubmit:onSkip:)`, and shows the same survey in a sheet. Submitting the response is the app's job on both paths:
+
+```swift
+import RelevaSDK
+import UIKit
+
+final class SettingsViewController: UIViewController {
+    private var nps: NpsPresenter?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        guard let client = RelevaClient.shared else { return }
+
+        nps = NpsPresenter(host: self, onSubmit: { token, score, comment in
+            client.submitNpsResponse(token: token, score: score, comment: comment)
+        })
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        nps?.start()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        nps?.stop()
+    }
+}
+```
+
+The survey dismisses itself when the user skips it, and two seconds after the thank-you screen appears. If the user swipes the sheet away, the next survey that fires is presented normally.
+
+### Stories in UIKit
+
+There is no story presenter: a story is a full-screen takeover, so hosting `StoryViewerView` yourself is both shorter and gives you control over how it is presented.
+
+`StoryViewerView` tracks slide views, slide clicks, completion and close on its own. The one event it does not track is the story impression — the SwiftUI `.storyDisplay(client:onLinkTap:)` modifier does that before opening the viewer, so a UIKit host has to call `storyImpression(_:)` itself:
+
+```swift
+import Combine
+import RelevaSDK
+import SwiftUI
+import UIKit
+
+final class FeedViewController: UIViewController {
+    private var subscriptions = Set<AnyCancellable>()
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+
+        StoryDisplayController.shared.storyPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] story in
+                self?.presentStory(story)
+            }
+            .store(in: &subscriptions)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Drops every subscription in the set. Without this, a popped controller keeps
+        // receiving stories, and re-subscribes on its way back in.
+        subscriptions.removeAll()
+    }
+
+    private func presentStory(_ story: StoryResponse) {
+        guard let client = RelevaClient.shared else { return }
+
+        client.storyImpression(story)
+
+        let viewer = UIHostingController(rootView: StoryViewerView(
+            story: story,
+            client: client,
+            onLinkTap: { [weak self] url in
+                self?.handleDeepLink(url)
+            },
+            onClose: { [weak self] in
+                self?.dismiss(animated: true)
+            }
+        ))
+        viewer.modalPresentationStyle = .fullScreen
+        present(viewer, animated: true)
+    }
+
+    private func handleDeepLink(_ url: String) {
+        // Your routing.
+    }
+}
+```
+
+`onClose` fires when the user taps the close button, and when the story ends with the dashboard's end behaviour set to `dismiss`. The viewer never takes itself off screen — dismissing is up to you.
+
+`NpsDisplayController.shared.npsPublisher` and `BannerDisplayController.shared.bannerPublisher` follow the same shape if you want to bypass the presenters and drive the display yourself. Note that the presenters already subscribe on your behalf, so you would then be responsible for reporting impressions, clicks and dismissals through `RelevaClient`.
+
+### Inbox Messages in UIKit
+
+`InboxMessageView` renders a message body and tracks link taps for you. Wrap it in a `ScrollView` — the design has its own height and can be taller than the screen.
+
+Pushed onto a navigation stack:
+
+```swift
+import RelevaSDK
+import SwiftUI
+import UIKit
+
+extension UIViewController {
+    func pushInboxMessage(_ message: InboxMessage) {
+        let detail = UIHostingController(rootView: ScrollView {
+            InboxMessageView(message: message) { url in
+                guard let parsed = URL(string: url) else { return }
+                UIApplication.shared.open(parsed)
+            }
+        })
+        detail.title = message.title
+        navigationController?.pushViewController(detail, animated: true)
+    }
+}
+```
+
+Presented modally, wrapped in its own navigation controller so it gets a title bar:
+
+```swift
+import RelevaSDK
+import SwiftUI
+import UIKit
+
+extension UIViewController {
+    func presentInboxMessage(_ message: InboxMessage) {
+        let detail = UIHostingController(rootView: ScrollView {
+            InboxMessageView(message: message) { url in
+                guard let parsed = URL(string: url) else { return }
+                UIApplication.shared.open(parsed)
+            }
+        })
+        detail.title = message.title
+
+        present(UINavigationController(rootViewController: detail), animated: true)
+    }
+}
+```
+
+Marking the message read is separate from rendering it, on both paths — call `RelevaClient.shared?.inbox.markAsRead(message.id)` when you consider it read.
+
 ## Expected Push Notification Payload
 
 Releva sends push notifications with the following payload structure. On iOS, Firebase places custom data at the root level alongside `aps`:

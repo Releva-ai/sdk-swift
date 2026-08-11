@@ -22,7 +22,8 @@ public struct NpsDisplayModifier: ViewModifier {
                 NpsSurveyView(
                     config: config,
                     onSubmit: onSubmit,
-                    onSkip: onSkip
+                    onSkip: onSkip,
+                    onClose: { viewModel.activeConfig = nil }
                 )
                 .modifier(PresentationDetentsModifier())
             }
@@ -74,8 +75,11 @@ struct NpsSurveyView: View {
     let config: IdentifiableNpsConfig
     let onSubmit: (String, Int, String?) -> Void
     let onSkip: (() -> Void)?
+    /// Take the survey off screen. An explicit callback rather than `@Environment(\.dismiss)`
+    /// so `NpsPresenter` can host this view in a `UIHostingController` it dismisses itself;
+    /// the SwiftUI modifier clears the `sheet(item:)` binding, which is what `dismiss` did.
+    let onClose: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var step: NpsStep = .score
@@ -202,7 +206,7 @@ struct NpsSurveyView: View {
                     Spacer()
                     Button {
                         onSkip?()
-                        dismiss()
+                        onClose()
                     } label: {
                         Text(skipLabel)
                             .font(.system(size: 14))
@@ -301,7 +305,7 @@ struct NpsSurveyView: View {
         // Auto-dismiss after 2 seconds
         dismissTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { _ in
             DispatchQueue.main.async {
-                dismiss()
+                onClose()
             }
         }
     }

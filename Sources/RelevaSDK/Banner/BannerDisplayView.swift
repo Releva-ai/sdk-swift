@@ -49,16 +49,16 @@ public struct BannerDisplayModifier: ViewModifier {
 
             // Popup overlay
             if let popup = viewModel.popupBanner {
-                popupBannerView(for: popup)
+                BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: onLinkTap)
             }
 
             // Flyout overlay
             if let flyout = viewModel.flyoutBanner {
-                flyoutBannerView(for: flyout)
+                BannerChrome.flyout(flyout, viewModel: viewModel, onLinkTap: onLinkTap)
             }
         }
         .onAppear {
-            viewModel.start(client: client, targetSelector: targetSelector, onLinkTap: onLinkTap)
+            viewModel.start(tracker: client, targetSelector: targetSelector, onLinkTap: onLinkTap)
         }
         .onDisappear {
             viewModel.stop()
@@ -87,196 +87,18 @@ public struct BannerDisplayModifier: ViewModifier {
             VStack {
                 if isBottom { Spacer() }
 
-                ZStack(alignment: .topTrailing) {
-                    if let design = banner.design {
-                        DesignRenderer.render(
-                            design: design,
-                            maxWidth: UIScreen.main.bounds.width - 32,
-                            onLinkTap: { url in
-                                viewModel.trackClick(banner)
-                                onLinkTap(url)
-                            }
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .padding(isBottom ? .bottom : .top,
-                                 isBottom ? geometry.safeAreaInsets.bottom : geometry.safeAreaInsets.top)
-                    }
-
-                    closeButton(for: banner, size: 24) {
-                        viewModel.dismissBar(banner)
-                    }
-                    .offset(x: 4, y: -4)
-                    .padding(isBottom ? .bottom : .top,
-                             isBottom ? geometry.safeAreaInsets.bottom : geometry.safeAreaInsets.top)
-                }
-                .background(Color.white)
-                .shadow(radius: 5)
+                BannerChrome.bar(
+                    banner,
+                    viewModel: viewModel,
+                    isBottom: isBottom,
+                    safeAreaInset: isBottom ? geometry.safeAreaInsets.bottom : geometry.safeAreaInsets.top,
+                    onLinkTap: onLinkTap
+                )
 
                 if !isBottom { Spacer() }
             }
         }
         .edgesIgnoringSafeArea(isBottom ? .bottom : .top)
-    }
-
-    // MARK: - Popup Banner
-
-    @ViewBuilder
-    private func popupBannerView(for banner: BannerResponse) -> some View {
-        let overlayColor = getOverlayColor(banner)
-        let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
-
-        ZStack {
-            // Overlay
-            overlayColor
-                .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
-                    viewModel.dismissPopup(banner)
-                }
-
-            // Full-screen popup
-            GeometryReader { geometry in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        if let design = banner.design {
-                            DesignRenderer.render(
-                                design: design,
-                                maxWidth: screenWidth,
-                                onLinkTap: { url in
-                                    viewModel.dismissPopup(banner, track: false)
-                                    viewModel.trackClick(banner)
-                                    onLinkTap(url)
-                                }
-                            )
-                        }
-                    }
-                    .frame(minHeight: geometry.size.height)
-                }
-            }
-            .frame(width: screenWidth, height: screenHeight)
-            .edgesIgnoringSafeArea(.all)
-
-            // Close button overlaid at top-right
-            VStack {
-                HStack {
-                    Spacer()
-                    closeButton(for: banner, size: 32) {
-                        viewModel.dismissPopup(banner)
-                    }
-                    .padding(8)
-                }
-                Spacer()
-            }
-        }
-    }
-
-    // MARK: - Flyout Banner
-
-    @ViewBuilder
-    private func flyoutBannerView(for banner: BannerResponse) -> some View {
-        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
-        let bgImageMap = bodyValues["backgroundImage"]
-        let hasBodyBgImage = !(bgImageMap?["url"]?.stringValue ?? "").isEmpty
-        let overlayColor = getOverlayColor(banner)
-        let isLeft = banner.displayPosition == "left"
-        let flyoutWidth = UIScreen.main.bounds.width * 0.8
-
-        ZStack {
-            // Overlay
-            overlayColor
-                .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
-                    viewModel.dismissFlyout(banner)
-                }
-
-            HStack(spacing: 0) {
-                if !isLeft { Spacer() }
-
-                VStack(spacing: 0) {
-                    // Close button on outer edge
-                    HStack {
-                        if isLeft { Spacer() }
-                        closeButton(for: banner, size: 32) {
-                            viewModel.dismissFlyout(banner)
-                        }
-                        .padding(8)
-                        if !isLeft { Spacer() }
-                    }
-
-                    // Scrollable content
-                    ScrollView {
-                        if let design = banner.design {
-                            DesignRenderer.render(
-                                design: design,
-                                maxWidth: flyoutWidth,
-                                transparentBody: hasBodyBgImage,
-                                onLinkTap: { url in
-                                    viewModel.dismissFlyout(banner, track: false)
-                                    viewModel.trackClick(banner)
-                                    onLinkTap(url)
-                                }
-                            )
-                        }
-                    }
-                }
-                .frame(width: flyoutWidth)
-                .background(
-                    Group {
-                        if hasBodyBgImage, let bgInfo = DesignRenderer.parseBackgroundImage(bgImageMap, forceCover: true) {
-                            AsyncImage(url: bgInfo.url) { phase in
-                                if case .success(let image) = phase {
-                                    image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
-                                }
-                            }
-                        } else {
-                            Color.white
-                        }
-                    }
-                )
-                .shadow(radius: 10)
-
-                if isLeft { Spacer() }
-            }
-            .edgesIgnoringSafeArea(.all)
-        }
-    }
-
-    // MARK: - Close Button
-
-    @ViewBuilder
-    private func closeButton(for banner: BannerResponse, size: CGFloat, action: @escaping () -> Void) -> some View {
-        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
-
-        let bgColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_backgroundColor"])
-            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonBackgroundColor"])
-            ?? .white
-        let iconColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_iconColor"])
-            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonColor"])
-            ?? Color(white: 0.3)
-        let borderColor = DesignRenderer.parseColor(banner.cssStyles["closeButtonBorder"])
-            ?? Color(white: 0.8)
-
-        Button(action: action) {
-            Image(systemName: "xmark")
-                .font(.system(size: size * 0.4, weight: .medium))
-                .foregroundColor(iconColor)
-                .frame(width: size, height: size)
-                .background(
-                    Circle()
-                        .fill(bgColor)
-                        .overlay(Circle().stroke(borderColor, lineWidth: 1))
-                )
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func getOverlayColor(_ banner: BannerResponse) -> Color {
-        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
-        if let color = DesignRenderer.parseColor(bodyValues["popupOverlay_backgroundColor"]) { return color }
-        if let color = DesignRenderer.parseColor(banner.cssStyles["overlayColor"]) { return color }
-        return Color.black.opacity(0.5)
     }
 
 }
@@ -302,6 +124,21 @@ extension View {
     }
 }
 
+// MARK: - Tracking Seam
+
+/// The part of `RelevaClient` that banner display uses.
+///
+/// `RelevaClient` builds its own `NetworkService` over `URLSession.shared`, so a test that
+/// handed one to a view model or presenter would perform real network I/O. This protocol lets
+/// a test substitute a spy instead. It is internal: `RelevaClient`'s public surface is unchanged.
+@MainActor
+protocol BannerTracker: AnyObject {
+    func bannerImpression(_ banner: BannerResponse)
+    func bannerAction(_ banner: BannerResponse, action: String)
+}
+
+extension RelevaClient: BannerTracker {}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -315,15 +152,30 @@ class BannerDisplayViewModel: ObservableObject {
 
     var hasReplaceBanner: Bool { !replaceBanners.isEmpty }
 
-    private var client: RelevaClient?
+    /// Display types that do not need a place in the host's view hierarchy, and so can be
+    /// shown by an overlay-only surface such as `BannerPresenter`.
+    private static let overlayDisplayTypes: Set<String> = ["popup", "flyout", "bar"]
+
+    private var tracker: BannerTracker?
     private var targetSelector: String = ""
+    private var overlayOnly = false
     private var onLinkTap: ((String) -> Void)?
     private var cancellable: AnyCancellable?
     private var displayedBanners = Set<String>()
 
-    func start(client: RelevaClient, targetSelector: String, onLinkTap: ((String) -> Void)?) {
-        self.client = client
+    /// - Parameter overlayOnly: when `true`, static and replace banners are dropped instead of
+    ///   being collected into `staticBannersBeforeContent` and friends. `BannerPresenter` sets
+    ///   this because it has nowhere to put a banner that belongs inline in the host's content,
+    ///   and counting an impression for a banner that is never drawn would be a false report.
+    func start(
+        tracker: BannerTracker,
+        targetSelector: String,
+        overlayOnly: Bool = false,
+        onLinkTap: ((String) -> Void)?
+    ) {
+        self.tracker = tracker
         self.targetSelector = targetSelector
+        self.overlayOnly = overlayOnly
         self.onLinkTap = onLinkTap
 
         cancellable = BannerDisplayController.shared.bannerPublisher
@@ -362,6 +214,7 @@ class BannerDisplayViewModel: ObservableObject {
     private func shouldDisplay(_ banner: BannerResponse) -> Bool {
         guard banner.design != nil else { return false }
         guard banner.displayType != "custom" else { return false }
+        if overlayOnly { return Self.overlayDisplayTypes.contains(banner.displayType ?? "") }
         if banner.displayType == "static" && banner.cssSelector != targetSelector { return false }
         return true
     }
@@ -403,17 +256,17 @@ class BannerDisplayViewModel: ObservableObject {
     // MARK: - Tracking
 
     func trackImpression(_ banner: BannerResponse) {
-        guard let client = client else { return }
-        client.bannerImpression(banner)
+        guard let tracker = tracker else { return }
+        tracker.bannerImpression(banner)
     }
 
     func trackClick(_ banner: BannerResponse) {
-        guard let client = client else { return }
-        client.bannerAction(banner, action: "bannerClick")
+        guard let tracker = tracker else { return }
+        tracker.bannerAction(banner, action: "bannerClick")
     }
 
     func trackDismiss(_ banner: BannerResponse) {
-        guard let client = client else { return }
-        client.bannerAction(banner, action: "bannerClose")
+        guard let tracker = tracker else { return }
+        tracker.bannerAction(banner, action: "bannerClose")
     }
 }
