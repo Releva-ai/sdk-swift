@@ -2,6 +2,12 @@ import XCTest
 import Combine
 @testable import RelevaSDK
 
+/// Note on the "must not publish" assertions below: `StoryManagerService.initialize` runs
+/// its whole trigger setup inline when called on the main thread (see `setupTriggers`), and
+/// XCTest calls these test methods on the main thread. Any story it was going to publish
+/// immediately has therefore already been published by the time `initialize` returns, so
+/// these tests assert on what was received rather than waiting out an inverted expectation:
+/// instant, and it cannot be weakened by a slow runner.
 final class StoryManagerServiceTests: XCTestCase {
 
     private var cancellables = Set<AnyCancellable>()
@@ -40,15 +46,14 @@ final class StoryManagerServiceTests: XCTestCase {
             slides: []
         )
 
-        let expectation = expectation(description: "Story should not fire")
-        expectation.isInverted = true
+        var receivedTokens: [String] = []
         StoryDisplayController.shared.storyPublisher
-            .sink { _ in expectation.fulfill() }
+            .sink { receivedTokens.append($0.token) }
             .store(in: &cancellables)
 
         manager.initialize(newStories: [story])
 
-        waitForExpectations(timeout: 0.5)
+        XCTAssertTrue(receivedTokens.isEmpty, "a story with no slides must not be published")
     }
 
     func testDeduplication() {
@@ -59,24 +64,16 @@ final class StoryManagerServiceTests: XCTestCase {
             slides: [StorySlideResponse(id: "s1", durationSeconds: 5)]
         )
 
-        var receivedCount = 0
-        let expectation = expectation(description: "Story published once")
+        var receivedTokens: [String] = []
         StoryDisplayController.shared.storyPublisher
-            .sink { received in
-                receivedCount += 1
-                XCTAssertEqual(received.token, "story-dup")
-                expectation.fulfill()
-            }
+            .sink { receivedTokens.append($0.token) }
             .store(in: &cancellables)
 
         manager.initialize(newStories: [story, story])
 
-        waitForExpectations(timeout: 2)
-        // Give time for potential duplicate
-        let noMore = self.expectation(description: "No more stories")
-        noMore.isInverted = true
-        waitForExpectations(timeout: 0.3)
-        XCTAssertEqual(receivedCount, 1)
+        // Both copies have been through `triggerStory`'s `displayedStories` check by now,
+        // so the duplicate either was suppressed or is already in this array.
+        XCTAssertEqual(receivedTokens, ["story-dup"])
     }
 
     func testCartChangedTrigger() {
@@ -132,15 +129,17 @@ final class StoryManagerServiceTests: XCTestCase {
             slides: [StorySlideResponse(id: "s1", durationSeconds: 5)]
         )
 
-        let expectation = expectation(description: "Story should not fire after dispose")
-        expectation.isInverted = true
+        var receivedTokens: [String] = []
         StoryDisplayController.shared.storyPublisher
-            .sink { _ in expectation.fulfill() }
+            .sink { receivedTokens.append($0.token) }
             .store(in: &cancellables)
 
         manager.initialize(newStories: [story])
         manager.dispose()
 
-        waitForExpectations(timeout: 0.5)
+        // `initialize` and `dispose` both run inline here, so the timer is scheduled and
+        // invalidated before this line. Nothing can wait for the trigger itself: it is 60 s
+        // out, which the 0.5 s inverted wait this replaces could not have reached either.
+        XCTAssertTrue(receivedTokens.isEmpty, "a disposed manager must not publish its delayed story")
     }
 }

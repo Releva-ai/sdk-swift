@@ -225,6 +225,157 @@ final class NetworkServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - Engagement callback fan-out
+
+    /// One callback failing must neither cancel its siblings nor be reported as success.
+    func testEngagementEventsFailWhenOneCallbackHitsATransportError() throws {
+        StubURLProtocol.stub { request in
+            if request.url?.absoluteString == "https://example.com/cb/2" {
+                return .failure(URLError(.notConnectedToInternet))
+            }
+            return .response(statusCode: 200, body: Data())
+        }
+
+        let result = try sendEngagementEvents(callbackUrls: [
+            "https://example.com/cb/1",
+            "https://example.com/cb/2",
+        ])
+
+        XCTAssertEqual(StubURLProtocol.receivedRequests.count, 2, "a failing callback must not stop the others")
+        assertBatchFailed(result)
+    }
+
+    func testEngagementEventsFailWhenOneCallbackReturnsAnErrorStatus() throws {
+        StubURLProtocol.stub { request in
+            if request.url?.absoluteString == "https://example.com/cb/2" {
+                return .response(statusCode: 500, body: Data())
+            }
+            return .response(statusCode: 200, body: Data())
+        }
+
+        let result = try sendEngagementEvents(callbackUrls: [
+            "https://example.com/cb/1",
+            "https://example.com/cb/2",
+        ])
+
+        XCTAssertEqual(StubURLProtocol.receivedRequests.count, 2)
+        assertBatchFailed(result)
+    }
+
+    /// The path the `allSucceeded` data race lived on: several `URLSession` completion
+    /// handlers, running concurrently on its delegate queue, all recording a failure.
+    func testEngagementEventsFailWhenSeveralCallbacksFailAtOnce() throws {
+        StubURLProtocol.stub { request in
+            switch request.url?.absoluteString ?? "" {
+            case "https://example.com/cb/2":
+                return .failure(URLError(.timedOut))
+            case "https://example.com/cb/3":
+                return .response(statusCode: 404, body: Data())
+            case "https://example.com/cb/4":
+                return .failure(URLError(.cannotConnectToHost))
+            default:
+                return .response(statusCode: 200, body: Data())
+            }
+        }
+
+        let result = try sendEngagementEvents(callbackUrls: [
+            "https://example.com/cb/1",
+            "https://example.com/cb/2",
+            "https://example.com/cb/3",
+            "https://example.com/cb/4",
+        ])
+
+        XCTAssertEqual(StubURLProtocol.receivedRequests.count, 4)
+        assertBatchFailed(result)
+    }
+
+    func testEngagementEventsSkipAnUnparseableCallbackUrl() throws {
+        XCTAssertNil(URL(string: Self.unparseableCallbackUrl), "the fixture must be one URL(string:) rejects")
+        StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data()) }
+
+        let result = try sendEngagementEvents(callbackUrls: [
+            Self.unparseableCallbackUrl,
+            "https://example.com/cb/1",
+        ])
+
+        XCTAssertEqual(
+            StubURLProtocol.receivedRequests.compactMap { $0.url?.absoluteString },
+            ["https://example.com/cb/1"],
+            "the unparseable URL is skipped, the rest of the batch still fires"
+        )
+        assertBatchSucceeded(result)
+    }
+
+    /// `group.notify` with no `enter()` at all fires immediately, so this pins that the
+    /// caller still hears back exactly once (the helper's expectation fails on a second call).
+    func testEngagementEventsCompleteOnceWhenEveryCallbackUrlIsUnparseable() throws {
+        XCTAssertNil(URL(string: Self.unparseableCallbackUrl), "the fixture must be one URL(string:) rejects")
+        StubURLProtocol.stub { _ in .response(statusCode: 200, body: Data()) }
+
+        let result = try sendEngagementEvents(callbackUrls: [Self.unparseableCallbackUrl])
+
+        XCTAssertTrue(StubURLProtocol.receivedRequests.isEmpty, "nothing parseable to fire")
+        assertBatchSucceeded(result)
+    }
+
+    // MARK: - Engagement callback helpers
+
+    /// A callback URL `URL(string:)` rejects, taking `sendEngagementEvents`' skip path.
+    private static let unparseableCallbackUrl = ""
+
+    /// Sends one event per callback URL and returns the single result.
+    ///
+    /// The expectation allows no over-fulfilment, so a second call to `completion` fails
+    /// the test — that is how the "completes exactly once" cases above are asserted.
+    private func sendEngagementEvents(
+        callbackUrls: [String]
+    ) throws -> NetworkService.NetworkResult<Bool> {
+        let events = callbackUrls.map { EngagementEvent(type: .clicked, callbackUrl: $0) }
+
+        let done = expectation(description: "engagement events complete")
+        var result: NetworkService.NetworkResult<Bool>?
+
+        service.sendEngagementEvents(events) {
+            result = $0
+            done.fulfill()
+        }
+        waitForExpectations(timeout: 5)
+
+        return try XCTUnwrap(result)
+    }
+
+    /// Asserts the one failure `sendEngagementEvents` reports, message included: every
+    /// reason a callback can fail collapses into this single result.
+    private func assertBatchFailed(
+        _ result: NetworkService.NetworkResult<Bool>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        switch result {
+        case .success:
+            XCTFail("expected failure", file: file, line: line)
+        case .failure(let error):
+            if case .networkError(let message) = error {
+                XCTAssertEqual(message, "Failed to send some events", file: file, line: line)
+            } else {
+                XCTFail("expected .networkError, got \(error)", file: file, line: line)
+            }
+        }
+    }
+
+    private func assertBatchSucceeded(
+        _ result: NetworkService.NetworkResult<Bool>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        switch result {
+        case .success(let ok):
+            XCTAssertTrue(ok, file: file, line: line)
+        case .failure(let error):
+            XCTFail("expected success, got \(error)", file: file, line: line)
+        }
+    }
+
     // MARK: - Response mapping
 
     func testUnauthorizedResponseMapsToUnauthorized() throws {

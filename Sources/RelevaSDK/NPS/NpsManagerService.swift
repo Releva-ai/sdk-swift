@@ -11,10 +11,15 @@ import Foundation
 /// **Session-scoped suppression:** once the survey is shown or cancelled via a cancel event,
 /// it will not show again until `startNewSession()` is called.
 ///
-/// All public methods are thread-safe. Internal state is serialized on a private queue.
+/// All public methods are thread-safe. Internal state is serialized on `queue`.
 public class NpsManagerService {
 
-    private let queue = DispatchQueue(label: "com.releva.nps-manager")
+    /// Serializes the state below.
+    ///
+    /// Internal rather than private only so the tests can put a marker behind the work
+    /// `initialize` / `trackEvent` enqueue here and assert on the outcome instead of
+    /// sleeping; it is not visible outside the module and nothing else in the SDK uses it.
+    let queue = DispatchQueue(label: "com.releva.nps-manager")
 
     private var config: NpsConfig?
 
