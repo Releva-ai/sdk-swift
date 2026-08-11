@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a custom tracking event
-public struct CustomEvent: Codable, Equatable {
+public struct CustomEvent: Codable, Equatable, Sendable {
 
     // MARK: - Properties
 

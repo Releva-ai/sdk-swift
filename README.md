@@ -147,6 +147,52 @@ boundary, and it is not `Codable` either, which is why those fields were silentl
 dropped by the standard decoders. They are now typed `JSONValue`, and the models
 that hold them are `Sendable`.
 
+The request side moved for the same reason: `PushRequest` was a class holding a
+`[String: Any]` payload, and its three tracking subclasses kept it non-final. All
+four are now `Sendable` structs. The payload on the wire is unchanged.
+
+### Request builders are value types
+
+`PushRequest`, `ScreenViewRequest`, `SearchRequest` and `CheckoutSuccessRequest`
+are structs. The three tracking requests no longer inherit from `PushRequest`;
+they conform to the new `PushRequestConvertible` protocol, which `client.push(...)`
+is generic over, so every existing `push` call site compiles unchanged.
+
+Chained builder calls are also unchanged — each one returns a copy where it used
+to return the same instance, which reads identically in a chain:
+
+```swift
+// unchanged in 4.0.0
+let request = PushRequest().screenView("home").locale("en_US")
+```
+
+A builder called as a bare statement no longer compiles. The returned copy is now
+the only thing carrying the edit, so the builders are deliberately not
+`@discardableResult` and a discarded one is a compiler diagnostic rather than a
+silently missing attribute:
+
+```swift
+// 3.x — mutated the request in place
+let request = PushRequest()
+request.screenView("home")
+```
+
+```swift
+// 4.0.0 — keep the returned copy
+let request = PushRequest().screenView("home")
+```
+
+If you subclassed `PushRequest`, conform to `PushRequestConvertible` instead:
+supply a `pushRequest` that builds the request you want, and implement
+`validate()` only if you have rules of your own beyond the cart checks.
+
+Everything the requests hold is `Sendable` too — `Cart`, `CartProduct`,
+`ViewedProduct`, `CustomEvent`, `CustomEventProduct`, `CustomFields`,
+`CustomField` (where its values are), and the `AbstractFilter` protocol along with
+`SimpleFilter` and `NestedFilter`. A filter type of your own conforming to
+`AbstractFilter` therefore has to be `Sendable`, which for a struct of `Sendable`
+stored properties needs nothing beyond the conformance you already declare.
+
 ### Changed property types
 
 | Type | Property | 3.x | 4.0.0 |
@@ -540,7 +586,16 @@ Posts a `RelevaNavigateToInbox` notification. Your app navigates to the inbox sc
 
 ### User Tracking
 
-Most tracking — screen views, product views, search, checkout, recommendations — is sent through a single API: build a `PushRequest` using the fluent builder, then hand it to `client.push(...)`. The builder methods can be chained in any order on the same request.
+Most tracking — screen views, product views, search, checkout, recommendations — is sent through a single API: build a `PushRequest` using the fluent builder, then hand it to `client.push(...)`. The builder methods can be chained in any order.
+
+`PushRequest` is a `Sendable` value type and each builder returns a new copy rather than mutating the receiver, so a request can be shared across tasks and a partly built one can be reused as the base for several pushes. Since the returned copy is the only thing that carries the change, the builders are deliberately not `@discardableResult` — calling one as a bare statement is a dropped edit, and the compiler flags it.
+
+```swift
+let base = PushRequest().locale("en_US").currency("USD")
+
+let home = base.screenView("home")          // base is unchanged
+let search = base.screenView("search_results").search("iPhone")
+```
 
 ```swift
 // Track a screen view (home page, listing page, etc.)

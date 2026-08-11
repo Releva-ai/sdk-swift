@@ -363,15 +363,18 @@ public class RelevaClient {
     /// - Parameters:
     ///   - request: Push request with page/product context
     ///   - completion: Completion handler with response
-    public func push(_ request: PushRequest, completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void) {
+    public func push<Request: PushRequestConvertible>(
+        _ request: Request,
+        completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void
+    ) {
         push(request, incrementViews: true, completion: completion)
     }
 
     /// Internal push that lets callers opt out of incrementing the view counter.
     /// Cart and wishlist auto-syncs use `incrementViews: false` to avoid inflating
     /// the page-view count with non-navigation push calls.
-    private func push(
-        _ request: PushRequest,
+    private func push<Request: PushRequestConvertible>(
+        _ request: Request,
         incrementViews: Bool,
         completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void
     ) {
@@ -383,11 +386,13 @@ public class RelevaClient {
         // Ensure lifecycle-based session tracking is initialized
         SessionService.shared.initialize(storage: storage, npsManager: npsManager)
 
+        let pushRequest = request.pushRequest
+
         // Build context
-        let context = buildContext(for: request, incrementViews: incrementViews)
+        let context = buildContext(for: pushRequest, incrementViews: incrementViews)
 
         // Get request dictionary
-        let requestDict = request.toDict()
+        let requestDict = pushRequest.toDict()
 
         // Send request
         networkService.sendPushRequest(requestDict, context: context) { result in
@@ -1000,7 +1005,7 @@ public class RelevaClient {
 extension RelevaClient {
 
     /// Send push request using async/await
-    public func push(_ request: PushRequest) async throws -> RelevaResponse {
+    public func push<Request: PushRequestConvertible>(_ request: Request) async throws -> RelevaResponse {
         return try await withCheckedThrowingContinuation { continuation in
             push(request) { result in
                 continuation.resume(with: result)

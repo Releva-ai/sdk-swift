@@ -1,13 +1,16 @@
 import Foundation
 
-/// Protocol for all filter types
-public protocol AbstractFilter: Codable {
+/// Protocol for all filter types.
+///
+/// Refines `Sendable` because `PushRequest` and the tracking requests hold a filter as
+/// `AbstractFilter?`, and an existential is only `Sendable` if the protocol says so.
+public protocol AbstractFilter: Codable, Sendable {
     /// Convert the filter to a dictionary for API requests
     func toDict() -> [String: Any]
 }
 
 /// Operators for filter conditions
-public enum FilterOperator: String, CaseIterable, Codable {
+public enum FilterOperator: String, CaseIterable, Codable, Sendable {
     /// Equal to
     case eq = "eq"
 
@@ -78,7 +81,7 @@ public enum FilterOperator: String, CaseIterable, Codable {
 }
 
 /// Actions for filter application
-public enum FilterAction: String, CaseIterable, Codable {
+public enum FilterAction: String, CaseIterable, Codable, Sendable {
     /// Include only products that match the condition
     case include = "include"
 
@@ -124,7 +127,7 @@ public enum FilterAction: String, CaseIterable, Codable {
 }
 
 /// Operation types for nested filters
-public enum NestedFilterOperation: String, CaseIterable, Codable {
+public enum NestedFilterOperation: String, CaseIterable, Codable, Sendable {
     /// All conditions must be met
     case and = "and"
 

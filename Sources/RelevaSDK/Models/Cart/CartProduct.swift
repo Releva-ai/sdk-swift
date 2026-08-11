@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a product in the shopping cart
-public struct CartProduct: Codable, Equatable, Hashable {
+public struct CartProduct: Codable, Equatable, Hashable, Sendable {
 
     // MARK: - Properties
 

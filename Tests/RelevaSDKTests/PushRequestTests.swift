@@ -39,13 +39,23 @@ final class PushRequestTests: XCTestCase {
         XCTAssertEqual(page["query"] as? String, "running shoes")
     }
 
-    func testBuildersReturnTheSameInstanceSoChainingAndStatementsAgree() throws {
-        let request = PushRequest()
+    func testBuildersReturnACopyAndLeaveTheReceiverAlone() throws {
+        let request = PushRequest().locale("en_US")
         let returned = request.screenView("home")
-        request.locale("en_US")
 
-        XCTAssertTrue(returned === request, "the fluent builders mutate and return self")
-        XCTAssertEqual(try pageContext(request)["locale"] as? String, "en_US")
+        XCTAssertEqual(try pageContext(returned)["token"] as? String, "home")
+        XCTAssertEqual(try pageContext(returned)["locale"] as? String, "en_US", "the copy keeps the prefix")
+        XCTAssertNil(try pageContext(request)["token"], "the receiver is not mutated in place")
+    }
+
+    func testTwoChainsBranchingOffTheSameRequestDoNotShareState() throws {
+        let base = PushRequest().locale("en_US")
+
+        let home = base.screenView("home")
+        let product = base.screenView("product")
+
+        XCTAssertEqual(try pageContext(home)["token"] as? String, "home")
+        XCTAssertEqual(try pageContext(product)["token"] as? String, "product")
     }
 
     func testLatestValueWinsForARepeatedPageKey() throws {
@@ -98,9 +108,9 @@ final class PushRequestTests: XCTestCase {
         let request = PushRequest().pageProductIds(["p1"])
         XCTAssertEqual(try pageContext(request)["ids"] as? [String], ["p1"])
 
-        request.pageProductIds([])
+        let cleared = request.pageProductIds([])
 
-        XCTAssertNil(try pageContext(request)["ids"] as? [String])
+        XCTAssertNil(try pageContext(cleared)["ids"] as? [String])
     }
 
     func testPageBlocksNestTagsUnderBlocks() throws {
@@ -185,10 +195,11 @@ final class PushRequestTests: XCTestCase {
 
     func testClearingTheEventListLeavesValidateNothingToReject() {
         let request = PushRequest()
-        request.addCustomEvent(CustomEvent(action: "a"))
-        request.customEvents([])
+            .addCustomEvent(CustomEvent(action: "a"))
+            .customEvents([])
 
-        // customEvents([]) removes the key, so nothing is left to reject.
+        // customEvents([]) replaces the list with an empty one, which toDict() omits,
+        // so nothing is left to reject.
         XCTAssertNoThrow(try request.validate())
     }
 

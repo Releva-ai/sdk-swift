@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a product being viewed
-public struct ViewedProduct: Codable, Equatable {
+public struct ViewedProduct: Codable, Equatable, Sendable {
 
     // MARK: - Properties
 

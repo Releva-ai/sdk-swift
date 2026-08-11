@@ -1,12 +1,28 @@
 import Foundation
 
-/// Base request builder for API calls using fluent pattern
-public class PushRequest {
+/// Base request builder for API calls using fluent pattern.
+///
+/// A value type: each builder returns a modified copy, so a chain reads exactly as it did
+/// when this was a class. The builders are deliberately **not** `@discardableResult` —
+/// with value semantics a discarded result is an edit that was silently dropped, and the
+/// missing attribute turns such a call site into a compiler diagnostic instead.
+public struct PushRequest: PushRequestConvertible {
 
     // MARK: - Properties
 
-    /// The request payload
-    private var request: [String: Any]
+    /// Page context, serialized under `page`. Holds only strings, string arrays and the
+    /// one `blocks` object, so no number's JSON shape passes through `JSONValue` here.
+    private var page: [String: JSONValue] = [:]
+
+    /// The page filter, held as the filter rather than as its dictionary so `toDict()`
+    /// still hands `NetworkService` the filter's own `toDict()` output verbatim.
+    private var filter: AbstractFilter?
+
+    /// The viewed product, serialized under `product`.
+    private var product: ViewedProduct?
+
+    /// Custom events, serialized under `events`. An empty list is omitted from the payload.
+    private var events: [CustomEvent] = []
 
     /// Optional cart for checkout success
     public var cart: Cart?
@@ -14,138 +30,105 @@ public class PushRequest {
     // MARK: - Initializers
 
     /// Initialize an empty push request
-    public init() {
-        self.request = ["page": [:]]
-    }
+    public init() {}
 
     // MARK: - Page Context Methods
 
     /// Set the screen/page token
     /// - Parameter pageToken: The page identifier token
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the token applied
     public func screenView(_ pageToken: String) -> PushRequest {
-        var page = request["page"] as? [String: Any] ?? [:]
-        page["token"] = pageToken
-        request["page"] = page
-        return self
+        return setting("token", .string(pageToken))
     }
 
     /// Set the page URL
     /// - Parameter url: The page URL
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the URL applied
     public func pageUrl(_ url: String) -> PushRequest {
-        var page = request["page"] as? [String: Any] ?? [:]
-        page["url"] = url
-        request["page"] = page
-        return self
+        return setting("url", .string(url))
     }
 
     /// Set the locale
     /// - Parameter locale: The locale identifier (e.g., "en_US")
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the locale applied
     public func locale(_ locale: String) -> PushRequest {
-        var page = request["page"] as? [String: Any] ?? [:]
-        page["locale"] = locale
-        request["page"] = page
-        return self
+        return setting("locale", .string(locale))
     }
 
     /// Set the search query
     /// - Parameter query: The search query string
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the query applied
     public func search(_ query: String) -> PushRequest {
-        var page = request["page"] as? [String: Any] ?? [:]
-        page["query"] = query
-        request["page"] = page
-        return self
+        return setting("query", .string(query))
     }
 
     /// Set the currency
     /// - Parameter currency: The currency code (e.g., "USD")
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the currency applied
     public func currency(_ currency: String) -> PushRequest {
-        var page = request["page"] as? [String: Any] ?? [:]
-        page["currency"] = currency
-        request["page"] = page
-        return self
+        return setting("currency", .string(currency))
     }
 
     /// Set the product being viewed
     /// - Parameter product: The viewed product
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the product applied
     public func productView(_ product: ViewedProduct) -> PushRequest {
-        request["product"] = product.toDict()
-        return self
+        var copy = self
+        copy.product = product
+        return copy
     }
 
     /// Set a filter for the page
     /// - Parameter filter: The filter to apply
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the filter applied
     public func pageFilter(_ filter: AbstractFilter) -> PushRequest {
-        var page = request["page"] as? [String: Any] ?? [:]
-        page["filter"] = filter.toDict()
-        request["page"] = page
-        return self
+        var copy = self
+        copy.filter = filter
+        return copy
     }
 
     /// Set product IDs visible on the page (for listing pages)
     /// - Parameter productIds: Array of product IDs
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the product IDs applied
     public func pageProductIds(_ productIds: [String]) -> PushRequest {
-        var page = request["page"] as? [String: Any] ?? [:]
-        page["ids"] = productIds.isEmpty ? nil : productIds
-        request["page"] = page
-        return self
+        return setting("ids", productIds.isEmpty ? nil : JSONValue.array(productIds.map { JSONValue.string($0) }))
     }
 
     /// Set categories visible on the page
     /// - Parameter categories: Array of category names
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the categories applied
     public func pageCategories(_ categories: [String]) -> PushRequest {
-        var page = request["page"] as? [String: Any] ?? [:]
-        page["categories"] = categories.isEmpty ? nil : categories
-        request["page"] = page
-        return self
+        return setting(
+            "categories",
+            categories.isEmpty ? nil : JSONValue.array(categories.map { JSONValue.string($0) })
+        )
     }
 
     /// Set custom events to track user interactions
     /// - Parameter events: Array of custom events
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the events applied
     public func customEvents(_ events: [CustomEvent]) -> PushRequest {
-        request["events"] = events.isEmpty ? nil : events.map { $0.toDict() }
-        return self
+        var copy = self
+        copy.events = events
+        return copy
     }
 
     /// Set cart explicitly (used for checkout success)
     /// - Parameter cart: The cart to set
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the cart applied
     public func setCart(_ cart: Cart) -> PushRequest {
-        self.cart = cart
-        return self
+        var copy = self
+        copy.cart = cart
+        return copy
     }
 
     // MARK: - Additional Builder Methods
 
     /// Set page blocks with tags
     /// - Parameter tags: Array of tag strings
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the blocks applied
     public func pageBlocks(tags: [String]) -> PushRequest {
-        var page = request["page"] as? [String: Any] ?? [:]
-        page["blocks"] = ["tags": tags]
-        request["page"] = page
-        return self
+        return setting("blocks", JSONValue.object(["tags": JSONValue.array(tags.map { JSONValue.string($0) })]))
     }
 
     // NOTE: a `profile(email:phoneNumber:firstName:lastName:registeredAt:)` builder was removed.
@@ -154,12 +137,24 @@ public class PushRequest {
 
     /// Add a single custom event
     /// - Parameter event: The custom event to add
-    /// - Returns: Self for chaining
-    @discardableResult
+    /// - Returns: A copy with the event appended
     public func addCustomEvent(_ event: CustomEvent) -> PushRequest {
-        var events = request["events"] as? [[String: Any]] ?? []
-        events.append(event.toDict())
-        request["events"] = events
+        var copy = self
+        copy.events.append(event)
+        return copy
+    }
+
+    /// Return a copy with `key` set under `page`, or removed from it when `value` is nil.
+    private func setting(_ key: String, _ value: JSONValue?) -> PushRequest {
+        var copy = self
+        copy.page[key] = value
+        return copy
+    }
+
+    // MARK: - PushRequestConvertible
+
+    /// `PushRequest` is already the form the client sends.
+    public var pushRequest: PushRequest {
         return self
     }
 
@@ -167,32 +162,36 @@ public class PushRequest {
 
     /// Convert to dictionary for API requests
     public func toDict() -> [String: Any] {
+        var page = self.page.anyValue
+        if let filter = filter {
+            page["filter"] = filter.toDict()
+        }
+
+        var request: [String: Any] = ["page": page]
+
+        if let product = product {
+            request["product"] = product.toDict()
+        }
+
+        if !events.isEmpty {
+            request["events"] = events.map { $0.toDict() }
+        }
+
         return request
     }
 
     // MARK: - Validation
 
     /// Validate the request
+    ///
+    /// Only the cart is checked: `customEvents([])` omits the key rather than storing an
+    /// empty list, so the payload can never carry an empty events array to reject.
     /// - Throws: RelevaError if validation fails
     public func validate() throws {
-        // Validate cart if set
         if let cart = cart {
             for product in cart.products {
                 try product.validate()
             }
-        }
-
-        // Validate custom events if present
-        if let events = request["events"] as? [[String: Any]] {
-            // Basic validation that events array is not empty
-            if events.isEmpty {
-                throw RelevaError.invalidConfiguration("Events array cannot be empty if specified")
-            }
-        }
-
-        // Validate product if present
-        if request["product"] != nil {
-            // Product validation would be done by ViewedProduct.validate()
         }
     }
 
@@ -211,9 +210,9 @@ public class PushRequest {
     ///   - screenToken: Optional screen identifier
     /// - Returns: A configured PushRequest
     public static func forProductView(_ product: ViewedProduct, screenToken: String? = nil) -> PushRequest {
-        let request = PushRequest().productView(product)
+        var request = PushRequest().productView(product)
         if let token = screenToken {
-            request.screenView(token)
+            request = request.screenView(token)
         }
         return request
     }
@@ -229,14 +228,14 @@ public class PushRequest {
         resultProductIds: [String] = [],
         screenToken: String? = nil
     ) -> PushRequest {
-        let request = PushRequest().search(query)
+        var request = PushRequest().search(query)
 
         if !resultProductIds.isEmpty {
-            request.pageProductIds(resultProductIds)
+            request = request.pageProductIds(resultProductIds)
         }
 
         if let token = screenToken {
-            request.screenView(token)
+            request = request.screenView(token)
         }
 
         return request
@@ -251,10 +250,10 @@ public class PushRequest {
         orderedCart: Cart,
         screenToken: String? = nil
     ) -> PushRequest {
-        let request = PushRequest().setCart(orderedCart)
+        var request = PushRequest().setCart(orderedCart)
 
         if let token = screenToken {
-            request.screenView(token)
+            request = request.screenView(token)
         }
 
         return request
@@ -269,10 +268,10 @@ public class PushRequest {
         _ event: CustomEvent,
         screenToken: String? = nil
     ) -> PushRequest {
-        let request = PushRequest().customEvents([event])
+        var request = PushRequest().customEvents([event])
 
         if let token = screenToken {
-            request.screenView(token)
+            request = request.screenView(token)
         }
 
         return request

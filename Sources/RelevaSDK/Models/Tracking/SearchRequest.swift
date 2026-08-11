@@ -1,7 +1,7 @@
 import Foundation
 
 /// Request for tracking search events
-public class SearchRequest: PushRequest {
+public struct SearchRequest: PushRequestConvertible {
 
     // MARK: - Properties
 
@@ -41,25 +41,30 @@ public class SearchRequest: PushRequest {
         self.resultProductIds = resultProductIds
         self.filter = filter
         self.blocks = blocks
+    }
 
-        super.init()
+    // MARK: - PushRequestConvertible
 
-        // Apply properties to the base request
+    public var pushRequest: PushRequest {
+        var request = PushRequest()
+
         if let token = screenToken {
-            self.screenView(token)
+            request = request.screenView(token)
         }
         if let searchQuery = query {
-            self.search(searchQuery)
+            request = request.search(searchQuery)
         }
         if let ids = resultProductIds, !ids.isEmpty {
-            self.pageProductIds(ids)
+            request = request.pageProductIds(ids)
         }
         if let searchFilter = filter {
-            self.pageFilter(searchFilter)
+            request = request.pageFilter(searchFilter)
         }
         if let tags = blocks?["tags"], !tags.isEmpty {
-            self.pageBlocks(tags: tags)
+            request = request.pageBlocks(tags: tags)
         }
+
+        return request
     }
 
     // MARK: - Factory Methods
@@ -191,8 +196,8 @@ public class SearchRequest: PushRequest {
 
     /// Validate the search request
     /// - Throws: RelevaError if validation fails
-    public override func validate() throws {
-        try super.validate()
+    public func validate() throws {
+        try pushRequest.validate()
 
         // Search requests should have at least a query
         if query == nil || query!.isEmpty {
