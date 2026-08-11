@@ -1015,6 +1015,46 @@ This will show:
 - Inbox API calls and cache state
 - Token registration
 
+## Privacy Manifest
+
+The SDK ships an Apple privacy manifest at `Sources/RelevaSDK/PrivacyInfo.xcprivacy`, declared as a resource on the `RelevaSDK` target so it is copied into the built product. Xcode picks it up automatically when you add the package — there is nothing to copy into your own project.
+
+### What the SDK's manifest declares
+
+**Required-reason API:** `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1`. `StorageService` reads and writes its own `rlv_`-prefixed keys in `UserDefaults.standard` (device and profile IDs, session, cart, wishlist, push token, inbox cache, device counters). The SDK uses no other required-reason API.
+
+**Collected data types**, all marked as linked to the user's identity (everything carries `profileId` / `deviceId`) and none marked as used for tracking:
+
+| Type | What it is | Purposes |
+| --- | --- | --- |
+| User ID | the `profileId` you set via `setProfileId(_:)` | Product personalization, App functionality, Analytics |
+| Device ID | the `deviceId` you set via `setDeviceId(_:)`, the FCM push token, and the session ID (a fresh UUID minted on every cold start and stored as `rlv_session_id`, but never read back on the next launch — it does not persist an identifier across launches) | Product personalization, App functionality, Analytics |
+| Product Interaction | screen and product views, cart and wishlist contents, custom events, banner/story/NPS impressions and clicks | Product personalization, App functionality, Analytics |
+| Search History | the query string you pass to `trackSearchView(query:...)` | Product personalization, App functionality, Analytics |
+| Purchase History | order ID, products, quantities, prices and total from `trackCheckoutSuccess(...)` | Product personalization, App functionality, Analytics |
+| Other User Content | the optional free-text `comment` on `submitNpsResponse(...)` | App functionality |
+
+`Analytics` is on the five behavioural types because Releva's Customer Insights features (RFM scoring, cohort analysis, funnels, audience performance) are built on exactly those identifiers and events. It is deliberately **not** on Other User Content: the NPS comment is read individually by a marketer rather than aggregated into an audience measure.
+
+Note that Device ID plus the Analytics purpose is precisely the combination App Store Connect's App Privacy questionnaire flags when asking whether data is used to track. It does not contradict `NSPrivacyTracking` being `false` — purpose and tracking are independent keys, and this SDK's tracking determination is documented above — but expect the question to come up when you fill in your own answers.
+
+The SDK does **not** collect email addresses, phone numbers, names or postal addresses. It has not accepted profile attributes since v2.0.0; it identifies users solely by the `profileId` you set.
+
+`NSPrivacyTracking` is `false` and `NSPrivacyTrackingDomains` is empty. Do not add Releva's API host to `NSPrivacyTrackingDomains` in your app's manifest either: the OS **blocks** requests to every domain listed there for users who have not granted App Tracking Transparency permission, which would break push registration, tracking and personalization for those users.
+
+The `RelevaNotificationExtension` target has no manifest of its own. It uses no required-reason API and collects nothing — it renders the notification payload iOS already delivered and downloads the attachment image from the URL in that payload.
+
+### What you still have to do yourself
+
+**The SDK's manifest does not complete your app's privacy obligations.** It covers this SDK's own bundle and nothing else. You are still responsible for:
+
+1. **Your App Store Connect App Privacy details.** These are a separate submission artifact that Apple does not derive from any manifest. Your answers must account for the data this SDK collects on your behalf — the table above is the input to that, not a substitute for it.
+2. **Your own app's `PrivacyInfo.xcprivacy`.** Declare every required-reason API category your own code and your other dependencies use. In particular, if your app or an app extension uses `UserDefaults` anywhere, declare `NSPrivacyAccessedAPICategoryUserDefaults` in your app target's manifest as well; a category declared only in a linked SDK's manifest is not always enough to satisfy the upload check.
+3. **Custom fields and custom events.** `withStringField(key:values:)`, `withCustomFields(_:)` and `trackCustomEvent(...)` send whatever you put in them. This SDK's manifest cannot describe data it does not choose. If you pass an email address, a postal address or anything else sensitive through a custom field, that collection is yours to declare.
+4. **Firebase.** Push notifications go through `firebase-ios-sdk`, which carries its own privacy manifest and its own disclosures. Read them; they are not covered here.
+
+Whether the SDK "tracks" in Apple's sense also depends on how your Releva account is configured — for instance whether conversions are forwarded to advertising networks. Confirm the answer for your own integration with Releva before you submit.
+
 ## Support
 
 For issues, questions, or feature requests:

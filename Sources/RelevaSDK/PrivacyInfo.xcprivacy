@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Every declaration below is traceable to a call site in this repository;
+	     see PrivacyManifestTests, which pins the entries this file must and must
+	     not contain. When you add a tracking call or a new field to the push
+	     payload, update this file in the same commit. -->
+	<!-- false, signed off by Releva (2026-08-11) and not a placeholder. Apple's
+	     test is linking this app's user or device data with data collected from
+	     other companies' apps, websites or offline properties "for targeted
+	     advertising or advertising measurement purposes", or sharing user or
+	     device data with a data broker — note the advertising-measurement limb,
+	     which a conversion feed implicates most directly. This SDK posts to
+	     Releva's own endpoint and nowhere else; whether an account forwards
+	     conversions onward to an ad platform is configuration on Releva's
+	     infrastructure, not a call site in this repository, and is treated as
+	     processing on the integrator's behalf. Revisit when that configuration
+	     changes, not only when this code does: the answer can flip with no
+	     commit in this repository, so confirm it per integration before each
+	     submission. Flipping this to true also means flipping the per-datatype
+	     Tracking flags below. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<!-- Deliberately empty, and it must stay empty unless someone accepts the
+	     consequence: the OS blocks network requests to every domain listed here
+	     when the user has not granted App Tracking Transparency permission.
+	     Listing releva.ai or a <realm>.releva.ai host would therefore silently
+	     break tracking, push-token registration and personalisation for every
+	     user who declines the ATT prompt. Empty is also correct on the merits:
+	     the SDK's hosts are its own API endpoint (<realm>.releva.ai by default,
+	     or whatever the public RelevaConfig.customEndpoint points at — see
+	     NetworkService.getBaseURL()) and, in the extension, the attachment URL
+	     carried in the push payload. None of them is an ad network or a
+	     tracking host. -->
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<!-- Purposes: ProductPersonalization + AppFunctionality + Analytics.
+	     Analytics was signed off by Releva (2026-08-11) and is not provisional:
+	     the platform's Customer Insights features — RFM scoring, cohort
+	     analysis, funnels and audience performance — are built on exactly the
+	     identifiers and events declared below, which is Apple's Analytics
+	     purpose ("evaluating user behavior ... to measure audience size or
+	     characteristics"). buildContext() (RelevaClient.swift) also sends
+	     session count, view count and first-seen date on every request.
+
+	     One deliberate exception: the NPS free-text comment at the bottom of
+	     this list stays AppFunctionality-only. It is read individually by a
+	     marketer rather than aggregated into an audience measure, so Analytics
+	     is not justifiable for it on the same reasoning. Revisit if that
+	     changes. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+		<!-- The `profileId` the integrator sets via RelevaClient.setProfileId(_:),
+		     sent as context.profile.id on every request. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeUserID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<!-- The `deviceId` the integrator sets via RelevaClient.setDeviceId(_:),
+		     the FCM push token uploaded by registerPushToken(_:deviceType:), and
+		     the session ID: a fresh UUID minted on every cold start
+		     (SessionService.startNewSession()) and stored as rlv_session_id
+		     (StorageService.swift) only so the current session's calls agree on
+		     one value, sent as context.sessionId on every request. The stored
+		     value is never read back on the next launch, so it does not persist
+		     an identifier across launches — the durable device identifier is
+		     `deviceId`, already covered above. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeDeviceID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<!-- Screen and product views, cart and wishlist contents, custom events,
+		     and banner / story / NPS impressions and clicks. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<!-- The verbatim query string passed to
+		     RelevaClient.trackSearchView(query:...). -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeSearchHistory</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<!-- Order ID, ordered products, quantities, prices and total from
+		     RelevaClient.trackCheckoutSuccess(orderedCart:screenToken:). -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePurchaseHistory</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<!-- The optional free-text `comment` on
+		     RelevaClient.submitNpsResponse(token:score:comment:) — user-authored
+		     prose, so it is user content rather than product interaction. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!-- StorageService is the SDK's only required-reason API use: it reads and
+		     writes its own `rlv_`-prefixed keys in UserDefaults, which is what
+		     CA92.1 covers. The suite is .standard because RelevaClient calls
+		     StorageService() with no argument (Core/RelevaClient.swift), not
+		     because the type forbids one — init(userDefaults:) is public. If that
+		     call site ever passes an App Group suite (to share state with the
+		     notification extension), 1C8F.1 has to join the reasons array; an
+		     integrator who constructs StorageService against their own suite owes
+		     that answer in their own manifest, not this one. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
