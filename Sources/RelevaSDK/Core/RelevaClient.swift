@@ -360,10 +360,19 @@ public class RelevaClient {
     // MARK: - Core Push Method
 
     /// Send a push request to the API
+    ///
+    /// Takes `any PushRequestConvertible` rather than a generic parameter so a caller can
+    /// hold requests as the protocol type — a request queue or a `-> PushRequest` factory
+    /// typed `any PushRequestConvertible` can be pushed directly; Swift existentials don't
+    /// self-conform, so a generic `<Request: PushRequestConvertible>` parameter would reject
+    /// exactly that value.
     /// - Parameters:
     ///   - request: Push request with page/product context
     ///   - completion: Completion handler with response
-    public func push(_ request: PushRequest, completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void) {
+    public func push(
+        _ request: any PushRequestConvertible,
+        completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void
+    ) {
         push(request, incrementViews: true, completion: completion)
     }
 
@@ -371,7 +380,7 @@ public class RelevaClient {
     /// Cart and wishlist auto-syncs use `incrementViews: false` to avoid inflating
     /// the page-view count with non-navigation push calls.
     private func push(
-        _ request: PushRequest,
+        _ request: any PushRequestConvertible,
         incrementViews: Bool,
         completion: @escaping (Result<RelevaResponse, RelevaError>) -> Void
     ) {
@@ -383,11 +392,13 @@ public class RelevaClient {
         // Ensure lifecycle-based session tracking is initialized
         SessionService.shared.initialize(storage: storage, npsManager: npsManager)
 
+        let pushRequest = request.pushRequest
+
         // Build context
-        let context = buildContext(for: request, incrementViews: incrementViews)
+        let context = buildContext(for: pushRequest, incrementViews: incrementViews)
 
         // Get request dictionary
-        let requestDict = request.toDict()
+        let requestDict = pushRequest.toDict()
 
         // Send request
         networkService.sendPushRequest(requestDict, context: context) { result in
@@ -1000,7 +1011,10 @@ public class RelevaClient {
 extension RelevaClient {
 
     /// Send push request using async/await
-    public func push(_ request: PushRequest) async throws -> RelevaResponse {
+    ///
+    /// See the completion-handler `push(_:completion:)` for why this takes
+    /// `any PushRequestConvertible` rather than a generic parameter.
+    public func push(_ request: any PushRequestConvertible) async throws -> RelevaResponse {
         return try await withCheckedThrowingContinuation { continuation in
             push(request) { result in
                 continuation.resume(with: result)

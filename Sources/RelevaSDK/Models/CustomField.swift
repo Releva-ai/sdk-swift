@@ -49,8 +49,12 @@ public struct CustomField<T: Codable & Equatable & Hashable>: Codable, Equatable
     }
 }
 
+/// Conditional rather than a `T: Sendable` constraint on the type itself, so the generic
+/// signature stays exactly as it was for anyone who already instantiated `CustomField`.
+extension CustomField: Sendable where T: Sendable {}
+
 /// A collection of custom fields organized by type
-public struct CustomFields: Codable, Equatable, Hashable {
+public struct CustomFields: Codable, Equatable, Hashable, Sendable {
 
     // MARK: - Properties
 

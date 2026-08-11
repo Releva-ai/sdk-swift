@@ -1,7 +1,7 @@
 import Foundation
 
 /// Request for tracking screen view events
-public class ScreenViewRequest: PushRequest {
+public struct ScreenViewRequest: PushRequestConvertible {
 
     // MARK: - Properties
 
@@ -41,25 +41,30 @@ public class ScreenViewRequest: PushRequest {
         self.categories = categories
         self.filter = filter
         self.blocks = blocks
+    }
 
-        super.init()
+    // MARK: - PushRequestConvertible
 
-        // Apply properties to the base request
+    public var pushRequest: PushRequest {
+        var request = PushRequest()
+
         if let token = screenToken {
-            self.screenView(token)
+            request = request.screenView(token)
         }
         if let ids = productIds, !ids.isEmpty {
-            self.pageProductIds(ids)
+            request = request.pageProductIds(ids)
         }
         if let cats = categories, !cats.isEmpty {
-            self.pageCategories(cats)
+            request = request.pageCategories(cats)
         }
         if let pageFilter = filter {
-            self.pageFilter(pageFilter)
+            request = request.pageFilter(pageFilter)
         }
         if let tags = blocks?["tags"], !tags.isEmpty {
-            self.pageBlocks(tags: tags)
+            request = request.pageBlocks(tags: tags)
         }
+
+        return request
     }
 
     // MARK: - Factory Methods

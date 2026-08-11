@@ -5,7 +5,7 @@ import Foundation
 /// The SDK identifies the user solely by the `profileId` set via
 /// `RelevaClient.setProfileId(_:)` (sent as `context.profile.id`). Contact details
 /// and other profile attributes are never accepted or sent from the client.
-public class CheckoutSuccessRequest: PushRequest {
+public struct CheckoutSuccessRequest: PushRequestConvertible {
 
     // MARK: - Properties
 
@@ -27,19 +27,21 @@ public class CheckoutSuccessRequest: PushRequest {
     ) {
         self.screenToken = screenToken
         self.orderedCart = orderedCart
+    }
 
-        super.init()
+    // MARK: - PushRequestConvertible
 
-        // Set the cart on the base request
-        self.setCart(orderedCart)
+    public var pushRequest: PushRequest {
+        var request = PushRequest().setCart(orderedCart)
 
-        // Apply screen token if provided
         if let token = screenToken {
-            self.screenView(token)
+            request = request.screenView(token)
         }
 
         // NOTE: no profile attributes are attached. Identity is carried by
         // context.profile.id (set in RelevaClient from the stored profileId).
+
+        return request
     }
 
     // MARK: - Factory Methods
@@ -98,8 +100,13 @@ public class CheckoutSuccessRequest: PushRequest {
 
     /// Validate the checkout success request
     /// - Throws: RelevaError if validation fails
-    public override func validate() throws {
-        try super.validate()
+    public func validate() throws {
+        // Inlined from `PushRequest.validate()` rather than delegating to it, so this has to
+        // stay in sync with that body by hand. Revisit if it grows a check that isn't
+        // cart-specific — this bypasses it.
+        for product in orderedCart.products {
+            try product.validate()
+        }
 
         // Validate the cart is paid
         if !orderedCart.cartPaid {

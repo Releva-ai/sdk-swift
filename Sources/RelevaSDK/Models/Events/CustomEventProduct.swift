@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a product associated with a custom event
-public struct CustomEventProduct: Codable, Equatable, Hashable {
+public struct CustomEventProduct: Codable, Equatable, Hashable, Sendable {
 
     // MARK: - Properties
 
