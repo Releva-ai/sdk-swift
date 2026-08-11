@@ -157,83 +157,69 @@ four are now `Sendable` structs. The payload on the wire is unchanged.
 are structs. The three tracking requests no longer inherit from `PushRequest`;
 they conform to the new `PushRequestConvertible` protocol, which `client.push(...)`
 takes as `any PushRequestConvertible`, so every existing `push` call site compiles
-unchanged — including one built against a value held as the protocol type, such
-as a request queue or a `-> PushRequest` factory.
+unchanged — including one that holds the request as the protocol type.
 
-Chained builder calls are also unchanged — each one returns a copy where it used
-to return the same instance, which reads identically in a chain:
+Chained builder calls are unchanged. Each one returns a copy where it used to
+return the same instance, which reads identically in a chain:
 
 ```swift
 // unchanged in 4.0.0
 let request = PushRequest().screenView("home").locale("en_US")
 ```
 
-A builder called as a bare statement no longer compiles. The returned copy is now
-the only thing carrying the edit, so the builders are deliberately not
-`@discardableResult` and a discarded one is a compiler diagnostic rather than a
-silently missing attribute:
+A builder called as a bare statement no longer compiles. The returned copy is the
+only thing carrying the edit, so the builders are deliberately not
+`@discardableResult`: a discarded one is a compiler diagnostic rather than a
+silently missing attribute.
 
 ```swift
 // 3.x — mutated the request in place
 let request = PushRequest()
 request.screenView("home")
-```
 
-```swift
 // 4.0.0 — keep the returned copy
 let request = PushRequest().screenView("home")
 ```
 
-If you subclassed `PushRequest`, conform to `PushRequestConvertible` instead:
-supply a `pushRequest` that builds the request you want, and implement
-`validate()` only if you have rules of your own beyond the cart checks.
-
-As `PushRequest` subclasses, `ScreenViewRequest`, `SearchRequest` and
-`CheckoutSuccessRequest` used to inherit every `public` member of `PushRequest` —
-not just `cart`, but `toDict()` and all thirteen fluent builders too, since the
-builders returned `self` typed as the base class. `PushRequestConvertible`
-exposes only `pushRequest` and `validate()`, so none of that inherited surface
-is there anymore. Reach it through `.pushRequest` first:
+`ScreenViewRequest`, `SearchRequest` and `CheckoutSuccessRequest` used to inherit
+every `public` member of `PushRequest` — `cart`, `toDict()` and all thirteen
+fluent builders. `PushRequestConvertible` exposes only `pushRequest` and
+`validate()`, so reach the rest through `.pushRequest`. Since `pushRequest` is
+computed, chain onto one value and push *that* value:
 
 ```swift
-// 3.x — compiled: cart, toDict() and every builder were inherited
+// 3.x — cart, toDict() and every builder were inherited
 let request = ScreenViewRequest(screenToken: "cart")
 request.cart = snapshot
 let payload = request.toDict()
-let localized = request.locale("en_US")
+client.push(request)
+
+// 4.0.0
+let request = ScreenViewRequest(screenToken: "cart").pushRequest.setCart(snapshot)
+let payload = request.toDict()
 client.push(request)
 ```
 
-```swift
-// 4.0.0 — go through .pushRequest for anything beyond pushRequest/validate()
-let request = ScreenViewRequest(screenToken: "cart")
-let withCart = request.pushRequest.setCart(snapshot)
-let payload = withCart.toDict()
-let localized = request.pushRequest.locale("en_US")
-client.push(withCart) // a ScreenViewRequest/SearchRequest carries no cart of its
-                       // own; only what you pass in (like withCart here) is read
-```
+Deleting a `request.cart = …` line rather than carrying it over is not a no-op:
+the cart was transmitted in 3.x, so move it onto the `PushRequest` with `setCart`
+as above.
 
-`cart` is the one worth calling out on its own, because deleting the line is not a
-no-op. In 3.x the tracking request *was* a `PushRequest`, so `buildContext` read
-`request.cart ?? cart` and forced `context["cartChanged"] = true` whenever the
-request carried a cart (`RelevaClient.swift:951`, `:954`) — the snapshot really was
-transmitted. In 4.0.0 the property is gone from the tracking requests, so the line
-fails to compile; carry the cart over with `setCart` on a `PushRequest` as above
-rather than dropping it.
-
-`RelevaClient` is a non-final `public class`, so changing `push(_:completion:)`
-and `push(_:) async` from taking the `PushRequest` base class to taking
-`any PushRequestConvertible` also changes the signature a subclass override has
-to match. If you subclass `RelevaClient` and override either `push` method,
-update the override to the new parameter type.
+If you subclassed `PushRequest`, conform to `PushRequestConvertible` instead:
+supply a `pushRequest` that builds the request you want, and implement
+`validate()` only if you have rules of your own beyond the cart checks. And
+because `RelevaClient` is a non-final `public class`, a subclass overriding
+`push(_:completion:)` or `push(_:) async` has to update the parameter type to
+`any PushRequestConvertible`.
 
 Everything the requests hold is `Sendable` too — `Cart`, `CartProduct`,
 `ViewedProduct`, `CustomEvent`, `CustomEventProduct`, `CustomFields`,
 `CustomField` (where its values are), and the `AbstractFilter` protocol along with
 `SimpleFilter` and `NestedFilter`. A filter type of your own conforming to
-`AbstractFilter` therefore has to be `Sendable`, which for a struct of `Sendable`
-stored properties needs nothing beyond the conformance you already declare.
+`AbstractFilter` therefore has to be `Sendable`: a struct of `Sendable` stored
+properties needs nothing beyond the conformance you already declare, but a
+**class** conformer, or a struct holding a non-`Sendable` stored property, will
+now be diagnosed — make it a struct of `Sendable` values, or declare
+`@unchecked Sendable` and take on the synchronization yourself.
 
 ### Changed property types
 

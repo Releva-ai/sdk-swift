@@ -11,7 +11,7 @@ final class TrackingRequestConversionTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func pageContext<Request: PushRequestConvertible>(_ request: Request) throws -> [String: Any] {
+    private func pageContext(_ request: any PushRequestConvertible) throws -> [String: Any] {
         return try XCTUnwrap(request.pushRequest.toDict()["page"] as? [String: Any], "expected a page dictionary")
     }
 
@@ -148,11 +148,11 @@ final class TrackingRequestConversionTests: XCTestCase {
     @MainActor
     func testTheClientAcceptsEveryConvertibleRequestTypeIncludingAsAnExistentialArray() {
         // `enableTracking: false` makes `push` resolve synchronously with
-        // `.success(.empty())` without a network call (RelevaClient.swift's push guard).
-        // `enablePushNotifications: false` keeps `init` from installing the
-        // didBecomeActive observer (`:733`), which has no deinit cleanup by design.
-        // NOTE: `init` still sets `RelevaClient.shared` if it is nil (`:128`), and there
-        // is no reset API — this is the only test in the suite that constructs a client.
+        // `.success(.empty())` without a network call, via the guard at the top of `push`.
+        // `enablePushNotifications: false` keeps `init` from calling
+        // `installPushTokenLifecycleObserver()`, whose observer has no deinit cleanup by design.
+        // NOTE: `init` still sets `RelevaClient.shared` if it is nil, and there is no
+        // reset API — this is the only test in the suite that constructs a client.
         let client = RelevaClient(
             realm: "test",
             accessToken: "test-token",
