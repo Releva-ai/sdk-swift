@@ -1,6 +1,12 @@
 import Foundation
 
 /// Represents the main API response from Releva
+///
+/// `Codable` conformance is decode-complete but encode-partial: `init(from:)` decodes all five
+/// fields, but `encode(to:)` only writes `recommenders` and `push` — `banners`, `stories` and `nps`
+/// are intentionally not re-encoded (see the note on `encode(to:)`). Nothing in this SDK encodes a
+/// `RelevaResponse`; if a consumer does (for example to cache one in `UserDefaults` or a file), a
+/// `decode → encode → decode` round trip silently drops those three fields.
 public struct RelevaResponse: Codable, Equatable, Sendable {
 
     // NOTE: the /api/v0/push response also carries a top-level `userId` (the backend's resolved
@@ -173,13 +179,22 @@ public struct RelevaResponse: Codable, Equatable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(recommenders, forKey: .recommenders)
         try container.encodeIfPresent(push, forKey: .push)
-        // Banners, stories, NPS are not re-encoded (they're read-only from API)
+        // Banners, stories and NPS are read-only API payloads that this SDK never re-encodes
+        // internally, so they are deliberately left out here rather than given `Encodable`
+        // conformance purely to round-trip. This is a one-way asymmetry: `init(from:)` above
+        // decodes all five fields, but a `decode → encode → decode` cycle on this type drops these
+        // three (see the type-level doc comment). If a consumer needs to cache a full response,
+        // caching the original response `Data` rather than a re-encoded `RelevaResponse` avoids
+        // the loss.
     }
 
     /// Decode an array of JSON objects under `key` and map each through a `from(dict:)` factory.
     ///
     /// A missing key, an explicit `null` and a value of the wrong shape all yield an empty array,
-    /// which is what the `JSONSerialization` pass this replaced did.
+    /// which is what the `JSONSerialization` pass this replaced did. Within an array of the right
+    /// shape, an individual element that is not itself an object is dropped rather than emptying
+    /// the whole array — more tolerant than before, where `as? [[String: Any]]` made one bad
+    /// element empty out the entire list. Only reachable on a malformed response.
     private static func decodeObjects<T>(
         _ container: KeyedDecodingContainer<CodingKeys>,
         forKey key: CodingKeys,

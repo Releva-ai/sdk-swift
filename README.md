@@ -189,7 +189,10 @@ let color = message.design["body"]?["values"]?["backgroundColor"]?.stringValue
 and `subscript(Int)` for array elements. `intValue` and `doubleValue` convert
 between the two number cases the way `NSNumber` did, so a JSON `7` reads as either
 `7` or `7.0`; a JSON integer that is only ever read and re-encoded stays an
-integer rather than becoming `7.0`.
+integer rather than becoming `7.0`. The guarantee is "a JSON integer stays an
+integer", not full byte-for-byte number round-tripping: a whole-number `Double`
+in the source (`1.0`) also decodes as `.int(1)` and re-encodes as `1`, the same
+as a literal `1` would.
 
 ### Writing a `JSONValue`
 
@@ -220,6 +223,14 @@ For the same reason, `RecommenderResponse.meta` and `ProductRecommendation`'s
 `custom` and `data` now actually carry the values from the payload. In 3.x they
 decoded to `nil` unconditionally and were skipped on encode. If you worked around
 that by re-parsing the raw response yourself, you can drop the workaround.
+
+Decoding is now complete, but encoding is intentionally still partial:
+`RelevaResponse.encode(to:)` only writes `recommenders` and `push` — `banners`,
+`stories` and `nps` are read-only API payloads this SDK never re-encodes
+internally, so a `decode → encode → decode` round trip on this type silently
+drops those three fields. Nothing in the SDK does this today; if you need to
+cache a full response yourself, cache the original response `Data` rather than
+a re-encoded `RelevaResponse`.
 
 ## Quick Start
 

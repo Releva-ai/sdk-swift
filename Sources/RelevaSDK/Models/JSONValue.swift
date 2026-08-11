@@ -8,7 +8,15 @@ import Foundation
 /// `Codable` or `Sendable`, so this enum stands in for `Any` instead.
 ///
 /// Integers and floating-point numbers are kept as separate cases so that a JSON integer decoded
-/// here and re-encoded comes back out as an integer rather than as `1.0`.
+/// here and re-encoded comes back out as an integer rather than as `1.0`. The guarantee is "a JSON
+/// integer stays an integer", not "every number round-trips byte-for-byte": `Int` decoding on
+/// Apple platforms also accepts a whole-number `Double` token, so a source `1.0` decodes as
+/// `.int(1)` too and re-encodes as `1`, losing the trailing `.0`
+/// (`JSONValueTests.testAnIntegralDoubleNormalizesToInt` pins this).
+///
+/// Because `.int` and `.double` are distinct cases, `Hashable`/`Equatable` treat `.int(1)` and
+/// `.double(1.0)` as unequal — correct for the enum's shape, but worth knowing if you use a
+/// `JSONValue` as a dictionary key or `Set` element built from mixed sources.
 public enum JSONValue: Hashable, Sendable {
     case null
     case bool(Bool)
@@ -141,8 +149,13 @@ extension JSONValue {
     /// Wrap a Foundation JSON object of the kind `JSONSerialization` produces.
     ///
     /// Anything that is not a JSON value — which `JSONSerialization` cannot produce — becomes `.null`.
+    /// A `JSONValue` passed in by mistake (it satisfies `Any`, so this is easy to do with an
+    /// already-typed `[String: JSONValue]`) is passed through unchanged instead of falling into
+    /// that `.null` bucket, which would otherwise silently null every leaf.
     public init(any value: Any) {
         switch value {
+        case let value as JSONValue:
+            self = value
         case is NSNull:
             self = .null
         case let number as NSNumber:
@@ -170,12 +183,17 @@ extension JSONValue {
     ///
     /// Numbers and booleans come back as `NSNumber` so that callers reading the result with
     /// `as? Int` / `as? Bool` see what they would have seen from `JSONSerialization` itself.
+    /// A non-finite `.double` (`.nan`/`.infinity`) cannot reach this from decoding, but `JSONValue`
+    /// is public and `ExpressibleByFloatLiteral`, so a consumer can construct one; it maps to
+    /// `NSNull` here rather than an `NSNumber` that fails `JSONSerialization.isValidJSONObject` and
+    /// would raise an uncatchable Objective-C exception where `anyValue` output is serialized with
+    /// `try?` (see `InboxService`).
     public var anyValue: Any {
         switch self {
         case .null: return NSNull()
         case .bool(let value): return NSNumber(value: value)
         case .int(let value): return NSNumber(value: value)
-        case .double(let value): return NSNumber(value: value)
+        case .double(let value): return value.isFinite ? NSNumber(value: value) : NSNull()
         case .string(let value): return value
         case .array(let value): return value.map { $0.anyValue }
         case .object(let value): return value.mapValues { $0.anyValue }

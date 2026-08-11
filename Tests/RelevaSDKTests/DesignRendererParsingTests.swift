@@ -328,7 +328,7 @@ final class DesignRendererParsingTests: XCTestCase {
 
         for (position, expected) in cases {
             let parsed = try XCTUnwrap(
-                DesignRenderer.parseBackgroundImage(["url": "https://cdn.example.com/bg.jpg", "position": position])
+                DesignRenderer.parseBackgroundImage(["url": "https://cdn.example.com/bg.jpg", "position": .string(position)])
             )
             XCTAssertEqual(parsed.alignment, expected, "unexpected alignment for position \"\(position)\"")
         }
