@@ -69,7 +69,9 @@ public struct RecommenderResponse: Codable, Equatable, Sendable {
         token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
 
-        meta = try container.decodeIfPresent([String: JSONValue].self, forKey: .meta)
+        // `meta` is open-ended, so a value of the wrong shape degrades to `nil` rather than
+        // failing the whole response (matching `RelevaResponse.decodeObjects`).
+        meta = (try? container.decodeIfPresent([String: JSONValue].self, forKey: .meta)) ?? nil
 
         tags = try container.decodeIfPresent([String].self, forKey: .tags)
         cssSelector = try container.decodeIfPresent(String.self, forKey: .cssSelector)

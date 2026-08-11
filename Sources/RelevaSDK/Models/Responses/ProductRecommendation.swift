@@ -119,8 +119,10 @@ public struct ProductRecommendation: Codable, Equatable, Sendable {
 
         currency = try container.decodeIfPresent(String.self, forKey: .currency)
 
-        custom = try container.decodeIfPresent([String: JSONValue].self, forKey: .custom)
-        data = try container.decodeIfPresent([String: JSONValue].self, forKey: .data)
+        // `custom` and `data` are open-ended, so a value of the wrong shape degrades to `nil`
+        // rather than failing the whole response (matching `RelevaResponse.decodeObjects`).
+        custom = (try? container.decodeIfPresent([String: JSONValue].self, forKey: .custom)) ?? nil
+        data = (try? container.decodeIfPresent([String: JSONValue].self, forKey: .data)) ?? nil
 
         description = try container.decodeIfPresent(String.self, forKey: .description)
         discount = try container.decodeIfPresent(Double.self, forKey: .discount)

@@ -117,6 +117,16 @@ final class RecommenderResponseTests: XCTestCase {
         XCTAssertEqual(meta["modelVersion"]?.intValue, 3, "a JSON integer stays an integer")
     }
 
+    func testAWrongShapeMetaDecodesToNilRatherThanThrowing() throws {
+        // A backend that serialises an empty map as an empty array (e.g. PHP's json_encode([]))
+        // must not take down the whole recommender over an open-ended field.
+        let recommender = try decodeRecommender("""
+        { "token": "t", "name": "n", "meta": [], "response": [] }
+        """)
+
+        XCTAssertNil(recommender.meta, "meta is open-ended; a non-object value degrades to nil rather than throwing")
+    }
+
     func testAMissingTokenAndNameDecodeToEmptyStringsRatherThanFailing() throws {
         let recommender = try decodeRecommender("""
         { "response": [] }
@@ -251,6 +261,15 @@ final class RecommenderResponseTests: XCTestCase {
 
         XCTAssertEqual(try XCTUnwrap(decoded.custom)["material"]?.arrayValue?.first?.stringValue, "mesh")
         XCTAssertEqual(try XCTUnwrap(decoded.data)["wh"]?.stringValue, "DE1")
+    }
+
+    func testAWrongShapeCustomOrDataDecodesToNilRatherThanThrowing() throws {
+        // Same open-ended-field tolerance as recommender.meta, but per product: one bad product
+        // must not take down the whole recommender (or the whole push response).
+        let decoded = try decodeProductWith("\"custom\": [], \"data\": \"none\"")
+
+        XCTAssertNil(decoded.custom, "custom is open-ended; a non-object value degrades to nil rather than throwing")
+        XCTAssertNil(decoded.data, "data is open-ended; a non-object value degrades to nil rather than throwing")
     }
 
     func testExplicitNullProductFieldsDecodeAsNil() throws {
