@@ -3,11 +3,12 @@ import Combine
 
 /// A SwiftUI view modifier that listens for NPS display events and shows the survey.
 ///
-/// Usage:
+/// Usage. `submitNpsResponse` is `async throws` and `onSubmit` is not, so the call goes in a
+/// `Task`:
 /// ```swift
 /// ContentView()
 ///     .npsDisplay(onSubmit: { token, score, comment in
-///         client.submitNpsResponse(token: token, score: score, comment: comment)
+///         Task { try? await client.submitNpsResponse(token: token, score: score, comment: comment) }
 ///     })
 /// ```
 public struct NpsDisplayModifier: ViewModifier {

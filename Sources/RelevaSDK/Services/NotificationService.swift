@@ -47,8 +47,9 @@ public class NotificationService: NSObject {
 
         // Request authorization if needed
         notificationCenter.getNotificationSettings { settings in
-            if settings.authorizationStatus == .notDetermined {
-                self.requestAuthorization()
+            guard settings.authorizationStatus == .notDetermined else { return }
+            Task {
+                await self.requestAuthorization()
             }
         }
 
@@ -61,27 +62,34 @@ public class NotificationService: NSObject {
     }
 
     /// Request notification authorization
-    public func requestAuthorization(completion: ((Bool) -> Void)? = nil) {
+    /// - Returns: Whether the user granted it. A thrown authorization error counts as denied,
+    ///   which is how the 4.x completion handler reported it too.
+    @discardableResult
+    public func requestAuthorization() async -> Bool {
         let options: UNAuthorizationOptions = [.alert, .badge, .sound]
 
-        notificationCenter.requestAuthorization(options: options) { granted, error in
-            if let error = error {
-                if self.config.enableDebugLogging {
-                    print("RelevaSDK: Authorization error: \(error)")
-                }
-            }
-
-            DispatchQueue.main.async {
-                if granted {
-                    self.safelyRegisterForRemoteNotifications()
-                }
-                completion?(granted)
-            }
-
-            if self.config.enableDebugLogging {
-                print("RelevaSDK: Notification authorization: \(granted ? "granted" : "denied")")
+        var granted = false
+        do {
+            granted = try await notificationCenter.requestAuthorization(options: options)
+        } catch {
+            if config.enableDebugLogging {
+                print("RelevaSDK: Authorization error: \(error)")
             }
         }
+
+        if config.enableDebugLogging {
+            print("RelevaSDK: Notification authorization: \(granted ? "granted" : "denied")")
+        }
+
+        if granted {
+            // `safelyRegisterForRemoteNotifications` reaches `UIApplication`, so it has to run
+            // on the main actor; this method itself is nonisolated and does not.
+            await MainActor.run {
+                self.safelyRegisterForRemoteNotifications()
+            }
+        }
+
+        return granted
     }
 
     /// Display notification from data payload

@@ -90,7 +90,7 @@ Add the following to your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "4.0.0"),
+    .package(url: "https://github.com/Releva-ai/sdk-swift.git", from: "5.0.0"),
     // Required because the push setup below calls Messaging.messaging() from
     // your own code: SPM only lets a target use products from packages this
     // manifest declares directly, so a transitive resolve is not enough.
@@ -119,7 +119,7 @@ and depend on the products from your target:
 
 1. File → Add Package Dependencies…
 2. Enter: `https://github.com/Releva-ai/sdk-swift.git`
-3. Dependency Rule: "Up to Next Major Version", starting from `4.0.0`
+3. Dependency Rule: "Up to Next Major Version", starting from `5.0.0`
 4. Add the `RelevaSDK` product to your app target
 5. Add `https://github.com/firebase/firebase-ios-sdk.git` as a second package
    dependency (Dependency Rule: "Up to Next Major Version", starting from
@@ -137,6 +137,197 @@ This SDK does not set up Firebase itself: you still need a `GoogleService-Info.p
 in your app target and a `FirebaseApp.configure()` call (typically in
 `application(_:didFinishLaunchingWithOptions:)`, before the push setup below)
 from the standard Firebase iOS setup.
+
+## Migrating to 5.0.0
+
+Every completion handler in the public API is gone, replaced by `async`. There are
+no overloads and nothing is deprecated-but-kept: a 4.x call site that passes a
+closure will not compile, which is deliberate — a silently retained completion
+variant is how half-migrated call sites survive a release.
+
+### Changed method signatures
+
+| 4.x | 5.0.0 |
+|---|---|
+| `push(_:completion:)` | `push(_:) async throws -> RelevaResponse` |
+| `@available(iOS 15.0, *) push(_:) async throws -> RelevaResponse` | same signature, without the `@available` |
+| `trackScreenView(screenToken:productIds:categories:filter:completion:)` | `trackScreenView(screenToken:productIds:categories:filter:) async throws -> RelevaResponse` |
+| `@available(iOS 15.0, *) trackScreenView(...) async throws -> RelevaResponse` | same signature, without the `@available` |
+| `trackProductView(product:screenToken:completion:)` | `trackProductView(product:screenToken:) async throws -> RelevaResponse` |
+| `trackSearchView(query:resultProductIds:screenToken:filter:completion:)` | `trackSearchView(query:resultProductIds:screenToken:filter:) async throws -> RelevaResponse` |
+| `trackCheckoutSuccess(orderedCart:screenToken:completion:)` | `trackCheckoutSuccess(orderedCart:screenToken:) async throws -> RelevaResponse` |
+| `trackCustomEvent(_:screenToken:completion:)` | `trackCustomEvent(_:screenToken:) async throws -> RelevaResponse` |
+| `registerPushToken(_:deviceType:completion:)` | `registerPushToken(_:deviceType:) async throws` |
+| `@available(iOS 15.0, *) registerPushToken(_:deviceType:) async throws -> Bool` | `registerPushToken(_:deviceType:) async throws` |
+| `submitNpsResponse(token:score:comment:completion:)` | `submitNpsResponse(token:score:comment:) async throws` |
+| `NetworkService` — every method taking a `CompletionHandler` | the same method, `async throws`, returning what it used to pass to the handler |
+| `EngagementTrackingService.getPendingEventCount(completion:)` | `getPendingEventCount() async -> Int` |
+| `EngagementTrackingService.getStatistics(completion:)` | `getStatistics() async -> EngagementStatistics` |
+| `NotificationService.requestAuthorization(completion:)` | `requestAuthorization() async -> Bool` |
+
+`NetworkService.NetworkResult<T>` and `NetworkService.CompletionHandler<T>` are
+deleted. Where a method used to hand you `.failure(error)` it now throws that same
+`RelevaError`; where it handed you `.success(value)` it now returns that value.
+
+### Call sites
+
+A tracking call:
+
+```swift
+// 4.x
+client.trackScreenView(screenToken: "home") { result in
+    switch result {
+    case .success(let response):
+        render(response.recommenders)
+    case .failure(let error):
+        print("Error: \(error)")
+    }
+}
+```
+
+```swift
+// 5.0.0
+Task {
+    do {
+        let response = try await client.trackScreenView(screenToken: "home")
+        render(response.recommenders)
+    } catch {
+        print("Error: \(error)")
+    }
+}
+```
+
+A fire-and-forget call. The tracking methods are `@discardableResult`, so nothing
+has to be bound:
+
+```swift
+// 4.x
+client.push(request) { _ in }
+```
+
+```swift
+// 5.0.0
+Task { try? await client.push(request) }
+```
+
+From a SwiftUI view, prefer an unstructured `Task` for anything that must be
+delivered even if the user navigates away quickly — it has no parent to be
+cancelled by:
+
+```swift
+// 5.0.0
+ContentView()
+    .onAppear { Task { try? await client.trackScreenView(screenToken: "home") } }
+```
+
+`.task { }` is available too and needs no `Task`, but ties the call's lifetime to
+the view:
+
+```swift
+// 5.0.0
+ContentView()
+    .task { try? await client.trackScreenView(screenToken: "home") }
+```
+
+> **Note:** `.task { }` ties the call's lifetime to the view — SwiftUI cancels it when
+> the view disappears, and `URLSession` honours that cancellation. In 4.x the underlying
+> `URLSessionDataTask` was not tied to the view and delivered regardless. A cancellation
+> surfaces the same way any other transport failure does: as `RelevaError.networkError`
+> carrying the underlying error's description, not as a distinct case — check
+> `Task.isCancelled` at the call site if you need to tell "cancelled" apart from "the
+> network failed" rather than switching on the thrown error. For an event that must be
+> delivered even if the user navigates away quickly, use the unstructured `Task { }`
+> form above instead.
+
+Push-token registration. `registerPushToken` used to report a `Bool`; that flag was
+`true` on every path that reached the handler, so `throws` already carries
+everything it carried:
+
+```swift
+// 4.x
+client.registerPushToken(fcmToken, deviceType: .ios) { result in
+    if case .failure(let error) = result { print(error) }
+}
+```
+
+```swift
+// 5.0.0
+Task {
+    do {
+        try await client.registerPushToken(fcmToken, deviceType: .ios)
+    } catch {
+        print(error)
+    }
+}
+```
+
+NPS submission, from the `onSubmit` closure of `.npsDisplay` or `NpsPresenter`.
+That closure is synchronous on both paths, so the call goes in a `Task`:
+
+```swift
+// 4.x
+.npsDisplay(onSubmit: { token, score, comment in
+    client.submitNpsResponse(token: token, score: score, comment: comment)
+})
+```
+
+```swift
+// 5.0.0
+.npsDisplay(onSubmit: { token, score, comment in
+    Task { try? await client.submitNpsResponse(token: token, score: score, comment: comment) }
+})
+```
+
+Engagement statistics now come back as a struct rather than a `[String: Any]`, so
+the keys are checked by the compiler instead of by you:
+
+```swift
+// 4.x
+service.getStatistics { stats in
+    let pending = stats["pendingCount"] as? Int ?? 0
+}
+```
+
+```swift
+// 5.0.0
+let stats = await service.getStatistics()
+let pending = stats.pendingCount
+```
+
+`EngagementStatistics` is a `Sendable`, `Equatable` struct with `pendingCount`,
+`isTracking`, `isSending`, `batchSize`, `batchInterval` and
+`eventTypes: [String: Int]` — the same six values the dictionary carried, under the
+same names.
+
+### What did *not* change
+
+Anything that only touches local state stays synchronous, because making it `async`
+would add a suspension point without adding anything to await:
+
+`setDeviceId`, `getDeviceId`, `setProfileId`, `getProfileId`, `setEndpointOverride`,
+`setAppVersion`, `getCart`, `getWishlist`, `clearCartStorage`,
+`clearWishlistStorage`, `trackEvent`, `enablePushEngagementTracking`,
+`trackEngagement`, `isRelevaMessage`, `startTracking`, `stopTracking` and
+`clearPendingEvents`. (`trackEngagement` only appends to the engagement service's
+pending queue; the batch that queue sends later is what reaches the network.)
+
+`setCart`, `setWishlist`, `bannerImpression`, `bannerAction`, `storyImpression`,
+`storyAction`, `refreshPushToken`, `flush`, `initializeInbox` and every method on
+`InboxService` keep their synchronous signatures too, even though they do reach the
+network: they are called from SwiftUI view bodies, UIKit action handlers and
+lifecycle hooks that cannot await, so each starts its own `Task` internally. Failures
+are reported through debug logging, as before.
+
+The wire format is unchanged. A 5.0.0 client and a 4.x client send byte-identical
+request bodies.
+
+### Behaviour change in `InboxService`
+
+`refresh`, `loadMore`, `markAsRead`, `markAllAsRead`, `deleteMessage` and
+`trackAction` keep their signatures, but their optimistic state update now always
+lands on the next main-actor turn. In 4.x, a call made *from* the main thread
+mutated `state` before returning. SwiftUI observers see the same values either way;
+code that read `inbox.state` on the line after the call did not.
 
 ## Migrating to 4.0.0
 
@@ -198,10 +389,10 @@ client.push(request) { _ in }
 ```
 
 ```swift
-// 4.0.0
+// 4.0.0 — 5.0.0 changed `push` again; see "Migrating to 5.0.0" above
 let request = ScreenViewRequest(screenToken: "cart").pushRequest.setCart(snapshot)
 let payload = request.toDict()
-client.push(request) { _ in }
+try await client.push(request)
 ```
 
 Deleting a `request.cart = …` line rather than carrying it over is not a no-op:
@@ -212,8 +403,7 @@ If you subclassed `PushRequest`, conform to `PushRequestConvertible` instead:
 supply a `pushRequest` that builds the request you want, and implement
 `validate()` only if you have rules of your own beyond the cart checks. And
 because `RelevaClient` is a non-final `public class`, a subclass overriding
-`push(_:completion:)` or `push(_:) async` has to update the parameter type to
-`any PushRequestConvertible`.
+`push(_:)` has to update the parameter type to `any PushRequestConvertible`.
 
 Everything the requests hold is `Sendable` too — `Cart`, `CartProduct`,
 `ViewedProduct`, `CustomEvent`, `CustomEventProduct`, `CustomFields`,
@@ -364,7 +554,7 @@ client.setProfileId(newAnonymousProfileId, true)
 Task {
     do {
         let fcmToken = try await Messaging.messaging().token()
-        _ = try await client.registerPushToken(fcmToken, deviceType: .ios)
+        try await client.registerPushToken(fcmToken, deviceType: .ios)
     } catch {
         print("Failed to re-register push token: \(error)")
     }
@@ -445,7 +635,7 @@ func application(_ application: UIApplication, didRegisterForRemoteNotifications
     Task {
         do {
             let fcmToken = try await Messaging.messaging().token()
-            _ = try await client.registerPushToken(fcmToken, deviceType: .ios)
+            try await client.registerPushToken(fcmToken, deviceType: .ios)
             client.enablePushEngagementTracking()
         } catch {
             print("Failed to register push token: \(error)")
@@ -639,19 +829,19 @@ let request = PushRequest()
     .locale("en_US")
     .currency("USD")
 
-client.push(request) { result in
-    switch result {
-    case .success(let response):
-        // Process recommendations returned for this page
-        for recommender in response.recommenders {
-            print("Recommender: \(recommender.name)")
-            for product in recommender.response {
-                print("- \(product.name): $\(product.price)")
-            }
+// `push` is `async throws`, so this needs an async context — a `Task { }`, a
+// SwiftUI `.task { }`, or an enclosing `async` function.
+do {
+    let response = try await client.push(request)
+    // Process recommendations returned for this page
+    for recommender in response.recommenders {
+        print("Recommender: \(recommender.name)")
+        for product in recommender.response {
+            print("- \(product.name): $\(product.price)")
         }
-    case .failure(let error):
-        print("Error: \(error)")
     }
+} catch {
+    print("Error: \(error)")
 }
 
 // Track a product view
@@ -665,7 +855,8 @@ let productRequest = PushRequest()
     .screenView("product_detail")
     .productView(product)
 
-client.push(productRequest) { _ in }
+// `push` is `@discardableResult`, so a fire-and-forget call needs no `_ =`.
+try await client.push(productRequest)
 
 // Track a search
 let searchRequest = PushRequest()
@@ -674,7 +865,7 @@ let searchRequest = PushRequest()
     .search("iPhone")
     .pageProductIds(["product-1", "product-2", "product-3"])
 
-client.push(searchRequest) { _ in }
+try await client.push(searchRequest)
 ```
 
 The `push()` response includes recommenders, banners, stories, and NPS configuration — the SDK handles banner/story/NPS state internally, so a screen-view push is also what populates them.
@@ -695,7 +886,7 @@ client.setCart(cart)
 // Track checkout success. The SDK identifies the user solely by the profileId set
 // via setProfileId(); contact details and other profile attributes are never sent.
 let orderedCart = Cart.paid([product1, product2], orderId: "order-789")
-client.trackCheckoutSuccess(orderedCart: orderedCart, screenToken: "checkout_success") { _ in }
+try await client.trackCheckoutSuccess(orderedCart: orderedCart, screenToken: "checkout_success")
 ```
 
 ### Wishlist Management
@@ -728,7 +919,7 @@ let event = CustomEvent(action: "selectedColor")
     .withTag("promo")
     .withCustomFields(customFields)
 
-client.trackCustomEvent(event)
+try await client.trackCustomEvent(event)
 ```
 
 > Date fields take native `Date` values. The SDK converts them to ISO-8601 strings on serialization via `ISO8601DateFormatter`, so you never format the date yourself. The same `.withStringField` / `.withNumericField` / `.withDateField` builders also exist directly on `ViewedProduct` (see [User Tracking](#user-tracking)).
@@ -757,7 +948,7 @@ let request = PushRequest()
     .screenView("category_listing")
     .pageFilter(complexFilter)
 
-client.push(request) { _ in }
+try await client.push(request)
 ```
 
 ## Banners
@@ -891,10 +1082,13 @@ The SDK supports native NPS (Net Promoter Score) surveys delivered as overlays. 
 
 Wrap your root view so surveys can appear on any screen:
 
+`onSubmit` is synchronous and `submitNpsResponse` is `async throws`, so the call
+goes in a `Task`:
+
 ```swift
 ContentView()
     .npsDisplay(onSubmit: { token, score, comment in
-        client.submitNpsResponse(token: token, score: score, comment: comment)
+        Task { try? await client.submitNpsResponse(token: token, score: score, comment: comment) }
     })
 ```
 
@@ -986,7 +1180,11 @@ inbox.refreshIfStale()
 
 ### Mark as Read and Delete
 
-All mutations use optimistic updates — the UI updates instantly, and reverts on API error:
+All mutations use optimistic updates — the UI updates instantly, and reverts on API
+error. "Instantly" means on the next main-actor turn: `state` is `@Published` and
+main-actor-isolated, so as of 5.0.0 these methods no longer write to it before
+returning, even when called from the main thread. SwiftUI observers see the same
+values either way; code that reads `inbox.state` on the line after the call does not.
 
 ```swift
 // Mark a single message as read
@@ -1106,7 +1304,7 @@ final class SettingsViewController: UIViewController {
         guard let client = RelevaClient.shared else { return }
 
         nps = NpsPresenter(host: self, onSubmit: { token, score, comment in
-            client.submitNpsResponse(token: token, score: score, comment: comment)
+            Task { try? await client.submitNpsResponse(token: token, score: score, comment: comment) }
         })
     }
 
@@ -1306,54 +1504,75 @@ let config = RelevaConfig(
 
 ### RelevaClient
 
-| Method | Description |
-|---|---|
-| `init(realm:accessToken:config:)` | Initialize the SDK |
-| `setDeviceId(_:)` | Set unique device identifier |
-| `setProfileId(_:_:)` | Set user profile ID (second param: skipMerge) |
-| `setEndpointOverride(_:)` | Override API endpoint at runtime |
-| `setAppVersion(_:)` | Set app version for NPS context |
-| `setCart(_:)` | Set shopping cart |
-| `setWishlist(_:)` | Set wishlist |
-| `clearCartStorage()` | Clear cart without API call |
-| `clearWishlistStorage()` | Clear wishlist without API call |
-| `push(_:completion:)` | Send a push request |
-| `trackScreenView(screenToken:productIds:categories:filter:completion:)` | Track screen view |
-| `trackProductView(product:screenToken:completion:)` | Track product view |
-| `trackSearchView(query:resultProductIds:screenToken:filter:completion:)` | Track search |
-| `trackCheckoutSuccess(orderedCart:screenToken:completion:)` | Track checkout |
-| `trackCustomEvent(_:screenToken:completion:)` | Track custom event |
-| `registerPushToken(_:deviceType:completion:)` | Register FCM token |
-| `refreshPushToken()` | Re-fetch via `pushTokenProvider` and re-upload if stale |
-| `pushTokenProvider` | Closure the SDK calls on launch/foreground to get the current token |
-| `enablePushEngagementTracking()` | Enable push engagement tracking |
-| `trackEngagement(userInfo:type:)` | Track push engagement |
-| `isRelevaMessage(userInfo:)` | Check if notification is from Releva |
-| `bannerImpression(_:)` | Track banner impression |
-| `bannerAction(_:action:)` | Track banner action |
-| `storyImpression(_:)` | Track story impression |
-| `storyAction(_:action:slideId:)` | Track story action |
-| `trackEvent(_:)` | Fire NPS custom event trigger |
-| `submitNpsResponse(token:score:comment:completion:)` | Submit NPS response |
-| `initializeInbox()` | Initialize inbox service |
-| `inbox` | Access InboxService singleton |
+`RelevaClient` is `@MainActor`-isolated. A method is `async throws` when the caller
+needs the result or the failure back; a `sync` row below is fire-and-forget instead
+— several of them (`setCart`, `setWishlist`, `refreshPushToken`, the banner/story
+trackers) still reach the network, from a `Task` started internally rather than one
+the caller awaits. See "What did *not* change" above for why. Nothing takes a
+completion handler.
 
-## Async/Await Support
+| Method | Kind | Description |
+|---|---|---|
+| `init(realm:accessToken:config:)` | sync | Initialize the SDK |
+| `setDeviceId(_:)` | sync | Set unique device identifier |
+| `getDeviceId()` | sync | Read the device identifier |
+| `setProfileId(_:_:)` | sync | Set user profile ID (second param: skipMerge) |
+| `getProfileId()` | sync | Read the profile ID |
+| `setEndpointOverride(_:)` | sync | Override API endpoint at runtime |
+| `setAppVersion(_:)` | sync | Set app version for NPS context |
+| `setCart(_:)` | sync | Set shopping cart (syncs in the background) |
+| `getCart()` | sync | Read the stored cart |
+| `setWishlist(_:)` | sync | Set wishlist (syncs in the background) |
+| `getWishlist()` | sync | Read the stored wishlist |
+| `clearCartStorage()` | sync | Clear cart without API call |
+| `clearWishlistStorage()` | sync | Clear wishlist without API call |
+| `push(_:)` | `async throws -> RelevaResponse` | Send a push request |
+| `trackScreenView(screenToken:productIds:categories:filter:)` | `async throws -> RelevaResponse` | Track screen view |
+| `trackProductView(product:screenToken:)` | `async throws -> RelevaResponse` | Track product view |
+| `trackSearchView(query:resultProductIds:screenToken:filter:)` | `async throws -> RelevaResponse` | Track search |
+| `trackCheckoutSuccess(orderedCart:screenToken:)` | `async throws -> RelevaResponse` | Track checkout |
+| `trackCustomEvent(_:screenToken:)` | `async throws -> RelevaResponse` | Track custom event |
+| `registerPushToken(_:deviceType:)` | `async throws` | Register FCM token |
+| `refreshPushToken()` | sync | Re-fetch via `pushTokenProvider` and re-upload if stale |
+| `pushTokenProvider` | property | Closure the SDK calls on launch/foreground to get the current token |
+| `enablePushEngagementTracking()` | sync | Enable push engagement tracking |
+| `trackEngagement(userInfo:type:)` | sync | Track push engagement |
+| `isRelevaMessage(userInfo:)` | sync | Check if notification is from Releva |
+| `bannerImpression(_:)` | sync | Track banner impression |
+| `bannerAction(_:action:)` | sync | Track banner action |
+| `storyImpression(_:)` | sync | Track story impression |
+| `storyAction(_:action:slideId:)` | sync | Track story action |
+| `trackEvent(_:)` | sync | Fire NPS custom event trigger |
+| `submitNpsResponse(token:score:comment:)` | `async throws` | Submit NPS response |
+| `initializeInbox()` | sync | Initialize inbox service |
+| `inbox` | property | Access InboxService singleton |
 
-The SDK supports modern Swift async/await patterns:
+The banner and story impression/action methods stay synchronous because they are
+called from SwiftUI view bodies and UIKit action handlers that cannot await; each
+starts its own `Task` and reports failures through debug logging only.
+
+## Async/Await
+
+The tracking API is `async throws`, so it needs an async context. Inside a SwiftUI
+view that is `.task { }`; anywhere else it is a `Task { }` or an enclosing `async`
+function:
 
 ```swift
-// Using async/await
 Task {
     do {
         let response = try await client.trackScreenView(screenToken: "home")
-        let success = try await client.registerPushToken(token)
-        let result = try await client.push(request)
+        print("\(response.recommenderCount) recommenders")
+
+        try await client.registerPushToken(token, deviceType: .ios)
+        try await client.push(request)
     } catch {
         print("Error: \(error)")
     }
 }
 ```
+
+The tracking methods are `@discardableResult`, so a call made purely for its
+effect needs no `_ =`.
 
 ## Troubleshooting
 
