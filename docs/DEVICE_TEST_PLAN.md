@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 35 run(s)**: 81 pass, 1 fail, 16 pass with caveat, 64 not yet run. Details per row in the Result column and in section 5.
+**Status after 36 run(s)**: 82 pass, 1 fail, 15 pass with caveat, 64 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -225,7 +225,7 @@ Fixtures: one banner block per displayType and trigger, attached to the Home pag
 | BAN-05 | P0 | 1.0.4 | Flyout left and right | Two flyout blocks. | Open Home. | Side panels slide in from the configured side; close works. | Impressions and closes. | ✅ Runs 26–32: from a full-height sheet with the X under the status bar, via the web-spec bottom panel, to the tester's mobile spec: an edge-flush full-height drawer, content-hugging width, content at the top, scrolling beyond, first/last row colours filling bounce zones and the home-indicator strip; verified on 375x667 / 393x852 / 430x932. Validated by the tester in run 33. Deliberate deviation from the web flyout (bottom 0, 20 px gap) — CTO to confirm. |
 | BAN-06 | P0 | 1.0.4 | Static banners: afterbegin / beforeend / afterend / replace | Four static blocks with cssSelector `#home-content`. | Open Home. | Inline placement matches the strategy; `replace` hides the grid. Impression on display. | Impressions. | ✅ Run 2: block f34a090d-… is configured Static / After / #home-content in the admin (screenshot). SDK appended it below the Home content, edge to edge above the tab bar, no close button, persistent while Home is shown: exactly the static afterend contract. Other three strategies not yet run. |
 | BAN-07 | P0 | 1.0.4 | Static banner with a non-matching selector | cssSelector `#other`. | Open Home. | Not rendered, no impression. | No event. | ☐ |
-| BAN-08 | P0 | 1.0.4 | scrollPercentage 50 | Trigger scrollPercentage 50. | Open Home, scroll halfway. | Appears when the grid passes 50 %. | Impression. | ⚠️ Run 33: scroll never fired — SDK had no scroll input (nil provider). Added RelevaClient.reportScrollPercentage. Run 34: backend returned the scroll blocks (Home 10 %, product page 20 %) but the harness's SwiftUI preference-based reporter never produced a single 'Scroll:' line; a hosted test reproduced it (preference from a GeometryReader inside a ScrollView reports nothing on iOS 26). Replaced by the SDK modifier relevaScrollTracking, which observes the UIScrollView's contentOffset; ScrollTrackingTests scrolls a real view to 50 % and 100 %. Harness uses it on Home and product page. Re-test. |
+| BAN-08 | P0 | 1.0.4 | scrollPercentage 50 | Trigger scrollPercentage 50. | Open Home, scroll halfway. | Appears when the grid passes 50 %. | Impression. | ✅ Run 33: never fired — SDK had no scroll input (nil provider) → RelevaClient.reportScrollPercentage added. Run 34: harness's SwiftUI preference reporter reported nothing (dead on iOS 26, reproduced in a hosted test) → SDK modifier relevaScrollTracking observing the UIScrollView. Run 35: Home block fd4de9a7-… at 10 %: 'Scroll: 10%' → 'Banner trigger fired (scrollPercentage)' → popup shown (after the image prefetch) → impression 200 → close 202; product page block 425b5763-… at 20 %: fired at 'Scroll: 20%' → shown → impression. README: apply relevaScrollTracking to every scroll view whose page carries scroll-triggered banners. |
 | BAN-09 | P0 | 1.0.4 | cartChanged and wishlistChanged triggers | Two blocks with those triggers. | Open Home → Product 1 → Add to cart → back to Home. Then heart a product on Home. | Banner appears after the cart/wishlist change (`RelevaClient.setCart` calls the SDK's own `BannerManagerService.onCartChanged`). | Impression. | ✅ Run 34 (product page, block 425b5763-… attached to the product page): Add to Cart → 'Banner trigger fired: 425b5763 (cartChanged)' → popup shown → impression 200 → close 202. Heart → 'Banner trigger fired (wishlistChanged)' → popup shown → impression → close. Both fire on the screen whose response carried the banner; a cart-changed block attached to Home cannot fire on the product page (same as web). |
 | BAN-10 | P1 | 1.2 | Full-screen popup and background image | Popup with full-screen option and a background image. | Open Home. | Covers the screen; image renders with the configured fit. | — | ⚠️ Run 6: a tall portrait image in a popup is capped to the screen height and scrolls inside the card (web parity). Run 23: with the card-height fix a tall design gets the capped scrolling card and a short one a compact card; the image filling a too-tall card was masking the height bug. Decide with the CTO: keep scroll (as web) or scale-to-fit on phones. |
 | BAN-11 | P1 | 1.2 | Content-level text colour | Banner with white text (`color`) on a dark background. | Open Home. | Text is white, not body-default black (1.2.0 fix). | — | ☐ |
@@ -656,6 +656,12 @@ Diagnostics build; block 425b5763-… on the product page as cartChanged, wishli
 
 - cartChanged and wishlistChanged fire on the product page and show the popup (BAN-09 pass). Response log now shows each page's banners and triggers.
 - Scroll: backend returns the scroll blocks, but no 'Scroll:' line ever appeared — the SwiftUI preference-based reporter is dead on iOS 26 (reproduced in a hosted test). Replaced with an SDK modifier observing the UIScrollView; test scrolls to 50 % / 100 % and passes. Re-test on the device.
+
+### Run 35 — scroll triggers fire (2026-09-04)
+
+Build with relevaScrollTracking; Home block at 10 %, product page block at 20 %.
+
+- Scroll reported in 10 % steps on both screens; both scroll-triggered popups fired at their threshold, showed, and were counted once (BAN-08 pass). On Home the screen had been detached from the overlay window at that moment and the re-attach path brought the popup up.
 
 ## Appendix A. Temp-code snippets
 
