@@ -167,6 +167,21 @@ public struct DesignRenderer {
         let href = actionValues["href"]?.stringValue ?? ""
 
         if !url.isEmpty, let imageUrl = URL(string: url) {
+            // Unlayer renders an image block as `width: 100%; max-width: <src.width>px`
+            // unless the block sets an explicit percentage width (size.autoWidth == false).
+            // Without the cap a 200 px image stretched to the whole content width and a
+            // 200x600 placeholder became a screen-high strip (device run 28).
+            let srcWidth = src["width"]?.doubleValue
+            let srcHeight = src["height"]?.doubleValue
+            let size = values["size"]?.objectValue ?? [:]
+            let autoWidth = size["autoWidth"]?.boolValue ?? true
+            let maxWidth: CGFloat = (autoWidth ? srcWidth.map { CGFloat($0) } : nil) ?? .infinity
+            let alignment = textAlignToAlignment(parseTextAlign(values["textAlign"]))
+            let placeholderRatio: CGFloat? = {
+                guard let w = srcWidth, let h = srcHeight, w > 0, h > 0 else { return nil }
+                return CGFloat(w / h)
+            }()
+
             let imageView = CachedRemoteImage(url: imageUrl) { phase in
                 switch phase {
                 case .success(let image):
@@ -174,9 +189,15 @@ public struct DesignRenderer {
                 case .failure:
                     EmptyView()
                 default:
-                    Color.clear.frame(height: 100)
+                    if let ratio = placeholderRatio {
+                        Color.clear.aspectRatio(ratio, contentMode: .fit)
+                    } else {
+                        Color.clear.frame(height: 100)
+                    }
                 }
             }
+            .frame(maxWidth: maxWidth)
+            .frame(maxWidth: .infinity, alignment: alignment)
 
             if !href.isEmpty, let onLinkTap = onLinkTap {
                 imageView.onTapGesture { onLinkTap(href) }
