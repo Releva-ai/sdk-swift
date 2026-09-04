@@ -84,6 +84,11 @@ class StoryDisplayViewModel: ObservableObject {
 
     private func enqueue(_ story: StoryResponse) {
         guard !story.slides.isEmpty else { return }
+        // Several screen views in quick succession each return the same story; without this
+        // guard the queue held N copies and every close dequeued the next one, firing a
+        // storyImpression with nothing new on screen.
+        guard activeStory?.story.token != story.token,
+              !storyQueue.contains(where: { $0.token == story.token }) else { return }
         storyQueue.append(story)
         if activeStory == nil {
             processQueue()
