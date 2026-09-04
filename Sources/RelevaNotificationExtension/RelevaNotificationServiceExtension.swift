@@ -127,7 +127,10 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
         )
 
         UNUserNotificationCenter.current().getNotificationCategories { existingCategories in
-            var categories = existingCategories
+            // `Set.insert` is a no-op when a category with the same identifier already exists,
+            // which left the action label frozen at the first button text ever received.
+            // Drop the stale RELEVA_DYNAMIC before inserting the new one.
+            var categories = existingCategories.filter { $0.identifier != "RELEVA_DYNAMIC" }
             categories.insert(category)
             UNUserNotificationCenter.current().setNotificationCategories(categories)
         }
