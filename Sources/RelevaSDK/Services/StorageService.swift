@@ -37,6 +37,7 @@ public class StorageService {
         case inboxUnreadCount = "rlv_inbox_unread_count"
         case inboxNextCursor = "rlv_inbox_next_cursor"
         case inboxLastFetch = "rlv_inbox_last_fetch"
+        case inboxCacheProfileId = "rlv_inbox_cache_profile_id"
 
         // Device analytics
         case deviceSessionCount = "rlv_device_session_count"
@@ -327,6 +328,26 @@ public class StorageService {
     /// Save inbox last fetch timestamp
     public func saveInboxLastFetch(_ timestamp: TimeInterval) {
         userDefaults.set(timestamp, forKey: StorageKey.inboxLastFetch.rawValue)
+    }
+
+    /// The profile the cached inbox belongs to (nil for caches written before this key existed).
+    public func getInboxCacheProfileId() -> String? {
+        userDefaults.string(forKey: StorageKey.inboxCacheProfileId.rawValue)
+    }
+
+    public func saveInboxCacheProfileId(_ profileId: String?) {
+        if let profileId = profileId {
+            userDefaults.set(profileId, forKey: StorageKey.inboxCacheProfileId.rawValue)
+        } else {
+            userDefaults.removeObject(forKey: StorageKey.inboxCacheProfileId.rawValue)
+        }
+    }
+
+    /// Drop the cached inbox (messages, unread count, cursor, fetch time, owner).
+    public func clearInboxCache() {
+        for key in [StorageKey.inboxMessages, .inboxUnreadCount, .inboxNextCursor, .inboxLastFetch, .inboxCacheProfileId] {
+            userDefaults.removeObject(forKey: key.rawValue)
+        }
     }
 
     /// Get inbox last fetch timestamp

@@ -189,20 +189,27 @@ public class RelevaClient {
                 storage.addMergeProfileId(prevId)
 
                 if config.enableDebugLogging {
-                    print("RelevaSDK: Profile ID changed from '\(prevId)' to '\(profileId)' (merge enabled)")
-                    print("RelevaSDK: Merge profile IDs stored: \(mergeProfileIds)")
+                    relevaLog("RelevaSDK: Profile ID changed from '\(prevId)' to '\(profileId)' (merge enabled)")
+                    relevaLog("RelevaSDK: Merge profile IDs stored: \(mergeProfileIds)")
                 }
             } else if config.enableDebugLogging {
-                print("RelevaSDK: Profile ID changed to '\(profileId)' (previous profile already in merge list)")
+                relevaLog("RelevaSDK: Profile ID changed to '\(profileId)' (previous profile already in merge list)")
             }
         } else if config.enableDebugLogging {
-            print("RelevaSDK: Profile ID set to '\(profileId)' (first time, no merge needed)")
+            relevaLog("RelevaSDK: Profile ID set to '\(profileId)' (first time, no merge needed)")
         }
 
         self.profileId = profileId
         self.profileChanged = (previousId != nil && previousId != profileId)
 
         storage.saveProfileId(profileId)
+
+        // Keep the inbox on the same user; it clears its cache and refetches on a real change.
+        if InboxService.shared.isInitialized {
+            InboxService.shared.updateProfileId(profileId)
+        }
+
+        }
     }
 
     /// Get current profile ID

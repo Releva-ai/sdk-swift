@@ -48,7 +48,10 @@ public class InboxService: ObservableObject {
 
         if initialized {
             if profileChanged {
-                restoreCachedState()
+                // The cache is one set of UserDefaults keys, not per profile. Restoring it here
+                // handed the new profile the previous user's messages with a fresh fetch time,
+                // so `refreshIfStale()` never fetched. Start empty and fetch for the new user.
+                resetForProfileChange()
             }
             return
         }
@@ -68,9 +71,24 @@ public class InboxService: ObservableObject {
         restoreCachedState()
     }
 
-    /// Update the profile ID (e.g. after login/logout)
+    /// Update the profile ID (e.g. after login/logout). A different profile clears the cached
+    /// inbox and fetches the new user's messages; the same profile is a no-op.
     public func updateProfileId(_ profileId: String?) {
+        let changed = self.profileId != profileId
         self.profileId = profileId
+        if initialized && changed {
+            resetForProfileChange()
+        }
+    }
+
+    /// Whether `initialize(...)` has run. Lets `RelevaClient.setProfileId` forward profile
+    /// changes without starting the service for apps that do not use the inbox.
+    public var isInitialized: Bool { initialized }
+
+    private func resetForProfileChange() {
+        state = InboxState()
+        storage?.clearInboxCache()
+        refresh()
     }
 
     // Every mutating method below runs its whole body in a `Task { @MainActor ... }`. That
@@ -298,6 +316,7 @@ public class InboxService: ObservableObject {
 
         storage.saveInboxUnreadCount(state.unreadCount)
         storage.saveInboxNextCursor(state.nextCursor)
+        storage.saveInboxCacheProfileId(profileId)
         if let lastFetch = state.lastFetchTime {
             storage.saveInboxLastFetch(lastFetch.timeIntervalSince1970)
         }
@@ -305,6 +324,12 @@ public class InboxService: ObservableObject {
 
     private func restoreCachedState() {
         guard let storage = storage else { return }
+
+        // A cache written for another profile (or before the owner key existed) is not ours.
+        if let owner = storage.getInboxCacheProfileId(), owner != profileId {
+            storage.clearInboxCache()
+            return
+        }
 
         guard let messagesJson = storage.getInboxMessages(),
               let data = messagesJson.data(using: .utf8),
