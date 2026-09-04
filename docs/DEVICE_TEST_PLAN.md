@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 28 run(s)**: 77 pass, 2 fail, 17 pass with caveat, 66 not yet run. Details per row in the Result column and in section 5.
+**Status after 29 run(s)**: 77 pass, 2 fail, 17 pass with caveat, 66 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -608,6 +608,13 @@ Rebuilt with the re-attach fix; cold start; block fd4de9a7-… as flyout left/ri
 Rebuilt with the flyout panel; flyout right with the carousel block; other banner types re-checked by the tester and unaffected.
 
 - Flyout panel was correct in shape but filled the screen width and most of the height on the phone, so it looked like a popup at the bottom. Capped to 72 % width / 60 % height; popup and bars confirmed unaffected by the tester.
+
+### Run 28 — new Flyout block with a 200x600 image (2026-09-04)
+
+New block 'Flyout banner' (addef82d-…, left, placeholder image 200x600); build before the 72 % / 60 % cap.
+
+- Flyout: showing/hiding and bannerClose tracked; panel anchored at the bottom but still 353 pt wide and screen-high because the build predates the size cap (re-test after rebuild).
+- Renderer bug: image blocks were stretched to the content width; the web renders them at 'width: 100%; max-width: src.width', so a 200 px image stayed 200 px. Fixed: images capped at their source width, aligned per textAlign, placeholder keeps the source aspect ratio.
 
 ## Appendix A. Temp-code snippets
 
