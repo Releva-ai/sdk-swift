@@ -160,6 +160,33 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         })
     }
 
+    /// A design taller than the cap scrolls inside a 60 %-high panel instead of covering the page.
+    @MainActor
+    func testFlyoutCapsTallDesign() throws {
+        var tall = design(rowColor: "#3A3FE0")
+        var body = tall["body"]!.objectValue!
+        var rows = body["rows"]!.arrayValue!
+        var row = rows[0].objectValue!
+        var columns = row["columns"]!.arrayValue!
+        var column = columns[0].objectValue!
+        var contents = column["contents"]!.arrayValue!
+        for i in 0..<14 {
+            contents.append(["type": "text", "values": ["text": .string("<p>Line \(i) of a very long design</p>"), "fontSize": "18px", "containerPadding": "10px", "color": "#FFFFFF"]])
+        }
+        column["contents"] = .array(contents); columns[0] = .object(column)
+        row["columns"] = .array(columns); rows[0] = .object(row)
+        body["rows"] = .array(rows); tall["body"] = .object(body)
+
+        try snapshot(named: "flyout_tall", configure: { vm in
+            vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "left", design: tall)
+        }, check: { host, window in
+            guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
+            let safeHeight = window.bounds.height - host.safeAreaInsets.top - host.safeAreaInsets.bottom
+            XCTAssertLessThanOrEqual(panel.height, safeHeight * 0.6 + 1, "tall design is capped to 60 % and scrolls")
+            XCTAssertGreaterThan(panel.height, safeHeight * 0.5, "the cap is used, not a shorter fallback")
+        })
+    }
+
     @MainActor
     func testFlyoutLeftSnapshot() throws {
         try snapshot(named: "flyout_left", configure: { vm in

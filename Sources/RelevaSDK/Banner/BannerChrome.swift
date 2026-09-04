@@ -98,23 +98,7 @@ enum BannerChrome {
         }
         .frame(width: width)
 
-        if fullHeight {
-            ScrollView { rendered }
-                .frame(height: maxHeight)
-        } else if #available(iOS 16.0, *) {
-            // No `.frame(maxHeight:)` here: that modifier grows to whatever height is offered,
-            // so the card filled the screen with blank space above and below a short design
-            // (snapshot, run 23). `ViewThatFits` alone gives the content's own height, or the
-            // capped scrolling area when the design is taller than the screen.
-            ViewThatFits(in: .vertical) {
-                rendered
-                ScrollView { rendered }
-                    .frame(height: maxHeight)
-            }
-        } else {
-            ScrollView { rendered }
-                .frame(maxHeight: maxHeight)
-        }
+        CappedHeightContent(maxHeight: maxHeight, forceScroll: fullHeight) { rendered }
     }
 
     // MARK: - Flyout Banner
@@ -321,5 +305,46 @@ enum BannerChrome {
         if let color = DesignRenderer.parseColor(bodyValues["popupOverlay_backgroundColor"]) { return color }
         if let color = DesignRenderer.parseColor(banner.cssStyles["overlayColor"]) { return color }
         return Color.black.opacity(0.5)
+    }
+}
+
+// MARK: - Capped height
+
+private struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// Shows `content` at its own height, or inside a scroll view of `maxHeight` when it is taller
+/// (or when `forceScroll` asks for the full height).
+///
+/// `ViewThatFits` could not do this: it compares the content with the height it is *offered*,
+/// which in the overlay window is the whole safe area, so a 60 % cap was never applied (device
+/// run 29); and wrapping it in `frame(maxHeight:)` stretched a short design to that height
+/// (run 23). Measuring the content once and choosing explicitly does both right.
+struct CappedHeightContent<Content: View>: View {
+    let maxHeight: CGFloat
+    let forceScroll: Bool
+    @ViewBuilder let content: () -> Content
+
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        let measured = content()
+            .background(
+                GeometryReader { geometry in
+                    Color.clear.preference(key: ContentHeightKey.self, value: geometry.size.height)
+                }
+            )
+
+        Group {
+            if forceScroll || contentHeight > maxHeight {
+                ScrollView { measured }
+                    .frame(height: maxHeight)
+            } else {
+                measured
+            }
+        }
+        .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
     }
 }
