@@ -136,6 +136,41 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         })
     }
 
+    /// Flyout contract (web: fixed, bottom 0, left/right 20 px, width auto, no overlay): one
+    /// content-sized panel at the bottom of the safe area, 20 pt in from its side, never the
+    /// whole screen, and the rest of the screen passes touches through.
+    @MainActor
+    func testFlyoutRightSnapshot() throws {
+        try snapshot(named: "flyout_right", configure: { vm in
+            vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "right", design: design(rowColor: "#3A3FE0"))
+        }, check: { host, window in
+            XCTAssertFalse(host.coversScreen, "a flyout has no overlay")
+            guard let panel = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(panel.maxX, window.bounds.width - 20, accuracy: 0.5, "20 pt from the right edge")
+            // The scene-less test window reports its own bottom inset (more than the 34 pt
+            // requested); the contract is "flush with whatever the bottom safe-area edge is".
+            XCTAssertGreaterThanOrEqual(host.safeAreaInsets.bottom, 34)
+            XCTAssertEqual(panel.maxY, window.bounds.height - host.safeAreaInsets.bottom, accuracy: 0.5, "sits on the bottom safe-area edge")
+            XCTAssertLessThan(panel.height, window.bounds.height / 2, "a short design stays a panel")
+            XCTAssertGreaterThan(panel.minY, host.safeAreaInsets.top, "never under the status bar")
+        })
+    }
+
+    @MainActor
+    func testFlyoutLeftSnapshot() throws {
+        try snapshot(named: "flyout_left", configure: { vm in
+            vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "left", design: design(rowColor: "#3A3FE0"))
+        }, check: { host, window in
+            guard let panel = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(panel.minX, 20, accuracy: 0.5, "20 pt from the left edge")
+            XCTAssertEqual(panel.maxY, window.bounds.height - host.safeAreaInsets.bottom, accuracy: 0.5)
+        })
+    }
+
     @MainActor
     func testBottomBarSnapshot() throws {
         try snapshot(named: "bar_bottom", configure: { vm in

@@ -185,14 +185,15 @@ final class BannerOverlayWindow: UIWindow {
 }
 
 /// Collects the screen-space frames of the overlay banners for `BannerOverlayWindow.hitTest`.
-private struct BannerFramesKey: PreferenceKey {
+struct BannerFramesKey: PreferenceKey {
     static var defaultValue: [CGRect] = []
     static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) {
         value.append(contentsOf: nextValue())
     }
 }
 
-private extension View {
+extension View {
+    /// Registers this view's screen-space frame as touch-claiming for `BannerOverlayWindow`.
     func reportBannerFrame() -> some View {
         background(
             GeometryReader { geometry in
@@ -272,8 +273,9 @@ private struct BannerOverlayContent: View {
             }
 
             if let flyout = viewModel.flyoutBanner {
+                // The flyout reports its own panel frame; the GeometryReader around it is
+                // screen-sized and must not claim touches.
                 BannerChrome.flyout(flyout, viewModel: viewModel, onLinkTap: host.onLinkTap)
-                    .reportBannerFrame()
             }
 
             if let popup = viewModel.popupBanner {

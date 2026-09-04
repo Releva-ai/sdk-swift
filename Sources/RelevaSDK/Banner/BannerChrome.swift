@@ -56,6 +56,7 @@ enum BannerChrome {
                         width: cardWidth,
                         maxHeight: maxHeight,
                         fullHeight: wantsFullHeight,
+                        dismissForLink: { viewModel.dismissPopup(banner, track: false) },
                         onLinkTap: onLinkTap
                     )
 
@@ -83,12 +84,13 @@ enum BannerChrome {
         width: CGFloat,
         maxHeight: CGFloat,
         fullHeight: Bool,
+        dismissForLink: @escaping () -> Void,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
         let rendered = Group {
             if let design = banner.design {
                 DesignRenderer.render(design: design, maxWidth: width) { url in
-                    viewModel.dismissPopup(banner, track: false)
+                    dismissForLink()
                     viewModel.trackClick(banner)
                     onLinkTap(url)
                 }
@@ -117,6 +119,12 @@ enum BannerChrome {
 
     // MARK: - Flyout Banner
 
+    /// Mirrors the web SDK's flyout (`render.js`): a content-sized panel anchored at the bottom
+    /// of the screen, 20 pt in from the left or right edge, with no dimmed overlay — the page
+    /// around it stays usable. Width is the design's `popupWidth`/`contentWidth` capped to the
+    /// screen minus the margins; height follows the content and scrolls when taller than the
+    /// safe area. The close button sits inside the panel's top-right corner like the popup's.
+    /// (Device run 26: the previous full-height sheet put the X under the status bar.)
     @ViewBuilder
     static func flyout(
         _ banner: BannerResponse,
@@ -126,66 +134,58 @@ enum BannerChrome {
         let bodyValues = DesignRenderer.getDesignBodyValues(banner)
         let bgImageMap = bodyValues["backgroundImage"]
         let hasBodyBgImage = !(bgImageMap?["url"]?.stringValue ?? "").isEmpty
-        let overlayColor = getOverlayColor(banner)
         let isLeft = banner.displayPosition == "left"
-        let flyoutWidth = UIScreen.main.bounds.width * 0.8
+        let sideMargin: CGFloat = 20
+        let designWidth = DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"])
+            ?? DesignRenderer.parseDimensionRaw(bodyValues["contentWidth"])
+            ?? 360
+        let cornerRadius = DesignRenderer.parseDimensionRaw(bodyValues["borderRadius"]) ?? 0
+        let panelColor = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
+            ?? DesignRenderer.parseColor(bodyValues["backgroundColor"])
+            ?? .white
 
-        ZStack {
-            // Overlay
-            overlayColor
-                .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
+        GeometryReader { geometry in
+            let width = max(120, min(designWidth, geometry.size.width - 2 * sideMargin))
+            let maxHeight = max(geometry.size.height - 20, 120)
+
+            ZStack(alignment: .topTrailing) {
+                popupContent(
+                    banner,
+                    viewModel: viewModel,
+                    width: width,
+                    maxHeight: maxHeight,
+                    fullHeight: false,
+                    dismissForLink: { viewModel.dismissFlyout(banner, track: false) },
+                    onLinkTap: onLinkTap
+                )
+
+                closeButton(for: banner, size: 32) {
                     viewModel.dismissFlyout(banner)
                 }
-
-            HStack(spacing: 0) {
-                if !isLeft { Spacer() }
-
-                VStack(spacing: 0) {
-                    // Close button on outer edge
-                    HStack {
-                        if isLeft { Spacer() }
-                        closeButton(for: banner, size: 32) {
-                            viewModel.dismissFlyout(banner)
-                        }
-                        .padding(8)
-                        if !isLeft { Spacer() }
-                    }
-
-                    // Scrollable content
-                    ScrollView {
-                        if let design = banner.design {
-                            DesignRenderer.render(
-                                design: design,
-                                maxWidth: flyoutWidth,
-                                transparentBody: hasBodyBgImage
-                            ) { url in
-                                viewModel.dismissFlyout(banner, track: false)
-                                viewModel.trackClick(banner)
-                                onLinkTap(url)
+                .padding(8)
+            }
+            .frame(width: width)
+            .background(
+                Group {
+                    if hasBodyBgImage, let bgInfo = DesignRenderer.parseBackgroundImage(bgImageMap, forceCover: true) {
+                        CachedRemoteImage(url: bgInfo.url) { phase in
+                            if case .success(let image) = phase {
+                                image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
                             }
                         }
+                    } else {
+                        panelColor
                     }
                 }
-                .frame(width: flyoutWidth)
-                .background(
-                    Group {
-                        if hasBodyBgImage, let bgInfo = DesignRenderer.parseBackgroundImage(bgImageMap, forceCover: true) {
-                            CachedRemoteImage(url: bgInfo.url) { phase in
-                                if case .success(let image) = phase {
-                                    image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
-                                }
-                            }
-                        } else {
-                            Color.white
-                        }
-                    }
-                )
-                .shadow(radius: 10)
-
-                if isLeft { Spacer() }
-            }
-            .edgesIgnoringSafeArea(.all)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            // The web panel has a 1 px #888 border.
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).stroke(Color(white: 0.53), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.25), radius: 16, y: 6)
+            .reportBannerFrame()
+            .padding(isLeft ? .leading : .trailing, sideMargin)
+            .frame(width: geometry.size.width, height: geometry.size.height,
+                   alignment: isLeft ? .bottomLeading : .bottomTrailing)
         }
     }
 
