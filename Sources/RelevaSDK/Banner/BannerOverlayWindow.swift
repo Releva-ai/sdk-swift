@@ -274,8 +274,16 @@ private struct BannerOverlayContent: View {
 
             if let flyout = viewModel.flyoutBanner {
                 // The flyout reports its own panel frame; the GeometryReader around it is
-                // screen-sized and must not claim touches.
-                BannerChrome.flyout(flyout, viewModel: viewModel, onLinkTap: host.onLinkTap)
+                // screen-sized and must not claim touches. It ignores the bottom safe area so
+                // the sheet reaches the screen bottom; the inset keeps content above the
+                // home indicator.
+                BannerChrome.flyout(
+                    flyout,
+                    viewModel: viewModel,
+                    bottomInset: host.safeAreaInsets.bottom,
+                    onLinkTap: host.onLinkTap
+                )
+                .ignoresSafeArea(.container, edges: .bottom)
             }
 
             if let popup = viewModel.popupBanner {

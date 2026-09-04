@@ -154,13 +154,13 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             // The scene-less test window reports its own bottom inset (more than the 34 pt
             // requested); the contract is "flush with whatever the bottom safe-area edge is".
             XCTAssertGreaterThanOrEqual(host.safeAreaInsets.bottom, 34)
-            XCTAssertEqual(panel.maxY, window.bounds.height - host.safeAreaInsets.bottom, accuracy: 0.5, "sits on the bottom safe-area edge")
+            XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "reaches the screen bottom")
             XCTAssertLessThan(panel.height, window.bounds.height / 2, "a short design stays a panel")
             XCTAssertGreaterThan(panel.minY, host.safeAreaInsets.top, "never under the status bar")
         })
     }
 
-    /// A design taller than the cap scrolls inside a 60 %-high panel instead of covering the page.
+    /// A design taller than the screen grows to just under the status bar and scrolls there.
     @MainActor
     func testFlyoutCapsTallDesign() throws {
         var tall = design(rowColor: "#3A3FE0")
@@ -181,9 +181,8 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "left", design: tall)
         }, check: { host, window in
             guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
-            let safeHeight = window.bounds.height - host.safeAreaInsets.top - host.safeAreaInsets.bottom
-            XCTAssertLessThanOrEqual(panel.height, safeHeight * 0.6 + 1, "tall design is capped to 60 % and scrolls")
-            XCTAssertGreaterThan(panel.height, safeHeight * 0.5, "the cap is used, not a shorter fallback")
+            XCTAssertEqual(panel.minY, host.safeAreaInsets.top, accuracy: 1, "grows up to the status bar, never under it")
+            XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "reaches the screen bottom")
         })
     }
 
@@ -223,7 +222,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
                 return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
             }
             XCTAssertEqual(panel.minX, 0, accuracy: 0.5, "flush with the left edge")
-            XCTAssertEqual(panel.maxY, window.bounds.height - host.safeAreaInsets.bottom, accuracy: 0.5)
+            XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5)
         })
     }
 

@@ -84,6 +84,7 @@ enum BannerChrome {
         width: CGFloat,
         maxHeight: CGFloat,
         fullHeight: Bool,
+        bottomInset: CGFloat = 0,
         dismissForLink: @escaping () -> Void,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
@@ -98,7 +99,7 @@ enum BannerChrome {
         }
         .frame(width: width)
 
-        CappedHeightContent(maxHeight: maxHeight, forceScroll: fullHeight) { rendered }
+        CappedHeightContent(maxHeight: maxHeight, forceScroll: fullHeight, bottomInset: bottomInset) { rendered }
     }
 
     // MARK: - Flyout Banner
@@ -116,6 +117,7 @@ enum BannerChrome {
     static func flyout(
         _ banner: BannerResponse,
         viewModel: BannerDisplayViewModel,
+        bottomInset: CGFloat = 0,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
         let bodyValues = DesignRenderer.getDesignBodyValues(banner)
@@ -126,13 +128,23 @@ enum BannerChrome {
             ?? DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"])
             ?? DesignRenderer.parseDimensionRaw(bodyValues["contentWidth"])
             ?? 360
-        let panelColor = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
+        // Behind the content and under the home indicator: the first row's colour when it has
+        // one, so the strip reads as part of the design; else the body colour, else white.
+        let firstRow = banner.design?["body"]?["rows"]?.arrayValue?.first?.objectValue ?? [:]
+        let firstRowValues = firstRow["values"]?.objectValue ?? [:]
+        let panelColor = DesignRenderer.parseColor(firstRowValues["backgroundColor"])
+            ?? DesignRenderer.parseColor(firstRowValues["columnsBackgroundColor"])
+            ?? DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
             ?? DesignRenderer.parseColor(bodyValues["backgroundColor"])
             ?? .white
 
+        // `geometry` spans from the top of the safe area to the bottom of the screen (the
+        // caller ignores the bottom safe area): the sheet may grow up to just under the status
+        // bar and then scrolls, and it reaches the screen bottom with the content kept above
+        // the home indicator by `bottomInset`.
         GeometryReader { geometry in
             let width = max(160, min(designWidth, geometry.size.width * 0.72))
-            let maxHeight = max(160, geometry.size.height * 0.6)
+            let maxHeight = max(160, geometry.size.height - bottomInset)
 
             ZStack(alignment: .topTrailing) {
                 popupContent(
@@ -141,6 +153,7 @@ enum BannerChrome {
                     width: width,
                     maxHeight: maxHeight,
                     fullHeight: false,
+                    bottomInset: bottomInset,
                     dismissForLink: { viewModel.dismissFlyout(banner, track: false) },
                     onLinkTap: onLinkTap
                 )
@@ -320,6 +333,11 @@ private struct ContentHeightKey: PreferenceKey {
 struct CappedHeightContent<Content: View>: View {
     let maxHeight: CGFloat
     let forceScroll: Bool
+    /// Space to keep clear below the content (the home indicator when the container reaches
+    /// the screen bottom). Added as padding when the content is shown as is; when it scrolls,
+    /// the scroll view is given the extra height and its content is inset by the same amount,
+    /// so the last line stops above the indicator while the panel colour fills the strip.
+    var bottomInset: CGFloat = 0
     @ViewBuilder let content: () -> Content
 
     @State private var contentHeight: CGFloat = 0
@@ -334,10 +352,10 @@ struct CappedHeightContent<Content: View>: View {
 
         Group {
             if forceScroll || contentHeight > maxHeight {
-                ScrollView { measured }
-                    .frame(height: maxHeight)
+                ScrollView { measured.padding(.bottom, bottomInset) }
+                    .frame(height: maxHeight + bottomInset)
             } else {
-                measured
+                measured.padding(.bottom, bottomInset)
             }
         }
         .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
