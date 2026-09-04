@@ -24,6 +24,7 @@ public class StorageService {
         case pushToken = "rlv_push_token"
         case deviceType = "rlv_device_type"
         case pushTokenUploadedAt = "rlv_push_token_uploaded_at"
+        case pushTokenProfileId = "rlv_push_token_profile_id"
 
         // Settings
         case sdkVersion = "rlv_sdk_version"
@@ -247,6 +248,7 @@ public class StorageService {
         userDefaults.removeObject(forKey: StorageKey.pushToken.rawValue)
         userDefaults.removeObject(forKey: StorageKey.deviceType.rawValue)
         userDefaults.removeObject(forKey: StorageKey.pushTokenUploadedAt.rawValue)
+        userDefaults.removeObject(forKey: StorageKey.pushTokenProfileId.rawValue)
     }
 
     /// Record the timestamp of the last successful push-token upload to the backend.
@@ -261,6 +263,22 @@ public class StorageService {
             return nil
         }
         return Date(timeIntervalSince1970: interval)
+    }
+
+    /// Record which profile the token was last uploaded for. A token upload binds the token
+    /// to `(deviceId, profileId)` on the backend, so a profile change must re-upload even
+    /// when the token itself is unchanged and recent.
+    public func savePushTokenProfileId(_ profileId: String?) {
+        if let profileId = profileId {
+            userDefaults.set(profileId, forKey: StorageKey.pushTokenProfileId.rawValue)
+        } else {
+            userDefaults.removeObject(forKey: StorageKey.pushTokenProfileId.rawValue)
+        }
+    }
+
+    /// The profile the token was last uploaded for, if any.
+    public func getPushTokenProfileId() -> String? {
+        userDefaults.string(forKey: StorageKey.pushTokenProfileId.rawValue)
     }
 
     // MARK: - Profile Merge Management

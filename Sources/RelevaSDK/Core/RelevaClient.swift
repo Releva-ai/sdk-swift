@@ -209,6 +209,10 @@ public class RelevaClient {
             InboxService.shared.updateProfileId(profileId)
         }
 
+        // Re-bind the push token to the new profile. `refreshPushToken` is a no-op without a
+        // provider, and its throttle lets a profile change through (see completePushTokenRefresh).
+        if self.profileChanged && pushTokenProvider != nil {
+            refreshPushToken()
         }
     }
 
@@ -655,15 +659,16 @@ public class RelevaClient {
             )
         } catch {
             if config.enableDebugLogging {
-                print("RelevaSDK: ✗ Failed to register push token: \(error.localizedDescription)")
+                relevaLog("RelevaSDK: ✗ Failed to register push token: \(error.localizedDescription)")
             }
             throw error
         }
 
         storage.savePushTokenUploadedAt(Date())
+        storage.savePushTokenProfileId(profileId)
 
         if config.enableDebugLogging {
-            print("RelevaSDK: ✓ Successfully registered push token for \(deviceType.rawValue)")
+            relevaLog("RelevaSDK: ✓ Successfully registered push token for \(deviceType.rawValue)")
         }
     }
 
@@ -724,12 +729,19 @@ public class RelevaClient {
         let tokenChanged = (stored?.token != token)
         let lastUpload = storage.getPushTokenUploadedAt()
         let isStale = lastUpload.map { Date().timeIntervalSince($0) > RelevaClient.pushTokenRefreshInterval } ?? true
+        // The backend binds the token to (deviceId, profileId); a login/logout since the last
+        // upload needs a new upload even when the token is unchanged and recent (device run 16:
+        // the new profile never received the token because this check looked at the token only).
+        let profileChangedSinceUpload = (storage.getPushTokenProfileId() != profileId)
 
-        guard tokenChanged || isStale else {
+        guard tokenChanged || isStale || profileChangedSinceUpload else {
             if config.enableDebugLogging {
-                print("RelevaSDK: refreshPushToken - token unchanged and uploaded recently, skipping")
+                relevaLog("RelevaSDK: refreshPushToken - token unchanged, same profile and uploaded recently, skipping")
             }
             return
+        }
+        if profileChangedSinceUpload && !tokenChanged && !isStale && config.enableDebugLogging {
+            relevaLog("RelevaSDK: refreshPushToken - profile changed since the last upload, re-registering")
         }
 
         // Failures are already logged by `registerPushToken`; a background refresh has
