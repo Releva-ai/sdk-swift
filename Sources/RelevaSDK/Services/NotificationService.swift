@@ -292,64 +292,69 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         let categoryId = content.categoryIdentifier
 
         if config.enableDebugLogging {
-            print("=== RELEVA SDK: NOTIFICATION TAP RECEIVED ===")
-            print("=== TIMESTAMP: \(Date()) ===")
+            relevaLog("=== RELEVA SDK: NOTIFICATION TAP RECEIVED ===")
+            relevaLog("=== TIMESTAMP: \(Date()) ===")
 
-            print("\nRelevaSDK: 📱 NOTIFICATION DETAILS:")
-            print("RelevaSDK:   - Title: '\(content.title)'")
-            print("RelevaSDK:   - Body: '\(content.body)'")
-            print("RelevaSDK:   - Subtitle: '\(content.subtitle)'")
-            print("RelevaSDK:   - Category ID: '\(categoryId)'")
-            print("RelevaSDK:   - Action ID: '\(response.actionIdentifier)'")
-            print("RelevaSDK:   - Badge: \(String(describing: content.badge))")
+            relevaLog("\nRelevaSDK: 📱 NOTIFICATION DETAILS:")
+            relevaLog("RelevaSDK:   - Title: '\(content.title)'")
+            relevaLog("RelevaSDK:   - Body: '\(content.body)'")
+            relevaLog("RelevaSDK:   - Subtitle: '\(content.subtitle)'")
+            relevaLog("RelevaSDK:   - Category ID: '\(categoryId)'")
+            relevaLog("RelevaSDK:   - Action ID: '\(response.actionIdentifier)'")
+            relevaLog("RelevaSDK:   - Badge: \(String(describing: content.badge))")
 
-            print("\nRelevaSDK: 📦 FULL USER INFO (Raw):")
-            print("RelevaSDK: \(userInfo)")
+            relevaLog("\nRelevaSDK: 📦 FULL USER INFO (Raw):")
+            relevaLog("RelevaSDK: \(userInfo)")
 
-            print("\nRelevaSDK: 🔑 USER INFO KEYS:")
-            print("RelevaSDK:   Keys found: \(userInfo.keys.map { String(describing: $0) }.joined(separator: ", "))")
+            relevaLog("\nRelevaSDK: 🔑 USER INFO KEYS:")
+            relevaLog("RelevaSDK:   Keys found: \(userInfo.keys.map { String(describing: $0) }.joined(separator: ", "))")
 
-            print("\nRelevaSDK: 📋 KEY-VALUE PAIRS:")
+            relevaLog("\nRelevaSDK: 📋 KEY-VALUE PAIRS:")
             for (key, value) in userInfo {
-                print("RelevaSDK:   [\(key)] = \(value)")
+                relevaLog("RelevaSDK:   [\(key)] = \(value)")
 
                 if let dict = value as? [String: Any] {
-                    print("RelevaSDK:     ↳ This is a dictionary with keys: \(dict.keys.joined(separator: ", "))")
+                    relevaLog("RelevaSDK:     ↳ This is a dictionary with keys: \(dict.keys.joined(separator: ", "))")
                     for (subKey, subValue) in dict {
-                        print("RelevaSDK:       [\(subKey)] = \(subValue)")
+                        relevaLog("RelevaSDK:       [\(subKey)] = \(subValue)")
                     }
                 }
             }
 
-            print("\nRelevaSDK: 🔍 CHECKING FOR 'data' KEY:")
+            relevaLog("\nRelevaSDK: 🔍 CHECKING FOR 'data' KEY:")
             if let data = userInfo["data"] as? [String: Any] {
-                print("RelevaSDK:   ✓ Found 'data' dictionary!")
-                print("RelevaSDK:   Data keys: \(data.keys.joined(separator: ", "))")
+                relevaLog("RelevaSDK:   ✓ Found 'data' dictionary!")
+                relevaLog("RelevaSDK:   Data keys: \(data.keys.joined(separator: ", "))")
                 for (key, value) in data {
-                    print("RelevaSDK:     data[\(key)] = \(value)")
+                    relevaLog("RelevaSDK:     data[\(key)] = \(value)")
                 }
             } else {
-                print("RelevaSDK:   ✗ No 'data' key found as dictionary")
+                relevaLog("RelevaSDK:   ✗ No 'data' key found as dictionary")
                 if let dataString = userInfo["data"] as? String {
-                    print("RelevaSDK:   ⚠️  'data' exists but is a STRING: \(dataString)")
+                    relevaLog("RelevaSDK:   ⚠️  'data' exists but is a STRING: \(dataString)")
                 }
             }
 
-            print("\nRelevaSDK: 🎯 FCM/GCM MESSAGE ID:")
+            relevaLog("\nRelevaSDK: 🎯 FCM/GCM MESSAGE ID:")
             if let gcmMessageId = userInfo["gcm.message_id"] as? String {
-                print("RelevaSDK:   ✓ FCM Message ID: \(gcmMessageId)")
+                relevaLog("RelevaSDK:   ✓ FCM Message ID: \(gcmMessageId)")
             } else {
-                print("RelevaSDK:   ✗ No FCM message ID found")
+                relevaLog("RelevaSDK:   ✗ No FCM message ID found")
             }
 
-            print("\nRelevaSDK: 🔔 APS (Apple Push Service) DATA:")
+            relevaLog("\nRelevaSDK: 🔔 APS (Apple Push Service) DATA:")
             if let aps = userInfo["aps"] as? [String: Any] {
-                print("RelevaSDK:   ✓ Found 'aps': \(aps)")
+                relevaLog("RelevaSDK:   ✓ Found 'aps': \(aps)")
             } else {
-                print("RelevaSDK:   ✗ No 'aps' found")
+                relevaLog("RelevaSDK:   ✗ No 'aps' found")
             }
 
-            print("\nRelevaSDK: 🏷️  Is Releva notification: \(categoryId.hasPrefix("RELEVA"))")
+            // Same test as willPresent: the category is REQUIRE_INTERACTION on pushes the
+            // extension did not touch, so the category prefix alone under-reports.
+            let isReleva = categoryId.hasPrefix("RELEVA")
+                || (userInfo["click_action"] as? String)?.hasPrefix("RELEVA_") == true
+                || ((userInfo["data"] as? [String: Any])?["click_action"] as? String)?.hasPrefix("RELEVA_") == true
+            relevaLog("\nRelevaSDK: 🏷️  Is Releva notification: \(isReleva)")
         }
 
         // Handle ALL notifications, not just Releva ones (for Firebase compatibility)
