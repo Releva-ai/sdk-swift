@@ -481,13 +481,35 @@ public struct DesignRenderer {
     static func stripHtml(_ html: String) -> String {
         // Remove HTML tags
         var text = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-        // Decode HTML entities
-        text = text.replacingOccurrences(of: "&amp;", with: "&")
-        text = text.replacingOccurrences(of: "&lt;", with: "<")
-        text = text.replacingOccurrences(of: "&gt;", with: ">")
-        text = text.replacingOccurrences(of: "&quot;", with: "\"")
-        text = text.replacingOccurrences(of: "&#39;", with: "'")
-        text = text.replacingOccurrences(of: "&nbsp;", with: " ")
+        // Decode HTML entities. Numeric forms first (&#8594; / &#x2192;), then the named ones
+        // Unlayer's editor emits for punctuation and arrows; `&amp;` last so a literal "&amp;lt;"
+        // is not decoded twice.
+        if let regex = try? NSRegularExpression(pattern: "&#(x[0-9a-fA-F]+|[0-9]+);") {
+            let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed()
+            for match in matches {
+                guard let whole = Range(match.range, in: text),
+                      let numberRange = Range(match.range(at: 1), in: text) else { continue }
+                let number = String(text[numberRange])
+                let scalarValue = number.hasPrefix("x")
+                    ? UInt32(number.dropFirst(), radix: 16)
+                    : UInt32(number)
+                if let value = scalarValue, let scalar = Unicode.Scalar(value) {
+                    text.replaceSubrange(whole, with: String(Character(scalar)))
+                }
+            }
+        }
+        let named: [(String, String)] = [
+            ("&nbsp;", " "), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"),
+            ("&rarr;", "→"), ("&larr;", "←"), ("&uarr;", "↑"), ("&darr;", "↓"), ("&harr;", "↔"),
+            ("&hellip;", "…"), ("&mdash;", "—"), ("&ndash;", "–"), ("&bull;", "•"), ("&middot;", "·"),
+            ("&lsquo;", "‘"), ("&rsquo;", "’"), ("&ldquo;", "“"), ("&rdquo;", "”"), ("&laquo;", "«"), ("&raquo;", "»"),
+            ("&copy;", "©"), ("&reg;", "®"), ("&trade;", "™"), ("&euro;", "€"), ("&pound;", "£"), ("&yen;", "¥"),
+            ("&deg;", "°"), ("&times;", "×"), ("&divide;", "÷"), ("&plusmn;", "±"), ("&check;", "✓"), ("&hearts;", "♥"),
+            ("&amp;", "&")
+        ]
+        for (entity, replacement) in named {
+            text = text.replacingOccurrences(of: entity, with: replacement)
+        }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
