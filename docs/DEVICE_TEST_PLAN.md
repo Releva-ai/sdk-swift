@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 32 run(s)**: 77 pass, 2 fail, 17 pass with caveat, 66 not yet run. Details per row in the Result column and in section 5.
+**Status after 33 run(s)**: 77 pass, 2 fail, 17 pass with caveat, 66 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -222,7 +222,7 @@ Fixtures: one banner block per displayType and trigger, attached to the Home pag
 | BAN-02 | P0 | 1.0.4 | Popup, delaySeconds 5 | Trigger delaySeconds = 5. | Open Home, count. | Appears ~5 s later. Leaving Home before 5 s cancels it. | Impression only when shown. | ✅ Run 20: block f34a090d-… switched to a delay trigger; screen view at 08:51:30, impression at 08:51:40 → the banner appeared after the configured delay and was counted once. |
 | BAN-03 | P0 | 1.0.4 | Bar top with close | Bar banner, displayPosition top. | Open Home → tap X. | Bar under the safe area; close removes it; log `Banner action 'bannerClose' tracked`. | Timeline `bannerClose`; Redis suppression set → reopening Home does not return this banner (unless `showAlways`). | ❌ Run 20: bar under the status bar, own white frame, small X. Run 21: bar under the navigation bar (title and cart button on top). Run 22 (overlay window): the bar is above the app's bars now, but the overlay window came up in LIGHT appearance over the dark app — the status-bar strip was white with dark status-bar text — and the strip took Unlayer's default body colour (#F7F8F9). Fixed on the branch: the overlay window copies the app window's light/dark style; the strip takes the first row's or first column's colour, else the system background of the current theme. Tracking (bannerClick / bannerClose) was correct in every run. Re-test: top bar with a dark strip and white status-bar text above the title. |
 | BAN-04 | P0 | 1.0.4 | Bar bottom | displayPosition bottom. | Open Home. | Bar above the tab bar / home indicator. | Impression. | ⚠️ Run 21: bottom bar edge to edge with the X in the corner, tap on the strip closed it (bannerClose 202). With the overlay window it will now cover the tab bar like the web bottom:0 bar; confirm that is wanted and that the home-indicator strip takes the row colour. |
-| BAN-05 | P0 | 1.0.4 | Flyout left and right | Two flyout blocks. | Open Home. | Side panels slide in from the configured side; close works. | Impressions and closes. | ⚠️ Run 26: full-height sheet, X under the status bar → web-spec panel. Runs 27–29: read as a popup at the bottom → caps, image source width, measured height. Run 30: tester's mobile spec → edge-flush sheet hugging its content, no gap or radius (deliberate deviation from the web's 20 px gap). Run 31: sheet with a long design showed a white band under the content (SwiftUI's home-indicator inset over the body colour) and stopped at 60 %; now grows up to the status bar before scrolling, reaches the screen bottom, first-row colour under the home indicator. Contract tests encode all of it. Re-test left/right with the long design; CTO to confirm the mobile deviation. |
+| BAN-05 | P0 | 1.0.4 | Flyout left and right | Two flyout blocks. | Open Home. | Side panels slide in from the configured side; close works. | Impressions and closes. | ⚠️ Runs 26–31: from a full-height sheet with the X under the status bar, via the web-spec bottom panel, to the tester's mobile spec (edge-flush, content-hugging width, up to the status bar, to the screen bottom). Run 32: white showed in the top bounce and at the bottom (Unlayer's body colour) and a short design would not have filled a tall phone. Now a full-height drawer on every screen: first row's colour above the content, last row's below (filler, bounce, home-indicator strip). Contract tests on 375x667, 393x852, 430x932. Re-test left/right with the long and a short design; CTO to confirm the mobile deviation from the web flyout. |
 | BAN-06 | P0 | 1.0.4 | Static banners: afterbegin / beforeend / afterend / replace | Four static blocks with cssSelector `#home-content`. | Open Home. | Inline placement matches the strategy; `replace` hides the grid. Impression on display. | Impressions. | ✅ Run 2: block f34a090d-… is configured Static / After / #home-content in the admin (screenshot). SDK appended it below the Home content, edge to edge above the tab bar, no close button, persistent while Home is shown: exactly the static afterend contract. Other three strategies not yet run. |
 | BAN-07 | P0 | 1.0.4 | Static banner with a non-matching selector | cssSelector `#other`. | Open Home. | Not rendered, no impression. | No event. | ☐ |
 | BAN-08 | P0 | 1.0.4 | scrollPercentage 50 | Trigger scrollPercentage 50. | Open Home, scroll halfway. | Appears when the grid passes 50 %. | Impression. | ☐ |
@@ -635,6 +635,12 @@ Rebuilt with the 72 % / 60 % caps, image source width and measured height cap; F
 Edge-flush flyout build; Flyout block redesigned with headings, text, image, button (long).
 
 - Sheet flush left and hugging the width as specified; white band at the bottom (SwiftUI inset over the body colour) and capped at 60 %. Now grows to just under the status bar, reaches the screen bottom with the row colour under the home indicator, scrolls beyond.
+
+### Run 32 — flyout scroll edges and phone sizes (2026-09-04)
+
+Full-height flyout build; long Flyout block; scrolled to both ends; question about smaller/larger phones.
+
+- Drawer looked right in place; the top bounce and the bottom strip showed the body's near-white colour, and a design shorter than the screen would have left the drawer short. Now: always full height on any phone, first-row colour above, last-row colour below; verified in the simulator on 375x667, 393x852 and 430x932.
 
 ## Appendix A. Temp-code snippets
 
