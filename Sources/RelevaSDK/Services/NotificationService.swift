@@ -17,6 +17,35 @@ public class NotificationService: NSObject {
     /// Callback for notification taps
     public var onNotificationTapped: ((UNNotificationResponse) -> Void)?
 
+    /// A navigation request the SDK posted through NotificationCenter that the host app may not
+    /// have observed yet. On a cold launch from a notification tap, iOS delivers the tap to the SDK
+    /// before most apps have registered their observers, so the post would otherwise be lost.
+    /// Apps that register late call `consumePendingNavigation()` once their navigation is ready.
+    public struct PendingNavigation {
+        /// `RelevaNavigateToScreen`, `RelevaNavigateToURL` or `RelevaNavigateToInbox`.
+        public let name: Notification.Name
+        /// The same `userInfo` the NotificationCenter post carried.
+        public let userInfo: [String: Any]
+        public let postedAt: Date
+    }
+
+    /// The most recent navigation request, kept until consumed. Overwritten by a newer tap.
+    public private(set) var pendingNavigation: PendingNavigation?
+
+    /// Returns the most recent navigation request and clears it.
+    @discardableResult
+    public func consumePendingNavigation() -> PendingNavigation? {
+        let pending = pendingNavigation
+        pendingNavigation = nil
+        return pending
+    }
+
+    /// Remember the request, then post it for observers that already exist.
+    private func postNavigation(_ name: Notification.Name, userInfo: [String: Any]) {
+        pendingNavigation = PendingNavigation(name: name, userInfo: userInfo, postedAt: Date())
+        NotificationCenter.default.post(name: name, object: nil, userInfo: userInfo)
+    }
+
     // MARK: - Initializers
 
     /// Initialize notification service
@@ -496,35 +525,31 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 if let scheme = url.scheme, scheme != "http" && scheme != "https" {
                     // Internal deep link - post notification for app to handle
                     if config.enableDebugLogging {
-                        print("RelevaSDK: Detected internal deep link, posting to app")
+                        relevaLog("RelevaSDK: Detected internal deep link, posting to app")
                     }
-                    NotificationCenter.default.post(
-                        name: Notification.Name("RelevaNavigateToURL"),
-                        object: nil,
-                        userInfo: ["url": url]
-                    )
+                    postNavigation(Notification.Name("RelevaNavigateToURL"), userInfo: ["url": url])
                 } else {
                     // External URL - open in browser/external app
                     if config.enableDebugLogging {
-                        print("RelevaSDK: Opening external URL")
+                        relevaLog("RelevaSDK: Opening external URL")
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         self.safelyOpenURL(url)
                     }
                 }
             } else if config.enableDebugLogging {
-                print("RelevaSDK: ⚠️ No 'navigate_to_url' in data")
+                relevaLog("RelevaSDK: ⚠️ No 'navigate_to_url' in data")
             }
 
         case "inbox":
             if config.enableDebugLogging {
-                print("RelevaSDK: Navigating to inbox")
+                relevaLog("RelevaSDK: Navigating to inbox")
             }
             navigateToInbox(parameters: data["navigate_to_parameters"] as? String)
 
         default:
             if config.enableDebugLogging {
-                print("RelevaSDK: ⚠️ Unknown target type: \(target)")
+                relevaLog("RelevaSDK: ⚠️ Unknown target type: \(target)")
             }
         }
     }
@@ -543,14 +568,10 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             }
         }
 
-        NotificationCenter.default.post(
-            name: Notification.Name("RelevaNavigateToScreen"),
-            object: nil,
-            userInfo: userInfo
-        )
+        postNavigation(Notification.Name("RelevaNavigateToScreen"), userInfo: userInfo)
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Navigate to screen: \(screen)")
+            relevaLog("RelevaSDK: Navigate to screen: \(screen)")
         }
     }
 
@@ -566,14 +587,10 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             }
         }
 
-        NotificationCenter.default.post(
-            name: Notification.Name("RelevaNavigateToInbox"),
-            object: nil,
-            userInfo: userInfo
-        )
+        postNavigation(Notification.Name("RelevaNavigateToInbox"), userInfo: userInfo)
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Navigate to inbox posted")
+            relevaLog("RelevaSDK: Navigate to inbox posted")
         }
     }
 
@@ -659,22 +676,24 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 openURL(sharedApplication, openSelector, url, [:]) { success in
                     if self.config.enableDebugLogging {
                         if success {
-                            print("RelevaSDK: ✓ URL opened successfully")
+                            relevaLog("RelevaSDK: ✓ URL opened successfully")
                         } else {
-                            print("RelevaSDK: ✗ Failed to open URL")
+                            relevaLog("RelevaSDK: ✗ Failed to open URL")
                         }
                     }
                 }
             } else if config.enableDebugLogging {
-                print("RelevaSDK: ✗ Cannot access open method")
+                relevaLog("RelevaSDK: ✗ Cannot access open method")
             }
         } else if config.enableDebugLogging {
-            print("RelevaSDK: ✗ Cannot open URL (not allowed)")
+            relevaLog("RelevaSDK: ✗ Cannot open URL (not allowed)")
         }
         #else
         if config.enableDebugLogging {
-            print("RelevaSDK: ⚠️ URL opening not available on this platform")
+            relevaLog("RelevaSDK: ⚠️ URL opening not available on this platform")
         }
         #endif
     }
 }
+
+extension NotificationService.PendingNavigation: @unchecked Sendable {}

@@ -780,8 +780,17 @@ public class RelevaClient {
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Push engagement tracking enabled")
+            relevaLog("RelevaSDK: Push engagement tracking enabled")
         }
+    }
+
+    /// The navigation request from the most recent notification tap that the app has not handled
+    /// yet, cleared on return. The SDK posts `RelevaNavigateToScreen` / `RelevaNavigateToURL` /
+    /// `RelevaNavigateToInbox` at tap time; on a cold launch that post can precede the app's
+    /// observers, so call this once navigation is set up and handle the result the same way.
+    @discardableResult
+    public func consumePendingNavigation() -> NotificationService.PendingNavigation? {
+        notificationService?.consumePendingNavigation()
     }
 
     /// Track engagement from push notification
