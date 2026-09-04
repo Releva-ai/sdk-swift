@@ -99,6 +99,7 @@ public class BannerManagerService {
     private func triggerBanner(_ banner: BannerResponse) {
         guard !displayedBanners.contains(banner.token) else { return }
         displayedBanners.insert(banner.token)
+        relevaLog("RelevaSDK: Banner trigger fired: \(banner.token.prefix(8)) (\(banner.trigger ?? "?"))")
         BannerDisplayController.shared.showBanner(banner)
     }
 

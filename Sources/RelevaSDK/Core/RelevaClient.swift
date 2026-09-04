@@ -449,6 +449,15 @@ public class RelevaClient {
         // Reset change flags after successful request
         resetChangeFlags()
 
+        if config.enableDebugLogging {
+            let banners = response.banners.map { banner -> String in
+                let threshold = banner.scrollPercentage.map { " \($0)%" } ?? ""
+                let delay = banner.delaySeconds.map { $0 > 0 ? " \($0)s" : "" } ?? ""
+                return "\(banner.token.prefix(8)) \(banner.displayType ?? "?")/\(banner.trigger ?? "?")\(threshold)\(delay)"
+            }
+            relevaLog("RelevaSDK: Response: \(response.banners.count) banner(s) [\(banners.joined(separator: ", "))], \(response.stories.count) story(ies), nps \(response.nps == nil ? "no" : "yes")")
+        }
+
         // Initialize banners from response
         if !response.banners.isEmpty {
             bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
