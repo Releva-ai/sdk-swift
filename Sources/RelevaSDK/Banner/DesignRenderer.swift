@@ -39,7 +39,7 @@ public struct DesignRenderer {
         .background(
             Group {
                 if !transparentBody, let bgInfo = parseBackgroundImage(bodyValues["backgroundImage"], forceCover: true) {
-                    AsyncImage(url: bgInfo.url) { phase in
+                    CachedRemoteImage(url: bgInfo.url) { phase in
                         if case .success(let image) = phase {
                             image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
                         }
@@ -86,7 +86,7 @@ public struct DesignRenderer {
         .background(
             Group {
                 if let bgInfo = parseBackgroundImage(rowValues["backgroundImage"]) {
-                    AsyncImage(url: bgInfo.url) { phase in
+                    CachedRemoteImage(url: bgInfo.url) { phase in
                         if case .success(let image) = phase {
                             image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
                         }
@@ -167,7 +167,7 @@ public struct DesignRenderer {
         let href = actionValues["href"]?.stringValue ?? ""
 
         if !url.isEmpty, let imageUrl = URL(string: url) {
-            let imageView = AsyncImage(url: imageUrl) { phase in
+            let imageView = CachedRemoteImage(url: imageUrl) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().scaledToFit()
@@ -627,7 +627,7 @@ struct CarouselView: View {
         let href = image["action"]?["values"]?["href"]?.stringValue ?? ""
 
         if !url.isEmpty, let imageUrl = URL(string: url) {
-            let imageView = AsyncImage(url: imageUrl) { phase in
+            let imageView = CachedRemoteImage(url: imageUrl) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().scaledToFill()
@@ -668,7 +668,7 @@ struct CarouselView: View {
                     let url = image["src"]?["url"]?.stringValue ?? ""
 
                     if !url.isEmpty, let imageUrl = URL(string: url) {
-                        AsyncImage(url: imageUrl) { phase in
+                        CachedRemoteImage(url: imageUrl) { phase in
                             switch phase {
                             case .success(let img):
                                 img.resizable().scaledToFill()

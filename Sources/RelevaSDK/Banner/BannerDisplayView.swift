@@ -153,13 +153,39 @@ class BannerDisplayViewModel: ObservableObject {
     func stop() {
         cancellable?.cancel()
         cancellable = nil
+        prefetchTasks.forEach { $0.cancel() }
+        prefetchTasks.removeAll()
     }
+
+    /// How long an overlay banner waits for its images before it is shown anyway.
+    static let imagePrefetchTimeout: TimeInterval = 1.5
+    private var prefetchTasks: [Task<Void, Never>] = []
 
     private func handleBanner(_ banner: BannerResponse) {
         guard shouldDisplay(banner) else { return }
         guard !displayedBanners.contains(banner.token) else { return }
         displayedBanners.insert(banner.token)
 
+        // Overlay banners appear all at once: load the design's images first (bounded by
+        // `imagePrefetchTimeout`) so the card does not flash empty and fill in a moment
+        // later (device run 24). Static banners are page content and render as they load.
+        if Self.overlayDisplayTypes.contains(banner.displayType ?? ""),
+           let design = banner.design {
+            let urls = BannerImageCache.imageURLs(in: design)
+            if !urls.isEmpty {
+                let task = Task { @MainActor [weak self] in
+                    await BannerImageCache.shared.prefetch(urls, timeout: Self.imagePrefetchTimeout)
+                    guard !Task.isCancelled, let self = self else { return }
+                    self.show(banner)
+                }
+                prefetchTasks.append(task)
+                return
+            }
+        }
+        show(banner)
+    }
+
+    private func show(_ banner: BannerResponse) {
         switch banner.displayType {
         case "popup":
             popupBanner = banner

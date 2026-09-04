@@ -171,7 +171,7 @@ enum BannerChrome {
                 .background(
                     Group {
                         if hasBodyBgImage, let bgInfo = DesignRenderer.parseBackgroundImage(bgImageMap, forceCover: true) {
-                            AsyncImage(url: bgInfo.url) { phase in
+                            CachedRemoteImage(url: bgInfo.url) { phase in
                                 if case .success(let image) = phase {
                                     image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
                                 }
