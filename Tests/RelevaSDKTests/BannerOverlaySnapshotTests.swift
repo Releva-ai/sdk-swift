@@ -136,8 +136,8 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         })
     }
 
-    /// Flyout contract (web: fixed, bottom 0, left/right 20 px, width auto, no overlay): one
-    /// content-sized panel at the bottom of the safe area, 20 pt in from its side, never the
+    /// Flyout contract (mobile spec, deviating from the web's 20 px gap on purpose): one
+    /// content-sized sheet flush with its screen edge at the bottom of the safe area, never the
     /// whole screen, and the rest of the screen passes touches through.
     @MainActor
     func testFlyoutRightSnapshot() throws {
@@ -148,7 +148,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             guard let panel = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
                 return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
             }
-            XCTAssertEqual(panel.maxX, window.bounds.width - 20, accuracy: 0.5, "20 pt from the right edge")
+            XCTAssertEqual(panel.maxX, window.bounds.width, accuracy: 0.5, "flush with the right edge")
             XCTAssertLessThanOrEqual(panel.width, window.bounds.width * 0.72 + 0.5, "leaves the docking side visible")
             XCTAssertGreaterThan(panel.minX, window.bounds.width * 0.2, "clearly docked right, not centred")
             // The scene-less test window reports its own bottom inset (more than the 34 pt
@@ -187,6 +187,33 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         })
     }
 
+    /// An image-only design gets exactly its image width plus padding, no body colour around it.
+    @MainActor
+    func testFlyoutHugsAnImageOnlyDesign() throws {
+        let imageDesign: [String: JSONValue] = [
+            "body": [
+                "values": ["contentWidth": "500px", "backgroundColor": "#F7F8F9", "popupWidth": "600px"],
+                "rows": [[
+                    "values": ["padding": "0px"],
+                    "columns": [[
+                        "values": ["padding": "0px"],
+                        "contents": [[
+                            "type": "image",
+                            "values": ["containerPadding": "10px", "src": ["url": "https://example.invalid/x.jpg", "width": 200, "height": 600]],
+                        ]],
+                    ]],
+                ]],
+            ],
+        ]
+        try snapshot(named: "flyout_image", configure: { vm in
+            vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "left", design: imageDesign)
+        }, check: { host, _ in
+            guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
+            XCTAssertEqual(panel.width, 220, accuracy: 0.5, "200 px image + 10 px padding each side")
+            XCTAssertEqual(panel.minX, 0, accuracy: 0.5)
+        })
+    }
+
     @MainActor
     func testFlyoutLeftSnapshot() throws {
         try snapshot(named: "flyout_left", configure: { vm in
@@ -195,7 +222,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             guard let panel = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
                 return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
             }
-            XCTAssertEqual(panel.minX, 20, accuracy: 0.5, "20 pt from the left edge")
+            XCTAssertEqual(panel.minX, 0, accuracy: 0.5, "flush with the left edge")
             XCTAssertEqual(panel.maxY, window.bounds.height - host.safeAreaInsets.bottom, accuracy: 0.5)
         })
     }

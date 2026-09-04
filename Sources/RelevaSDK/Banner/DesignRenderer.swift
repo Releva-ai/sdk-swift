@@ -432,6 +432,33 @@ public struct DesignRenderer {
         }
     }
 
+    /// The natural width of a design made only of image blocks: the widest image's source
+    /// width plus its horizontal container padding. `nil` when the design has any other block,
+    /// so callers fall back to the design's declared width. Lets a flyout hug its picture
+    /// instead of showing the body colour around it.
+    static func intrinsicImageWidth(in design: [String: JSONValue]) -> CGFloat? {
+        let rows = design["body"]?["rows"]?.arrayValue?.compactMap { $0.objectValue } ?? []
+        var widest: CGFloat = 0
+        var sawContent = false
+        for row in rows {
+            let rowPadding = parseEdgeInsets(row["values"]?["padding"]) ?? EdgeInsets()
+            for column in row["columns"]?.arrayValue?.compactMap({ $0.objectValue }) ?? [] {
+                let columnPadding = parseEdgeInsets(column["values"]?["padding"]) ?? EdgeInsets()
+                for content in column["contents"]?.arrayValue?.compactMap({ $0.objectValue }) ?? [] {
+                    sawContent = true
+                    guard content["type"]?.stringValue == "image",
+                          let values = content["values"]?.objectValue,
+                          let srcWidth = values["src"]?["width"]?.doubleValue, srcWidth > 0 else { return nil }
+                    let padding = parseEdgeInsets(values["containerPadding"]) ?? EdgeInsets()
+                    widest = max(widest, CGFloat(srcWidth) + padding.leading + padding.trailing
+                                 + columnPadding.leading + columnPadding.trailing
+                                 + rowPadding.leading + rowPadding.trailing)
+                }
+            }
+        }
+        return sawContent && widest > 0 ? widest : nil
+    }
+
     static func parseDimensionRaw(_ value: JSONValue?) -> CGFloat? {
         let str = "\(value?.anyValue ?? "")"
             .trimmingCharacters(in: .whitespaces)

@@ -103,12 +103,15 @@ enum BannerChrome {
 
     // MARK: - Flyout Banner
 
-    /// Mirrors the web SDK's flyout (`render.js`): a content-sized panel anchored at the bottom
-    /// of the screen, 20 pt in from the left or right edge, with no dimmed overlay — the page
-    /// around it stays usable. Width is the design's `popupWidth`/`contentWidth` capped to the
-    /// screen minus the margins; height follows the content and scrolls when taller than the
-    /// safe area. The close button sits inside the panel's top-right corner like the popup's.
-    /// (Device run 26: the previous full-height sheet put the X under the status bar.)
+    /// The mobile flyout is a sheet flush with the left or right screen edge, anchored at the
+    /// bottom of the safe area: no gap, no corner radius, width hugging the design's content
+    /// (an image-only design gets exactly its image width plus padding; otherwise the design's
+    /// width), capped to 72 % of the screen; height hugging the content, capped to 60 % with
+    /// scrolling beyond. Tester's spec, device runs 27–30. This deviates from the web flyout
+    /// (`bottom: 0; left/right: 20px; width: auto`) on purpose: on a phone the 20 px gap and
+    /// the design's 600 px width made it read as a popup lying at the bottom. The close button
+    /// sits inside the panel's top-right corner like the popup's; there is no dimmed overlay,
+    /// the page around the panel stays usable.
     @ViewBuilder
     static func flyout(
         _ banner: BannerResponse,
@@ -119,20 +122,15 @@ enum BannerChrome {
         let bgImageMap = bodyValues["backgroundImage"]
         let hasBodyBgImage = !(bgImageMap?["url"]?.stringValue ?? "").isEmpty
         let isLeft = banner.displayPosition == "left"
-        let sideMargin: CGFloat = 20
-        let designWidth = DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"])
+        let designWidth = banner.design.flatMap { DesignRenderer.intrinsicImageWidth(in: $0) }
+            ?? DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"])
             ?? DesignRenderer.parseDimensionRaw(bodyValues["contentWidth"])
             ?? 360
-        let cornerRadius = DesignRenderer.parseDimensionRaw(bodyValues["borderRadius"]) ?? 0
         let panelColor = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
             ?? DesignRenderer.parseColor(bodyValues["backgroundColor"])
             ?? .white
 
         GeometryReader { geometry in
-            // On a phone the design's 600 px width would fill the screen and the panel would
-            // read as a popup lying at the bottom (device run 27). Cap it to 72 % of the width
-            // so the free side shows which edge it is docked to, and to 60 % of the height so
-            // a tall design scrolls inside a panel instead of covering the page.
             let width = max(160, min(designWidth, geometry.size.width * 0.72))
             let maxHeight = max(160, geometry.size.height * 0.6)
 
@@ -166,12 +164,9 @@ enum BannerChrome {
                     }
                 }
             )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            // The web panel has a 1 px #888 border.
-            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).stroke(Color(white: 0.53), lineWidth: 1))
-            .shadow(color: Color.black.opacity(0.25), radius: 16, y: 6)
+            .clipped()
+            .shadow(color: Color.black.opacity(0.25), radius: 16, x: isLeft ? 4 : -4, y: 0)
             .reportBannerFrame()
-            .padding(isLeft ? .leading : .trailing, sideMargin)
             .frame(width: geometry.size.width, height: geometry.size.height,
                    alignment: isLeft ? .bottomLeading : .bottomTrailing)
         }
