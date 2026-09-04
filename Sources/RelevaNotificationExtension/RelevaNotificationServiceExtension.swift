@@ -16,11 +16,19 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
             return
         }
 
-        // Handle Firebase Messaging
-        Messaging.serviceExtension().populateNotificationContent(
-            bestAttemptContent,
-            withContentHandler: contentHandler
-        )
+        // Firebase's helper attaches `fcm_options.image` and then calls the handler it is given.
+        // Handing it the real `contentHandler` while also calling it ourselves below made iOS log
+        // "Ignoring additional replacement content replies" on every push. Firebase is only used
+        // for its image download here, and Releva pushes attach their own image below, so a
+        // non-Releva push is the only case where Firebase's reply should reach the system.
+        let isRelevaPush = Self.isRelevaMessage(bestAttemptContent.userInfo)
+        if !isRelevaPush {
+            Messaging.serviceExtension().populateNotificationContent(
+                bestAttemptContent,
+                withContentHandler: contentHandler
+            )
+            return
+        }
 
         // Check if this is a Releva notification
         // Firebase iOS puts custom data at root level, not in "data" wrapper
