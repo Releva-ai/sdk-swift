@@ -48,6 +48,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     @MainActor
     private func snapshot(
         named name: String,
+        size: CGSize = CGSize(width: 393, height: 852),
         configure: (BannerDisplayViewModel) -> Void,
         check: (BannerOverlayHost, UIWindow) -> Void = { _, _ in }
     ) throws {
@@ -66,7 +67,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
 
         // The app behind: a dark screen with a fake title and tab bar, so the layering is visible.
         let backdrop = UIHostingController(rootView: FakeApp())
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
         window.overrideUserInterfaceStyle = .dark
         window.rootViewController = backdrop
         window.makeKeyAndVisible()
@@ -155,8 +156,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             // requested); the contract is "flush with whatever the bottom safe-area edge is".
             XCTAssertGreaterThanOrEqual(host.safeAreaInsets.bottom, 34)
             XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "reaches the screen bottom")
-            XCTAssertLessThan(panel.height, window.bounds.height / 2, "a short design stays a panel")
-            XCTAssertGreaterThan(panel.minY, host.safeAreaInsets.top, "never under the status bar")
+            XCTAssertEqual(panel.minY, host.safeAreaInsets.top, accuracy: 1, "drawer fills to just under the status bar even for a short design")
         })
     }
 
@@ -211,6 +211,22 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             XCTAssertEqual(panel.width, 220, accuracy: 0.5, "200 px image + 10 px padding each side")
             XCTAssertEqual(panel.minX, 0, accuracy: 0.5)
         })
+    }
+
+    /// The drawer fills the height on small and large phones alike.
+    @MainActor
+    func testFlyoutFillsOnDifferentScreens() throws {
+        for (name, size) in [("se", CGSize(width: 375, height: 667)), ("promax", CGSize(width: 430, height: 932))] {
+            try snapshot(named: "flyout_\(name)", size: size, configure: { vm in
+                vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "right", design: design(rowColor: "#3A3FE0"))
+            }, check: { host, window in
+                guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame on \(name)") }
+                XCTAssertEqual(panel.minY, host.safeAreaInsets.top, accuracy: 1, "\(name): top under the status bar")
+                XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "\(name): bottom at the screen edge")
+                XCTAssertEqual(panel.maxX, window.bounds.width, accuracy: 0.5, "\(name): flush right")
+                XCTAssertLessThanOrEqual(panel.width, window.bounds.width * 0.72 + 0.5)
+            })
+        }
     }
 
     @MainActor

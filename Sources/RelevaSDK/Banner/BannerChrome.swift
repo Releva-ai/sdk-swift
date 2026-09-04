@@ -85,6 +85,7 @@ enum BannerChrome {
         maxHeight: CGFloat,
         fullHeight: Bool,
         bottomInset: CGFloat = 0,
+        topBleedColor: Color? = nil,
         dismissForLink: @escaping () -> Void,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
@@ -99,7 +100,7 @@ enum BannerChrome {
         }
         .frame(width: width)
 
-        CappedHeightContent(maxHeight: maxHeight, forceScroll: fullHeight, bottomInset: bottomInset) { rendered }
+        CappedHeightContent(maxHeight: maxHeight, forceScroll: fullHeight, bottomInset: bottomInset, topBleedColor: topBleedColor) { rendered }
     }
 
     // MARK: - Flyout Banner
@@ -128,20 +129,19 @@ enum BannerChrome {
             ?? DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"])
             ?? DesignRenderer.parseDimensionRaw(bodyValues["contentWidth"])
             ?? 360
-        // Behind the content and under the home indicator: the first row's colour when it has
-        // one, so the strip reads as part of the design; else the body colour, else white.
-        let firstRow = banner.design?["body"]?["rows"]?.arrayValue?.first?.objectValue ?? [:]
-        let firstRowValues = firstRow["values"]?.objectValue ?? [:]
-        let panelColor = DesignRenderer.parseColor(firstRowValues["backgroundColor"])
-            ?? DesignRenderer.parseColor(firstRowValues["columnsBackgroundColor"])
-            ?? DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
+        // Colours for the parts of the drawer the content does not cover: the first row's
+        // colour above the content (the top bounce), the last row's below it (the filler when
+        // the design is shorter than the screen, the bottom bounce, the home-indicator strip).
+        let rows = banner.design?["body"]?["rows"]?.arrayValue?.compactMap { $0.objectValue } ?? []
+        let fallback = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
             ?? DesignRenderer.parseColor(bodyValues["backgroundColor"])
-            ?? .white
+            ?? Color.white
+        let topColor = rowColor(rows.first) ?? fallback
+        let bottomColor = rowColor(rows.last) ?? fallback
 
         // `geometry` spans from the top of the safe area to the bottom of the screen (the
-        // caller ignores the bottom safe area): the sheet may grow up to just under the status
-        // bar and then scrolls, and it reaches the screen bottom with the content kept above
-        // the home indicator by `bottomInset`.
+        // caller ignores the bottom safe area). The drawer always fills that height: content
+        // at the top, scrolling when taller, the design's colours filling the rest.
         GeometryReader { geometry in
             let width = max(160, min(designWidth, geometry.size.width * 0.72))
             let maxHeight = max(160, geometry.size.height - bottomInset)
@@ -154,6 +154,7 @@ enum BannerChrome {
                     maxHeight: maxHeight,
                     fullHeight: false,
                     bottomInset: bottomInset,
+                    topBleedColor: topColor,
                     dismissForLink: { viewModel.dismissFlyout(banner, track: false) },
                     onLinkTap: onLinkTap
                 )
@@ -163,7 +164,7 @@ enum BannerChrome {
                 }
                 .padding(8)
             }
-            .frame(width: width)
+            .frame(width: width, height: geometry.size.height, alignment: .top)
             .background(
                 Group {
                     if hasBodyBgImage, let bgInfo = DesignRenderer.parseBackgroundImage(bgImageMap, forceCover: true) {
@@ -173,7 +174,7 @@ enum BannerChrome {
                             }
                         }
                     } else {
-                        panelColor
+                        bottomColor
                     }
                 }
             )
@@ -183,6 +184,17 @@ enum BannerChrome {
             .frame(width: geometry.size.width, height: geometry.size.height,
                    alignment: isLeft ? .bottomLeading : .bottomTrailing)
         }
+    }
+
+    /// A row's visible colour: its own background, its columns' background, or the first
+    /// column's; nil when the row has none.
+    private static func rowColor(_ row: [String: JSONValue]?) -> Color? {
+        guard let row = row else { return nil }
+        let values = row["values"]?.objectValue ?? [:]
+        let firstColumn = row["columns"]?.arrayValue?.first?["values"]?.objectValue ?? [:]
+        return DesignRenderer.parseColor(values["backgroundColor"])
+            ?? DesignRenderer.parseColor(values["columnsBackgroundColor"])
+            ?? DesignRenderer.parseColor(firstColumn["backgroundColor"])
     }
 
     // MARK: - Bar Banner
@@ -338,6 +350,9 @@ struct CappedHeightContent<Content: View>: View {
     /// the scroll view is given the extra height and its content is inset by the same amount,
     /// so the last line stops above the indicator while the panel colour fills the strip.
     var bottomInset: CGFloat = 0
+    /// Drawn above the content inside the scroll view so a bounce at the top shows this colour
+    /// instead of the container's background.
+    var topBleedColor: Color? = nil
     @ViewBuilder let content: () -> Content
 
     @State private var contentHeight: CGFloat = 0
@@ -352,8 +367,16 @@ struct CappedHeightContent<Content: View>: View {
 
         Group {
             if forceScroll || contentHeight > maxHeight {
-                ScrollView { measured.padding(.bottom, bottomInset) }
-                    .frame(height: maxHeight + bottomInset)
+                ScrollView {
+                    measured
+                        .padding(.bottom, bottomInset)
+                        .background(alignment: .top) {
+                            if let color = topBleedColor {
+                                color.frame(height: 2000).offset(y: -2000)
+                            }
+                        }
+                }
+                .frame(height: maxHeight + bottomInset)
             } else {
                 measured.padding(.bottom, bottomInset)
             }
