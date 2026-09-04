@@ -70,6 +70,17 @@ public class StoryManagerService {
         }
     }
 
+    /// Call with the page's scroll position (0–100): shows every pending `scrollPercentage`
+    /// story whose threshold has been reached. Push counterpart of the polled provider.
+    public func onScroll(percentage: Int) {
+        for story in stories
+        where story.trigger == "scrollPercentage"
+            && (story.scrollPercentage ?? 0) <= percentage
+            && !displayedStories.contains(story.token) {
+            triggerStory(story)
+        }
+    }
+
     private func setupScrollTimer() {
         let scheduleBlock: () -> Void = { [weak self] in
             self?.scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in

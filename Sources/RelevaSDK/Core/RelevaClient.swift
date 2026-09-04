@@ -749,6 +749,17 @@ public class RelevaClient {
         try? await registerPushToken(token, deviceType: deviceType)
     }
 
+    // MARK: - Scroll Triggers
+
+    /// Report how far the current screen is scrolled, 0–100. Banners and stories whose trigger
+    /// is `scrollPercentage` show once the reported value reaches their threshold. Call it from
+    /// the screen's scroll view whenever the offset changes (see the example app's HomeView).
+    public func reportScrollPercentage(_ percentage: Int) {
+        let clamped = max(0, min(100, percentage))
+        bannerManager?.onScroll(percentage: clamped)
+        storyManager?.onScroll(percentage: clamped)
+    }
+
     /// Subscribe to `didBecomeActive` so that every app launch / foreground triggers
     /// `refreshPushToken()`. The first emission happens once the app finishes launching,
     /// which covers the cold-start case too.

@@ -72,6 +72,20 @@ public class BannerManagerService {
         }
     }
 
+    /// Call with the page's scroll position (0–100). Triggers every pending `scrollPercentage`
+    /// banner whose threshold has been reached. This is the push counterpart of the polled
+    /// `scrollPercentageProvider`; `RelevaClient.reportScrollPercentage` calls it. Until it
+    /// existed the scroll trigger could never fire: the client always passed a nil provider
+    /// (device run 33).
+    public func onScroll(percentage: Int) {
+        for banner in banners
+        where banner.trigger == "scrollPercentage"
+            && (banner.scrollPercentage ?? 0) <= percentage
+            && !displayedBanners.contains(banner.token) {
+            triggerBanner(banner)
+        }
+    }
+
     /// Call when the cart changes to trigger cart-based banners
     public func onCartChanged() {
         banners.filter { $0.trigger == "cartChanged" }.forEach { triggerBanner($0) }
