@@ -587,6 +587,7 @@ Tester report on the overlay-window build: bar OK; popup impression at launch wi
 - Bar banners work on the device (BAN-03/04 to confirm with screenshots).
 - New bug from the window move: popup impression tracked at cold start with nothing drawn — the window was only created on Home's appear and needs a connected scene. Now also created on scene activation and when the first banner arrives; BannerOverlay log lines added (BAN-01 fail).
 - Popup margins: resolved — the screenshots were the carousel block configured as a Bar, which by spec is a full-width strip. The tester confirmed the popup looks right on the device. A bar shows whatever design it carries; a portrait carousel as a bar covers most of the screen (product question, not a rendering bug).
+- Popup opened with an empty image area that filled in a split second later: images were loaded only once the card was on screen. Overlay banners now prefetch the design's images (1.5 s cap) before showing and the impression is tracked at that moment; images are cached in memory (commit on the branch, re-test).
 
 ## Appendix A. Temp-code snippets
 
