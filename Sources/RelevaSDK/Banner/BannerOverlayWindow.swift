@@ -1,0 +1,242 @@
+import SwiftUI
+import UIKit
+import Combine
+
+/// Hosts the overlay banners (popup, flyout, bar) of the SwiftUI `bannerDisplay` modifier in a
+/// window of their own, above the app's navigation and tab bars.
+///
+/// Drawing them inside the modified view put them *under* `NavigationStack`'s bar: the title
+/// and toolbar buttons rendered on top of a bar banner and stayed tappable (device run 21). The
+/// web SDK positions these banners `fixed` over the whole page, and this is the UIKit equivalent.
+/// Static banners stay inline in the host view; only the three overlay types move here.
+///
+/// The window passes touches through wherever no banner is drawn, so the app remains fully
+/// usable around a bar or flyout. A popup covers the screen with its dimmed overlay and takes
+/// every touch, as before.
+@MainActor
+final class BannerOverlayHost: ObservableObject {
+    static let shared = BannerOverlayHost()
+
+    @Published private(set) var viewModel: BannerDisplayViewModel?
+    private(set) var onLinkTap: (String) -> Void = { _ in }
+
+    /// The overlay window's safe-area insets, published from UIKit's layout pass because a
+    /// `GeometryReader` that ignores the safe area has reported zero on the device.
+    @Published fileprivate(set) var safeAreaInsets: UIEdgeInsets = .zero
+
+    /// Screen-space frames of the bars and flyout currently drawn; touches outside them fall
+    /// through to the app. Updated by `BannerOverlayRoot` from a preference.
+    var interactiveFrames: [CGRect] = []
+    /// `true` while a popup is shown: its overlay owns the whole screen.
+    var coversScreen = false
+
+    private var window: BannerOverlayWindow?
+    private var cancellable: AnyCancellable?
+
+    private init() {}
+
+    /// The modifier calls this on appear. The last attached view model is the one drawn.
+    func attach(_ viewModel: BannerDisplayViewModel, onLinkTap: @escaping (String) -> Void) {
+        self.viewModel = viewModel
+        self.onLinkTap = onLinkTap
+        cancellable = viewModel.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateVisibility() }
+        ensureWindow()
+        mirrorAppearance()
+        updateVisibility()
+    }
+
+    /// The modifier calls this on disappear. Only the active view model is detached, so a
+    /// screen leaving behind another that attached later does not blank the overlay.
+    func detach(_ viewModel: BannerDisplayViewModel) {
+        guard self.viewModel === viewModel else { return }
+        self.viewModel = nil
+        cancellable = nil
+        interactiveFrames = []
+        coversScreen = false
+        updateVisibility()
+    }
+
+    private func ensureWindow() {
+        if let window = window, window.windowScene != nil { return }
+
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+            return
+        }
+
+        let window = BannerOverlayWindow(windowScene: scene)
+        window.host = self
+        // Just above the app's own window; system UI stays above us.
+        window.windowLevel = .normal + 1
+        window.backgroundColor = .clear
+
+        let controller = BannerOverlayHostingController(rootView: BannerOverlayRoot(host: self))
+        controller.host = self
+        controller.view.backgroundColor = .clear
+        controller.view.isOpaque = false
+        window.rootViewController = controller
+        self.window = window
+        mirrorAppearance()
+    }
+
+    /// The overlay window is a separate view hierarchy, so it does not inherit a colour scheme
+    /// the app forces on its own window. Copy the app window's resolved style so the strip
+    /// colours and the status bar match the app (device run 22: the overlay came up light
+    /// over a dark app).
+    private func mirrorAppearance() {
+        guard let window = window else { return }
+        let appWindow = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0 !== window && $0.isKeyWindow }
+        window.overrideUserInterfaceStyle = appWindow?.traitCollection.userInterfaceStyle ?? .unspecified
+    }
+
+    /// Hidden whenever nothing is drawn, so an idle overlay window cannot get in the way.
+    private func updateVisibility() {
+        // `objectWillChange` fires before the published values change; read them on the next
+        // turn of the run loop so the decision sees the new state.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let hasContent: Bool = {
+                guard let vm = self.viewModel else { return false }
+                return vm.popupBanner != nil || vm.flyoutBanner != nil || !vm.barBanners.isEmpty
+            }()
+            self.window?.isHidden = !hasContent
+        }
+    }
+}
+
+/// Publishes the safe-area insets to the host and keeps the status bar as the app has it.
+final class BannerOverlayHostingController: UIHostingController<BannerOverlayRoot> {
+    weak var host: BannerOverlayHost?
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        host?.safeAreaInsets = view.safeAreaInsets
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if host?.safeAreaInsets != view.safeAreaInsets { host?.safeAreaInsets = view.safeAreaInsets }
+    }
+
+    override var preferredStatusBarStyle: UIStatusBarStyle { .default }
+}
+
+/// A window that only claims touches where a banner is drawn.
+final class BannerOverlayWindow: UIWindow {
+    weak var host: BannerOverlayHost?
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard let host = host else { return nil }
+        let claims = host.coversScreen || host.interactiveFrames.contains { $0.contains(point) }
+        guard claims else { return nil }
+        return super.hitTest(point, with: event)
+    }
+}
+
+/// Collects the screen-space frames of the overlay banners for `BannerOverlayWindow.hitTest`.
+private struct BannerFramesKey: PreferenceKey {
+    static var defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
+private extension View {
+    func reportBannerFrame() -> some View {
+        background(
+            GeometryReader { geometry in
+                Color.clear.preference(key: BannerFramesKey.self, value: [geometry.frame(in: .global)])
+            }
+        )
+    }
+}
+
+/// The root view of the overlay window: bars pinned to the screen edges, then the popup and
+/// flyout, all drawn with the same `BannerChrome` views the presenter uses.
+struct BannerOverlayRoot: View {
+    @ObservedObject var host: BannerOverlayHost
+
+    var body: some View {
+        // Not `ignoresSafeArea()` here: the popup and flyout centre their card inside the safe
+        // area (their dimmed overlay extends past it on its own), so a tall card never puts its
+        // close button under the status bar. The bars pin themselves to the screen edges below.
+        ZStack {
+            if let viewModel = host.viewModel {
+                BannerOverlayContent(viewModel: viewModel, host: host)
+            }
+        }
+        .onPreferenceChange(BannerFramesKey.self) { frames in
+            host.interactiveFrames = frames
+        }
+    }
+}
+
+private struct BannerOverlayContent: View {
+    @ObservedObject var viewModel: BannerDisplayViewModel
+    let host: BannerOverlayHost
+
+    private var topBars: [BannerResponse] { viewModel.barBanners.filter { $0.displayPosition != "bottom" } }
+    private var bottomBars: [BannerResponse] { viewModel.barBanners.filter { $0.displayPosition == "bottom" } }
+
+    var body: some View {
+        ZStack {
+            if !topBars.isEmpty {
+                GeometryReader { geometry in
+                    VStack(spacing: 0) {
+                        ForEach(topBars, id: \.token) { banner in
+                            BannerChrome.bar(
+                                banner,
+                                viewModel: viewModel,
+                                isBottom: false,
+                                safeAreaInset: host.safeAreaInsets.top,
+                                width: geometry.size.width,
+                                onLinkTap: host.onLinkTap
+                            )
+                        }
+                    }
+                    .reportBannerFrame()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+                .ignoresSafeArea()
+            }
+
+            if !bottomBars.isEmpty {
+                GeometryReader { geometry in
+                    VStack(spacing: 0) {
+                        ForEach(bottomBars, id: \.token) { banner in
+                            BannerChrome.bar(
+                                banner,
+                                viewModel: viewModel,
+                                isBottom: true,
+                                safeAreaInset: host.safeAreaInsets.bottom,
+                                width: geometry.size.width,
+                                onLinkTap: host.onLinkTap
+                            )
+                        }
+                    }
+                    .reportBannerFrame()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                }
+                .ignoresSafeArea()
+            }
+
+            if let flyout = viewModel.flyoutBanner {
+                BannerChrome.flyout(flyout, viewModel: viewModel, onLinkTap: host.onLinkTap)
+                    .reportBannerFrame()
+            }
+
+            if let popup = viewModel.popupBanner {
+                BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: host.onLinkTap)
+            }
+        }
+        .onAppear { host.coversScreen = viewModel.popupBanner != nil }
+        .onChange(of: viewModel.popupBanner?.token) { _ in
+            host.coversScreen = viewModel.popupBanner != nil
+        }
+    }
+}

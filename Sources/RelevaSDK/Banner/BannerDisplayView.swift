@@ -42,25 +42,15 @@ public struct BannerDisplayModifier: ViewModifier {
                 }
             }
 
-            // Bar banners (overlay)
-            ForEach(viewModel.barBanners, id: \.token) { banner in
-                barBannerView(for: banner)
-            }
-
-            // Popup overlay
-            if let popup = viewModel.popupBanner {
-                BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: onLinkTap)
-            }
-
-            // Flyout overlay
-            if let flyout = viewModel.flyoutBanner {
-                BannerChrome.flyout(flyout, viewModel: viewModel, onLinkTap: onLinkTap)
-            }
+            // Popup, flyout and bar banners are drawn by `BannerOverlayHost` in a window above
+            // the app's navigation and tab bars (see BannerOverlayWindow.swift).
         }
         .onAppear {
             viewModel.start(tracker: client, targetSelector: targetSelector, onLinkTap: onLinkTap)
+            BannerOverlayHost.shared.attach(viewModel, onLinkTap: onLinkTap)
         }
         .onDisappear {
+            BannerOverlayHost.shared.detach(viewModel)
             viewModel.stop()
         }
     }
@@ -75,30 +65,6 @@ public struct BannerDisplayModifier: ViewModifier {
                 onLinkTap(url)
             }
         }
-    }
-
-    // MARK: - Bar Banner
-
-    @ViewBuilder
-    private func barBannerView(for banner: BannerResponse) -> some View {
-        let isBottom = banner.displayPosition == "bottom"
-
-        GeometryReader { geometry in
-            VStack {
-                if isBottom { Spacer() }
-
-                BannerChrome.bar(
-                    banner,
-                    viewModel: viewModel,
-                    isBottom: isBottom,
-                    safeAreaInset: isBottom ? geometry.safeAreaInsets.bottom : geometry.safeAreaInsets.top,
-                    onLinkTap: onLinkTap
-                )
-
-                if !isBottom { Spacer() }
-            }
-        }
-        .edgesIgnoringSafeArea(isBottom ? .bottom : .top)
     }
 }
 
