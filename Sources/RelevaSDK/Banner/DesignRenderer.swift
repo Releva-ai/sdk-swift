@@ -550,6 +550,9 @@ struct CarouselView: View {
         let firstSrc = images.first?["src"]?.objectValue ?? [:]
         let width = firstSrc["width"]?.doubleValue ?? 16
         let height = firstSrc["height"]?.doubleValue ?? 9
+        // A missing or zero dimension produced an infinite/NaN ratio and CoreGraphics
+        // "invalid numeric value" errors on the device; fall back to 16:9.
+        guard width > 0, height > 0, width.isFinite, height.isFinite else { return 16.0 / 9.0 }
         return CGFloat(width / height)
     }
 
@@ -558,29 +561,43 @@ struct CarouselView: View {
             EmptyView()
         } else {
             VStack(spacing: 0) {
-                // Main image area with aspect ratio
-                ZStack {
-                    TabView(selection: $currentPage) {
-                        ForEach(Array(images.enumerated()), id: \.offset) { index, image in
-                            carouselImage(image: image)
-                                .tag(index)
+                // Main image area. The size is fixed from the available width: a page-style
+                // TabView under a bare `.aspectRatio` is measured before it has a width and
+                // passes NaN to CoreGraphics ("invalid numeric value" on the device, run 16).
+                GeometryReader { geometry in
+                    let width = geometry.size.width
+                    let height = width.isFinite && width > 0 ? width / aspectRatio : 0
+
+                    ZStack {
+                        TabView(selection: $currentPage) {
+                            ForEach(Array(images.enumerated()), id: \.offset) { index, image in
+                                carouselImage(image: image)
+                                    .frame(width: width, height: height)
+                                    .clipped()
+                                    .tag(index)
+                            }
+                        }
+                        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+
+                        // Tap zones on the outer thirds step back/forward; the middle third is not
+                        // hit-tested so the image's own link tap still reaches `onLinkTap`
+                        // (previously the overlay covered the whole image and links were unreachable).
+                        HStack(spacing: 0) {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture { goPrevious() }
+
+                            Color.clear
+                                .allowsHitTesting(false)
+
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture { goNext() }
                         }
                     }
-                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                    .aspectRatio(aspectRatio, contentMode: .fit)
-
-                    // Left/right tap navigation overlay
-                    HStack(spacing: 0) {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { goPrevious() }
-
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { goNext() }
-                    }
-                    .aspectRatio(aspectRatio, contentMode: .fit)
+                    .frame(width: width, height: height)
                 }
+                .aspectRatio(aspectRatio, contentMode: .fit)
 
                 // Indicators
                 if images.count > 1 {
