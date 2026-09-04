@@ -160,6 +160,8 @@ class BannerDisplayViewModel: ObservableObject {
         cancellable = nil
         prefetchTasks.forEach { $0.cancel() }
         prefetchTasks.removeAll()
+        queuedPopups.removeAll()
+        queuedFlyouts.removeAll()
     }
 
     /// How long an overlay banner waits for its images before it is shown anyway.
@@ -198,8 +200,19 @@ class BannerDisplayViewModel: ObservableObject {
         }
         switch banner.displayType {
         case "popup":
+            // One popup at a time. A second one arriving while the first is up used to replace
+            // it, so the first was counted but never seen (device run 36). It now waits and is
+            // shown, and counted, when the first is closed.
+            if popupBanner != nil {
+                queuedPopups.append(banner)
+                return
+            }
             popupBanner = banner
         case "flyout":
+            if flyoutBanner != nil {
+                queuedFlyouts.append(banner)
+                return
+            }
             flyoutBanner = banner
         case "bar":
             barBanners.append(banner)
@@ -212,12 +225,29 @@ class BannerDisplayViewModel: ObservableObject {
         trackImpression(banner)
     }
 
+    /// Popups and flyouts that arrived while another was on screen; each is shown, and its
+    /// impression counted, when the current one is dismissed.
+    private var queuedPopups: [BannerResponse] = []
+    private var queuedFlyouts: [BannerResponse] = []
+
     private func shouldDisplay(_ banner: BannerResponse) -> Bool {
-        guard banner.design != nil else { return false }
+        // No design, or a design with nothing in it (an Unlayer body with no rows or no
+        // content), has nothing to show; showing it drew an empty card (device run 36).
+        guard let design = banner.design, Self.hasRenderableContent(design) else { return false }
         guard banner.displayType != "custom" else { return false }
         if overlayOnly { return Self.overlayDisplayTypes.contains(banner.displayType ?? "") }
         if banner.displayType == "static" && banner.cssSelector != targetSelector { return false }
         return true
+    }
+
+    /// `true` when at least one row has a column with content.
+    static func hasRenderableContent(_ design: [String: JSONValue]) -> Bool {
+        let rows = design["body"]?["rows"]?.arrayValue ?? []
+        return rows.contains { row in
+            (row["columns"]?.arrayValue ?? []).contains { column in
+                !(column["contents"]?.arrayValue ?? []).isEmpty
+            }
+        }
     }
 
     private func addStaticBanner(_ banner: BannerResponse) {
@@ -240,12 +270,14 @@ class BannerDisplayViewModel: ObservableObject {
         popupBanner = nil
         displayedBanners.remove(banner.token)
         if track { trackDismiss(banner) }
+        if !queuedPopups.isEmpty { show(queuedPopups.removeFirst()) }
     }
 
     func dismissFlyout(_ banner: BannerResponse, track: Bool = true) {
         flyoutBanner = nil
         displayedBanners.remove(banner.token)
         if track { trackDismiss(banner) }
+        if !queuedFlyouts.isEmpty { show(queuedFlyouts.removeFirst()) }
     }
 
     func dismissBar(_ banner: BannerResponse) {

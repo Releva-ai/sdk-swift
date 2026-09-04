@@ -19,8 +19,48 @@ final class BannerDisplayViewModelTests: XCTestCase {
             displayType: displayType,
             cssSelector: cssSelector,
             displayStrategy: displayStrategy,
-            design: ["body": ["rows": []]]
+            design: Self.minimalDesign
         )
+    }
+
+    /// One row, one column, one text block: the smallest design the view model will display.
+    static let minimalDesign: [String: JSONValue] = [
+        "body": ["rows": [["columns": [["contents": [["type": "text", "values": ["text": "x"]]]]]]]],
+    ]
+
+    // MARK: - empty designs and popup queueing
+
+    @MainActor
+    func testDesignWithoutContentIsNotShownOrCounted() {
+        let viewModel = BannerDisplayViewModel()
+        let tracker = BannerTrackerSpy()
+        defer { viewModel.stop() }
+        viewModel.start(tracker: tracker, targetSelector: "", onLinkTap: nil)
+        BannerDisplayController.shared.showBanner(BannerResponse(token: "empty", displayType: "popup", design: ["body": ["rows": []]]))
+        drainMainQueue()
+        XCTAssertNil(viewModel.popupBanner)
+        XCTAssertTrue(tracker.impressions.isEmpty)
+    }
+
+    @MainActor
+    func testSecondPopupWaitsForTheFirstAndIsCountedWhenShown() {
+        let viewModel = BannerDisplayViewModel()
+        let tracker = BannerTrackerSpy()
+        defer { viewModel.stop() }
+        viewModel.start(tracker: tracker, targetSelector: "", onLinkTap: nil)
+        let first = banner("p1", displayType: "popup")
+        let second = banner("p2", displayType: "popup")
+        BannerDisplayController.shared.showBanner(first)
+        BannerDisplayController.shared.showBanner(second)
+        drainMainQueue()
+
+        XCTAssertEqual(viewModel.popupBanner?.token, "p1", "the first stays up")
+        XCTAssertEqual(tracker.impressions, ["p1"], "the waiting one is not counted yet")
+
+        viewModel.dismissPopup(first)
+        XCTAssertEqual(viewModel.popupBanner?.token, "p2", "the second follows")
+        XCTAssertEqual(tracker.impressions, ["p1", "p2"])
+        XCTAssertEqual(tracker.actions, ["p1:bannerClose"])
     }
 
     // MARK: - overlayOnly (BannerPresenter's mode)

@@ -264,7 +264,7 @@ final class BannerPresenterTests: XCTestCase {
         BannerResponse(
             token: token,
             displayType: displayType,
-            design: ["body": ["rows": []]]
+            design: BannerDisplayViewModelTests.minimalDesign
         )
     }
 
