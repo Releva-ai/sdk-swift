@@ -136,7 +136,7 @@ public class RelevaClient {
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Initialized with realm '\(realm)'")
+            relevaLog("RelevaSDK: Initialized with realm '\(realm)'")
         }
     }
 
@@ -158,7 +158,7 @@ public class RelevaClient {
         storage.saveDeviceId(deviceId)
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Device ID set to '\(deviceId)' (changed: \(deviceIdChanged))")
+            relevaLog("RelevaSDK: Device ID set to '\(deviceId)' (changed: \(deviceIdChanged))")
         }
     }
 
@@ -180,7 +180,7 @@ public class RelevaClient {
             storage.clearMergeProfileIds()
 
             if config.enableDebugLogging {
-                print("RelevaSDK: Profile ID changed to '\(profileId)' (skip merge = true)")
+                relevaLog("RelevaSDK: Profile ID changed to '\(profileId)' (skip merge = true)")
             }
         } else if let prevId = previousId, prevId != profileId {
             // Normal behavior: merge previous profile with new one
@@ -223,7 +223,7 @@ public class RelevaClient {
     public func setAppVersion(_ version: String) {
         self.appVersion = version
         if config.enableDebugLogging {
-            print("RelevaSDK: App version set to '\(version)'")
+            relevaLog("RelevaSDK: App version set to '\(version)'")
         }
     }
 
@@ -257,7 +257,7 @@ public class RelevaClient {
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Cart updated with \(cart.products.count) products (changed: \(cartChanged))")
+            relevaLog("RelevaSDK: Cart updated with \(cart.products.count) products (changed: \(cartChanged))")
         }
 
         // Automatically sync cart changes to backend (skip on first initialization).
@@ -280,11 +280,11 @@ public class RelevaClient {
                 do {
                     _ = try await self.send(prepared)
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Cart changes synced to backend")
+                        relevaLog("RelevaSDK: Cart changes synced to backend")
                     }
                 } catch {
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Failed to sync cart changes - \(error)")
+                        relevaLog("RelevaSDK: Failed to sync cart changes - \(error)")
                     }
                 }
             }
@@ -304,7 +304,7 @@ public class RelevaClient {
         storage.clearCart()
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Cart storage cleared")
+            relevaLog("RelevaSDK: Cart storage cleared")
         }
     }
 
@@ -333,7 +333,7 @@ public class RelevaClient {
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Wishlist updated with \(products.count) products (changed: \(wishlistChanged))")
+            relevaLog("RelevaSDK: Wishlist updated with \(products.count) products (changed: \(wishlistChanged))")
         }
 
         // Automatically sync wishlist changes to backend (skip on first initialization).
@@ -348,11 +348,11 @@ public class RelevaClient {
                 do {
                     _ = try await self.send(prepared)
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Wishlist changes synced to backend")
+                        relevaLog("RelevaSDK: Wishlist changes synced to backend")
                     }
                 } catch {
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Failed to sync wishlist changes - \(error)")
+                        relevaLog("RelevaSDK: Failed to sync wishlist changes - \(error)")
                     }
                 }
             }
@@ -372,7 +372,7 @@ public class RelevaClient {
         storage.clearWishlist()
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Wishlist storage cleared")
+            relevaLog("RelevaSDK: Wishlist storage cleared")
         }
     }
 
@@ -569,11 +569,11 @@ public class RelevaClient {
             do {
                 try await self.networkService.sendBannerImpression(payload)
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Banner impression tracked for \(banner.token)")
+                    relevaLog("RelevaSDK: Banner impression tracked for \(banner.token)")
                 }
             } catch {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Failed to track banner impression: \(error)")
+                    relevaLog("RelevaSDK: Failed to track banner impression: \(error)")
                 }
             }
         }
@@ -600,11 +600,11 @@ public class RelevaClient {
             do {
                 try await self.networkService.sendBannerAction(payload)
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Banner action '\(action)' tracked for \(banner.token)")
+                    relevaLog("RelevaSDK: Banner action '\(action)' tracked for \(banner.token)")
                 }
             } catch {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Failed to track banner action: \(error)")
+                    relevaLog("RelevaSDK: Failed to track banner action: \(error)")
                 }
             }
         }
@@ -625,7 +625,7 @@ public class RelevaClient {
         // Ensure deviceId is set before registering
         guard let deviceId = self.deviceId else {
             if config.enableDebugLogging {
-                print("RelevaSDK: ERROR - Cannot register push token without deviceId. Call setDeviceId() first.")
+                relevaLog("RelevaSDK: ERROR - Cannot register push token without deviceId. Call setDeviceId() first.")
             }
             throw RelevaError.missingRequiredField("deviceId must be set before registering push token")
         }
@@ -635,7 +635,7 @@ public class RelevaClient {
         lastPushTokenDeviceType = deviceType
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Registering push token for \(deviceType.rawValue)...")
+            relevaLog("RelevaSDK: Registering push token for \(deviceType.rawValue)...")
         }
 
         // Register with backend
@@ -673,14 +673,14 @@ public class RelevaClient {
         guard config.enablePushNotifications else { return }
         guard let provider = pushTokenProvider else {
             if config.enableDebugLogging {
-                print("RelevaSDK: refreshPushToken skipped - pushTokenProvider not set")
+                relevaLog("RelevaSDK: refreshPushToken skipped - pushTokenProvider not set")
             }
             return
         }
 
         guard !isRefreshingPushToken else {
             if config.enableDebugLogging {
-                print("RelevaSDK: refreshPushToken skipped - refresh already in flight")
+                relevaLog("RelevaSDK: refreshPushToken skipped - refresh already in flight")
             }
             return
         }
@@ -703,7 +703,7 @@ public class RelevaClient {
 
         guard let token = token, !token.isEmpty else {
             if config.enableDebugLogging {
-                print("RelevaSDK: refreshPushToken - provider returned empty token")
+                relevaLog("RelevaSDK: refreshPushToken - provider returned empty token")
             }
             return
         }
@@ -888,11 +888,11 @@ public class RelevaClient {
             do {
                 try await self.networkService.sendPushEvent(payload)
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Story action '\(action)' tracked for \(story.token)")
+                    relevaLog("RelevaSDK: Story action '\(action)' tracked for \(story.token)")
                 }
             } catch {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Failed to track story action: \(error)")
+                    relevaLog("RelevaSDK: Failed to track story action: \(error)")
                 }
             }
         }

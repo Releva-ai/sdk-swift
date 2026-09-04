@@ -162,7 +162,7 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
 
                 content.attachments = [attachment]
             } catch {
-                print("RelevaSDK: Failed to attach image: \(error)")
+                relevaLog("RelevaSDK: Failed to attach image: \(error)")
             }
 
             completion(content)

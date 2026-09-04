@@ -31,17 +31,17 @@ public class NotificationService: NSObject {
     /// Initialize notification service
     public func initialize() {
         if config.enableDebugLogging {
-            print("RelevaSDK: Setting notification center delegate...")
+            relevaLog("RelevaSDK: Setting notification center delegate...")
         }
         notificationCenter.delegate = self
 
         // Verify delegate was set
         if config.enableDebugLogging {
             if notificationCenter.delegate === self {
-                print("RelevaSDK: ✓ Notification center delegate set successfully")
+                relevaLog("RelevaSDK: ✓ Notification center delegate set successfully")
             } else {
-                print("RelevaSDK: ✗ WARNING: Failed to set notification center delegate!")
-                print("RelevaSDK: Current delegate: \(String(describing: notificationCenter.delegate))")
+                relevaLog("RelevaSDK: ✗ WARNING: Failed to set notification center delegate!")
+                relevaLog("RelevaSDK: Current delegate: \(String(describing: notificationCenter.delegate))")
             }
         }
 
@@ -57,7 +57,7 @@ public class NotificationService: NSObject {
         registerDefaultCategory()
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Notification service initialized")
+            relevaLog("RelevaSDK: Notification service initialized")
         }
     }
 
@@ -73,12 +73,12 @@ public class NotificationService: NSObject {
             granted = try await notificationCenter.requestAuthorization(options: options)
         } catch {
             if config.enableDebugLogging {
-                print("RelevaSDK: Authorization error: \(error)")
+                relevaLog("RelevaSDK: Authorization error: \(error)")
             }
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Notification authorization: \(granted ? "granted" : "denied")")
+            relevaLog("RelevaSDK: Notification authorization: \(granted ? "granted" : "denied")")
         }
 
         if granted {
@@ -146,7 +146,7 @@ public class NotificationService: NSObject {
         notificationCenter.setNotificationCategories([category])
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Registered notification category with button: \(buttonText)")
+            relevaLog("RelevaSDK: Registered notification category with button: \(buttonText)")
         }
     }
 
@@ -190,11 +190,11 @@ public class NotificationService: NSObject {
         notificationCenter.add(request) { error in
             if let error = error {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Failed to schedule notification: \(error)")
+                    relevaLog("RelevaSDK: Failed to schedule notification: \(error)")
                 }
             } else {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Notification scheduled: \(identifier)")
+                    relevaLog("RelevaSDK: Notification scheduled: \(identifier)")
                 }
             }
         }
@@ -225,7 +225,7 @@ public class NotificationService: NSObject {
                 content.attachments = [attachment]
             } catch {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Failed to create image attachment: \(error)")
+                    relevaLog("RelevaSDK: Failed to create image attachment: \(error)")
                 }
             }
 
@@ -245,10 +245,10 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         if config.enableDebugLogging {
-            print("=== RELEVA SDK: NOTIFICATION WILL PRESENT (App in Foreground) ===")
-            print("RelevaSDK: Title: \(notification.request.content.title)")
-            print("RelevaSDK: Body: \(notification.request.content.body)")
-            print("RelevaSDK: UserInfo: \(notification.request.content.userInfo)")
+            relevaLog("=== RELEVA SDK: NOTIFICATION WILL PRESENT (App in Foreground) ===")
+            relevaLog("RelevaSDK: Title: \(notification.request.content.title)")
+            relevaLog("RelevaSDK: Body: \(notification.request.content.body)")
+            relevaLog("RelevaSDK: UserInfo: \(notification.request.content.userInfo)")
         }
 
         // Check if it's a Releva notification via userInfo (categoryIdentifier is unreliable for direct APNs)
@@ -260,7 +260,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             let isReleva = categoryPrefix
                 || RelevaClient.shared?.isRelevaMessage(userInfo: userInfo) == true
             if enableDebugLogging {
-                print("RelevaSDK: Is Releva: \(isReleva)")
+                relevaLog("RelevaSDK: Is Releva: \(isReleva)")
             }
 
             if isReleva {
@@ -359,48 +359,48 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         Task { @MainActor in
             if let client = RelevaClient.shared {
                 if enableDebugLogging {
-                    print("RelevaSDK: Client available, tracking engagement...")
+                    relevaLog("RelevaSDK: Client available, tracking engagement...")
                 }
                 if actionIdentifier == "RELEVA_ACTION_BUTTON" {
                     client.trackEngagement(userInfo: userInfo, type: .clicked)
                     if enableDebugLogging {
-                        print("RelevaSDK: ✓ Tracked as clicked")
+                        relevaLog("RelevaSDK: ✓ Tracked as clicked")
                     }
                 } else {
                     client.trackEngagement(userInfo: userInfo, type: .opened)
                     if enableDebugLogging {
-                        print("RelevaSDK: ✓ Tracked as opened")
+                        relevaLog("RelevaSDK: ✓ Tracked as opened")
                     }
                 }
             } else if enableDebugLogging {
-                print("RelevaSDK: ⚠️ Client not available for tracking")
+                relevaLog("RelevaSDK: ⚠️ Client not available for tracking")
             }
         }
 
         // Handle navigation for all notifications
         if config.enableDebugLogging {
-            print("RelevaSDK: Attempting to handle navigation...")
+            relevaLog("RelevaSDK: Attempting to handle navigation...")
         }
         handleNotificationNavigation(from: userInfo)
         if config.enableDebugLogging {
-            print("RelevaSDK: ✓ Navigation handled")
+            relevaLog("RelevaSDK: ✓ Navigation handled")
         }
 
         // Call custom handler
         if let handler = onNotificationTapped {
             if config.enableDebugLogging {
-                print("RelevaSDK: Calling custom tap handler...")
+                relevaLog("RelevaSDK: Calling custom tap handler...")
             }
             handler(response)
             if config.enableDebugLogging {
-                print("RelevaSDK: ✓ Custom handler called")
+                relevaLog("RelevaSDK: ✓ Custom handler called")
             }
         } else if config.enableDebugLogging {
-            print("RelevaSDK: No custom tap handler set")
+            relevaLog("RelevaSDK: No custom tap handler set")
         }
 
         if config.enableDebugLogging {
-            print("=== RELEVA SDK: NOTIFICATION TAP COMPLETE ===")
+            relevaLog("=== RELEVA SDK: NOTIFICATION TAP COMPLETE ===")
         }
         completionHandler()
     }
@@ -408,8 +408,8 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     /// Handle navigation from notification
     private func handleNotificationNavigation(from userInfo: [AnyHashable: Any]) {
         if config.enableDebugLogging {
-            print("RelevaSDK: handleNotificationNavigation called")
-            print("RelevaSDK: userInfo keys: \(userInfo.keys)")
+            relevaLog("RelevaSDK: handleNotificationNavigation called")
+            relevaLog("RelevaSDK: userInfo keys: \(userInfo.keys)")
         }
 
         // Convert AnyHashable keys to String keys for easier handling
@@ -426,13 +426,13 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         if let data = stringUserInfo["data"] as? [String: Any] {
             if config.enableDebugLogging {
-                print("RelevaSDK: ✓ Found 'data' wrapper (cross-platform format)")
-                print("RelevaSDK: Data keys: \(data.keys)")
+                relevaLog("RelevaSDK: ✓ Found 'data' wrapper (cross-platform format)")
+                relevaLog("RelevaSDK: Data keys: \(data.keys)")
             }
             handleNavigationData(data)
         } else {
             if config.enableDebugLogging {
-                print("RelevaSDK: ℹ️ No 'data' wrapper, checking root level (Firebase iOS format)")
+                relevaLog("RelevaSDK: ℹ️ No 'data' wrapper, checking root level (Firebase iOS format)")
             }
             // For Firebase iOS, custom data is at root level alongside "aps"
             handleNavigationData(stringUserInfo)
@@ -442,47 +442,47 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     /// Handle navigation with data dictionary
     private func handleNavigationData(_ data: [String: Any]) {
         if config.enableDebugLogging {
-            print("RelevaSDK: handleNavigationData called with keys: \(data.keys)")
+            relevaLog("RelevaSDK: handleNavigationData called with keys: \(data.keys)")
         }
 
         // Handle inbox sync signal
         if let inboxSync = data["inbox_sync"] as? String, inboxSync == "true" {
             if config.enableDebugLogging {
-                print("RelevaSDK: Inbox sync signal received")
+                relevaLog("RelevaSDK: Inbox sync signal received")
             }
             InboxService.shared.handleSyncSignal()
         }
 
         guard let target = data["target"] as? String else {
             if config.enableDebugLogging {
-                print("RelevaSDK: ⚠️ No 'target' key in data")
+                relevaLog("RelevaSDK: ⚠️ No 'target' key in data")
             }
             return
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Target type: \(target)")
+            relevaLog("RelevaSDK: Target type: \(target)")
         }
 
         switch target {
         case "screen":
             if let screen = data["navigate_to_screen"] as? String {
                 if config.enableDebugLogging {
-                    print("RelevaSDK: Navigating to screen: \(screen)")
+                    relevaLog("RelevaSDK: Navigating to screen: \(screen)")
                 }
                 navigateToScreen(screen, parameters: data["navigate_to_parameters"] as? String)
             } else if config.enableDebugLogging {
-                print("RelevaSDK: ⚠️ No 'navigate_to_screen' in data")
+                relevaLog("RelevaSDK: ⚠️ No 'navigate_to_screen' in data")
             }
 
         case "url":
             if let urlString = data["navigate_to_url"] as? String {
                 if config.enableDebugLogging {
-                    print("RelevaSDK: Navigating to URL: \(urlString)")
+                    relevaLog("RelevaSDK: Navigating to URL: \(urlString)")
                 }
                 guard let url = URL(string: urlString) else {
                     if config.enableDebugLogging {
-                        print("RelevaSDK: ✗ Invalid URL format: \(urlString)")
+                        relevaLog("RelevaSDK: ✗ Invalid URL format: \(urlString)")
                     }
                     return
                 }
@@ -579,7 +579,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         // Use reflection to access UIApplication.shared - avoids compile-time errors in extensions
         guard let applicationClass = NSClassFromString("UIApplication") as? NSObject.Type else {
             if config.enableDebugLogging {
-                print("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
+                relevaLog("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
             }
             return
         }
@@ -588,7 +588,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         guard applicationClass.responds(to: sharedSelector),
               let sharedApplication = applicationClass.perform(sharedSelector)?.takeUnretainedValue() as? NSObject else {
             if config.enableDebugLogging {
-                print("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
+                relevaLog("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
             }
             return
         }
@@ -597,11 +597,11 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         _ = sharedApplication.perform(registerSelector)
 
         if config.enableDebugLogging {
-            print("RelevaSDK: ✓ Registered for remote notifications")
+            relevaLog("RelevaSDK: ✓ Registered for remote notifications")
         }
         #else
         if config.enableDebugLogging {
-            print("RelevaSDK: ⚠️ Remote notifications not available on this platform")
+            relevaLog("RelevaSDK: ⚠️ Remote notifications not available on this platform")
         }
         #endif
     }
@@ -613,7 +613,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         // Use reflection to access UIApplication.shared - avoids compile-time errors in extensions
         guard let applicationClass = NSClassFromString("UIApplication") as? NSObject.Type else {
             if config.enableDebugLogging {
-                print("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
+                relevaLog("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
             }
             return
         }
@@ -622,7 +622,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         guard applicationClass.responds(to: sharedSelector),
               let sharedApplication = applicationClass.perform(sharedSelector)?.takeUnretainedValue() as? NSObject else {
             if config.enableDebugLogging {
-                print("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
+                relevaLog("RelevaSDK: ⚠️ UIApplication not available (running in app extension)")
             }
             return
         }
@@ -633,7 +633,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         // Check if we can open the URL
         guard let canOpenMethod = sharedApplication.method(for: canOpenSelector) else {
             if config.enableDebugLogging {
-                print("RelevaSDK: ✗ Cannot access canOpenURL method")
+                relevaLog("RelevaSDK: ✗ Cannot access canOpenURL method")
             }
             return
         }
@@ -643,7 +643,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         if canOpenURL(sharedApplication, canOpenSelector, url) {
             if config.enableDebugLogging {
-                print("RelevaSDK: Opening URL...")
+                relevaLog("RelevaSDK: Opening URL...")
             }
 
             // Open the URL

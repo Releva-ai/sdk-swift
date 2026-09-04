@@ -71,7 +71,7 @@ public class EngagementTrackingService {
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Engagement tracking started (batch interval: \(config.engagementBatchInterval)s)")
+            relevaLog("RelevaSDK: Engagement tracking started (batch interval: \(config.engagementBatchInterval)s)")
         }
     }
 
@@ -84,7 +84,7 @@ public class EngagementTrackingService {
         processBatch()
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Engagement tracking stopped")
+            relevaLog("RelevaSDK: Engagement tracking stopped")
         }
     }
 
@@ -97,7 +97,7 @@ public class EngagementTrackingService {
                 try event.validate()
             } catch {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Invalid engagement event: \(error)")
+                    relevaLog("RelevaSDK: Invalid engagement event: \(error)")
                 }
                 return
             }
@@ -107,7 +107,7 @@ public class EngagementTrackingService {
             self.storage.addPendingEngagementEvent(event)
 
             if self.config.enableDebugLogging {
-                print("RelevaSDK: Tracked engagement event: \(event.type.rawValue)")
+                relevaLog("RelevaSDK: Tracked engagement event: \(event.type.rawValue)")
             }
 
             // Send immediately for high-priority events
@@ -182,7 +182,7 @@ public class EngagementTrackingService {
             self.pendingEvents = self.storage.getPendingEngagementEvents()
 
             if !self.pendingEvents.isEmpty && self.config.enableDebugLogging {
-                print("RelevaSDK: Loaded \(self.pendingEvents.count) pending engagement events")
+                relevaLog("RelevaSDK: Loaded \(self.pendingEvents.count) pending engagement events")
             }
 
             // Remove expired events
@@ -201,7 +201,7 @@ public class EngagementTrackingService {
             let eventsToSend = Array(self.pendingEvents.prefix(self.config.engagementBatchSize))
 
             if self.config.enableDebugLogging {
-                print("RelevaSDK: Sending \(eventsToSend.count) engagement events")
+                relevaLog("RelevaSDK: Sending \(eventsToSend.count) engagement events")
             }
 
             // Send events. The unstructured `Task` is the bridge from this serial queue into
@@ -211,12 +211,12 @@ public class EngagementTrackingService {
                 do {
                     try await self.networkService.sendEngagementEvents(eventsToSend)
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Successfully sent \(eventsToSend.count) engagement events")
+                        relevaLog("RelevaSDK: Successfully sent \(eventsToSend.count) engagement events")
                     }
                     self.finishBatch(eventsToSend, delivered: true)
                 } catch {
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Failed to send engagement events: \(error)")
+                        relevaLog("RelevaSDK: Failed to send engagement events: \(error)")
                     }
                     // Events will be retried in next batch
                     self.finishBatch(eventsToSend, delivered: false)
@@ -250,7 +250,7 @@ public class EngagementTrackingService {
             self.storage.clearPendingEngagementEvents()
 
             if self.config.enableDebugLogging {
-                print("RelevaSDK: Cleared all pending engagement events")
+                relevaLog("RelevaSDK: Cleared all pending engagement events")
             }
         }
     }

@@ -73,9 +73,9 @@ public class NetworkService {
         self.endpointOverride = url
         if config.enableDebugLogging {
             if let url = url {
-                print("RelevaSDK: Endpoint override set to '\(url)'")
+                relevaLog("RelevaSDK: Endpoint override set to '\(url)'")
             } else {
-                print("RelevaSDK: Endpoint override cleared")
+                relevaLog("RelevaSDK: Endpoint override cleared")
             }
         }
     }
@@ -165,7 +165,7 @@ public class NetworkService {
             return try RelevaResponse.from(jsonData: data)
         } catch {
             if config.enableDebugLogging {
-                print("RelevaSDK: Failed to decode response: \(error)")
+                relevaLog("RelevaSDK: Failed to decode response: \(error)")
             }
             throw RelevaError.invalidResponse("Failed to decode response")
         }
@@ -217,13 +217,13 @@ public class NetworkService {
             for callbackUrl in uniqueCallbackUrls {
                 guard let url = URL(string: callbackUrl) else {
                     if config.enableDebugLogging {
-                        print("RelevaSDK: Invalid callback URL, skipping: \(callbackUrl)")
+                        relevaLog("RelevaSDK: Invalid callback URL, skipping: \(callbackUrl)")
                     }
                     continue
                 }
 
                 if config.enableDebugLogging {
-                    print("RelevaSDK: Firing callback URL: \(callbackUrl)")
+                    relevaLog("RelevaSDK: Firing callback URL: \(callbackUrl)")
                 }
 
                 group.addTask { await self.fireEngagementCallback(url) }
@@ -254,12 +254,12 @@ public class NetworkService {
             guard let httpResponse = response as? HTTPURLResponse else { return true }
 
             if config.enableDebugLogging {
-                print("RelevaSDK: Callback URL response: \(httpResponse.statusCode)")
+                relevaLog("RelevaSDK: Callback URL response: \(httpResponse.statusCode)")
             }
             return httpResponse.statusCode < 400
         } catch {
             if config.enableDebugLogging {
-                print("RelevaSDK: Callback URL failed: \(error.localizedDescription)")
+                relevaLog("RelevaSDK: Callback URL failed: \(error.localizedDescription)")
             }
             return false
         }
@@ -410,9 +410,9 @@ public class NetworkService {
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Sending \(method.rawValue) request to \(request.url?.absoluteString ?? "")")
+            relevaLog("RelevaSDK: Sending \(method.rawValue) request to \(request.url?.absoluteString ?? "")")
             if let body = body {
-                print("RelevaSDK: Request body: \(body)")
+                relevaLog("RelevaSDK: Request body: \(body)")
             }
         }
 
@@ -439,7 +439,7 @@ public class NetworkService {
                     throw error
                 }
                 if config.enableDebugLogging {
-                    print("RelevaSDK: Server error \(statusCode), retrying...")
+                    relevaLog("RelevaSDK: Server error \(statusCode), retrying...")
                 }
                 retryDelayNanoseconds = 2_000_000_000
             } catch {
@@ -447,7 +447,7 @@ public class NetworkService {
                     throw RelevaError.networkError(error.localizedDescription)
                 }
                 if config.enableDebugLogging {
-                    print("RelevaSDK: Request failed, retrying... (\(attemptsLeft) attempts left)")
+                    relevaLog("RelevaSDK: Request failed, retrying... (\(attemptsLeft) attempts left)")
                 }
                 retryDelayNanoseconds = 1_000_000_000
             }
@@ -473,7 +473,7 @@ public class NetworkService {
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Response status code: \(httpResponse.statusCode)")
+            relevaLog("RelevaSDK: Response status code: \(httpResponse.statusCode)")
         }
 
         switch httpResponse.statusCode {
