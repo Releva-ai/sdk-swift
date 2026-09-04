@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 29 run(s)**: 77 pass, 2 fail, 17 pass with caveat, 66 not yet run. Details per row in the Result column and in section 5.
+**Status after 30 run(s)**: 77 pass, 2 fail, 17 pass with caveat, 66 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -615,6 +615,13 @@ New block 'Flyout banner' (addef82d-…, left, placeholder image 200x600); build
 
 - Flyout: showing/hiding and bannerClose tracked; panel anchored at the bottom but still 353 pt wide and screen-high because the build predates the size cap (re-test after rebuild).
 - Renderer bug: image blocks were stretched to the content width; the web renders them at 'width: 100%; max-width: src.width', so a 200 px image stayed 200 px. Fixed: images capped at their source width, aligned per textAlign, placeholder keeps the source aspect ratio.
+
+### Run 29 — flyout docked left, height cap (2026-09-04)
+
+Rebuilt with the 72 % / 60 % cap and the image-width fix; Flyout block (200x600 image) left.
+
+- Flyout now docked left at 72 % width with the image at its 200 px source width. Height cap did not apply (panel ~650 pt): the fit check compared the design with the whole safe area. Replaced by measured content with an explicit cap, shared with the popup; tall-design test added.
+- White space around the image is the design (200 px image centred in a 500 px body with 10 px padding), identical on the web. A flyout flush with the screen edge and full height would be a spec change (web: bottom 0, side 20 px, width auto) — CTO decision.
 
 ## Appendix A. Temp-code snippets
 
