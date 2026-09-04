@@ -1,4 +1,5 @@
 import UserNotifications
+import UIKit
 import FirebaseMessaging
 
 /// Notification Service Extension for rich push notifications
@@ -150,13 +151,29 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
                 }
             }
 
-            // Move to temporary location with proper extension
-            let tempUrl = URL(fileURLWithPath: NSTemporaryDirectory())
+            // UNNotificationAttachment only displays JPEG, PNG and GIF. WebP and HEIC download fine
+            // but the attachment is silently dropped, so transcode them to JPEG first. UIImage
+            // decodes WebP and HEIC on every iOS this package supports.
+            var tempUrl = URL(fileURLWithPath: NSTemporaryDirectory())
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension(fileExtension)
+            let nativeFormats: Set<String> = ["jpg", "jpeg", "png", "gif"]
 
             do {
-                try FileManager.default.moveItem(at: localUrl, to: tempUrl)
+                if nativeFormats.contains(fileExtension.lowercased()) {
+                    try FileManager.default.moveItem(at: localUrl, to: tempUrl)
+                } else {
+                    let data = try Data(contentsOf: localUrl)
+                    guard let image = UIImage(data: data),
+                          let jpeg = image.jpegData(compressionQuality: 0.9) else {
+                        relevaLog("RelevaSDK: Image format '\(fileExtension)' could not be decoded, delivering without attachment")
+                        completion(content)
+                        return
+                    }
+                    tempUrl = tempUrl.deletingPathExtension().appendingPathExtension("jpg")
+                    fileExtension = "jpg"
+                    try jpeg.write(to: tempUrl)
+                }
 
                 // Create attachment
                 let attachment = try UNNotificationAttachment(
