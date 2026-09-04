@@ -194,39 +194,79 @@ enum BannerChrome {
     /// The bar itself, without the positioning that puts it at the top or bottom of the
     /// screen: the SwiftUI modifier pins it with a `GeometryReader` and `Spacer`, while
     /// `BannerPresenter` pins it with layout constraints on a child view controller.
+    ///
+    /// Mirrors the web SDK's bar (`render.js`): a full-width strip at the screen edge with no
+    /// dimmed overlay, the design drawn edge to edge with no padding of ours, the design's body
+    /// colour as the strip's background, and the close button inside the strip's top-right
+    /// corner exactly like the popup card. A tap on the strip itself, outside the design's
+    /// content, closes the bar (the web closes on a click on the modal element); taps on the
+    /// page around the bar are left alone because a bar is not modal.
     /// - Parameter safeAreaInset: extra padding on the screen-edge side. The modifier reads
     ///   this off its `GeometryReader` because it draws past the safe area; a presenter that
-    ///   constrains to the safe area passes `0`.
+    ///   constrains to the safe area passes `0`. For a top bar the key window's own inset is
+    ///   used as a floor, because a `GeometryReader` that ignores the safe area has reported
+    ///   `0` on the device and the bar then sat under the status bar (device run 20).
     @ViewBuilder
     static func bar(
         _ banner: BannerResponse,
         viewModel: BannerDisplayViewModel,
         isBottom: Bool,
         safeAreaInset: CGFloat,
+        width: CGFloat? = nil,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
+        // The strip behind the design and under the status bar / home indicator: the first
+        // row's own colour when it has one (that is the colour the user sees as "the banner"),
+        // else the first column's, else the system background so it follows light/dark mode.
+        // Unlayer's default body colour (#F7F8F9) is deliberately not used: it reads as a
+        // white strip over a dark app (device run 22).
+        let firstRow = banner.design?["body"]?["rows"]?.arrayValue?.first?.objectValue ?? [:]
+        let firstRowValues = firstRow["values"]?.objectValue ?? [:]
+        let firstColumnValues = firstRow["columns"]?.arrayValue?.first?["values"]?.objectValue ?? [:]
+        let barBackground = DesignRenderer.parseColor(firstRowValues["backgroundColor"])
+            ?? DesignRenderer.parseColor(firstRowValues["columnsBackgroundColor"])
+            ?? DesignRenderer.parseColor(firstColumnValues["backgroundColor"])
+            ?? Color(UIColor.systemBackground)
+        let edgeInset = isBottom ? safeAreaInset : max(safeAreaInset, keyWindowSafeAreaInsets.top)
+
         ZStack(alignment: .topTrailing) {
             if let design = banner.design {
+                // `width` is the container's real width; `UIScreen` is only a fallback because
+                // it is wrong whenever the window is not the screen (iPad split view, and the
+                // snapshot test's 393 pt window on a 402 pt simulator).
                 DesignRenderer.render(
                     design: design,
-                    maxWidth: UIScreen.main.bounds.width - 32
+                    maxWidth: width ?? UIScreen.main.bounds.width
                 ) { url in
                     viewModel.trackClick(banner)
                     onLinkTap(url)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .padding(isBottom ? .bottom : .top, safeAreaInset)
+                .frame(maxWidth: .infinity)
+                .padding(isBottom ? .bottom : .top, edgeInset)
             }
 
-            closeButton(for: banner, size: 24) {
+            closeButton(for: banner, size: 32) {
                 viewModel.dismissBar(banner)
             }
-            .offset(x: 4, y: -4)
-            .padding(isBottom ? .bottom : .top, safeAreaInset)
+            .padding(.top, (isBottom ? 0 : edgeInset) + 8)
+            .padding(.trailing, 8)
         }
-        .background(Color.white)
-        .shadow(radius: 5)
+        .frame(maxWidth: .infinity)
+        .background(
+            barBackground
+                .contentShape(Rectangle())
+                .onTapGesture { viewModel.dismissBar(banner) }
+        )
+        .shadow(color: Color.black.opacity(0.2), radius: 6, y: isBottom ? -2 : 2)
+    }
+
+    /// The key window's safe-area insets, used as a floor for a top bar's status-bar padding.
+    private static var keyWindowSafeAreaInsets: UIEdgeInsets {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets ?? .zero
     }
 
     // MARK: - Close Button
