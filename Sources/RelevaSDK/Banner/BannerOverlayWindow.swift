@@ -32,8 +32,20 @@ final class BannerOverlayHost: ObservableObject {
 
     private var window: BannerOverlayWindow?
     private var cancellable: AnyCancellable?
+    private var sceneObserver: AnyCancellable?
 
-    private init() {}
+    private init() {
+        // On a cold launch the first screen can appear before any scene reports itself
+        // connected, so the window is also (re)created when a scene activates.
+        sceneObserver = NotificationCenter.default.publisher(for: UIScene.didActivateNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                self.ensureWindow()
+                self.mirrorAppearance()
+                self.updateVisibility()
+            }
+    }
 
     /// The modifier calls this on appear. The last attached view model is the one drawn.
     func attach(_ viewModel: BannerDisplayViewModel, onLinkTap: @escaping (String) -> Void) {
@@ -63,6 +75,7 @@ final class BannerOverlayHost: ObservableObject {
 
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+            relevaLog("RelevaSDK: BannerOverlay - no window scene connected yet, overlay window deferred")
             return
         }
 
@@ -79,6 +92,7 @@ final class BannerOverlayHost: ObservableObject {
         window.rootViewController = controller
         self.window = window
         mirrorAppearance()
+        relevaLog("RelevaSDK: BannerOverlay - window created on scene (state \(scene.activationState.rawValue))")
     }
 
     /// The overlay window is a separate view hierarchy, so it does not inherit a colour scheme
@@ -100,11 +114,26 @@ final class BannerOverlayHost: ObservableObject {
         // turn of the run loop so the decision sees the new state.
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            let hasContent: Bool = {
-                guard let vm = self.viewModel else { return false }
-                return vm.popupBanner != nil || vm.flyoutBanner != nil || !vm.barBanners.isEmpty
+            let shown: [String] = {
+                guard let vm = self.viewModel else { return [] }
+                return [vm.popupBanner.map { "popup \($0.token)" }, vm.flyoutBanner.map { "flyout \($0.token)" }]
+                    .compactMap { $0 } + vm.barBanners.map { "bar \($0.token)" }
             }()
-            self.window?.isHidden = !hasContent
+            let hasContent = !shown.isEmpty
+            if hasContent && self.window == nil {
+                // A banner arrived before any scene was connected at attach time (device run
+                // 24: impression tracked, nothing on screen). Try again now.
+                self.ensureWindow()
+                self.mirrorAppearance()
+            }
+            guard let window = self.window else {
+                if hasContent { relevaLog("RelevaSDK: BannerOverlay - \(shown.joined(separator: ", ")) pending, no window yet") }
+                return
+            }
+            if window.isHidden == hasContent {
+                relevaLog("RelevaSDK: BannerOverlay - \(hasContent ? "showing" : "hiding") window (\(shown.joined(separator: ", ")))")
+            }
+            window.isHidden = !hasContent
         }
     }
 }
