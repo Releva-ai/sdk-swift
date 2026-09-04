@@ -149,6 +149,8 @@ final class BannerOverlaySnapshotTests: XCTestCase {
                 return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
             }
             XCTAssertEqual(panel.maxX, window.bounds.width - 20, accuracy: 0.5, "20 pt from the right edge")
+            XCTAssertLessThanOrEqual(panel.width, window.bounds.width * 0.72 + 0.5, "leaves the docking side visible")
+            XCTAssertGreaterThan(panel.minX, window.bounds.width * 0.2, "clearly docked right, not centred")
             // The scene-less test window reports its own bottom inset (more than the 34 pt
             // requested); the contract is "flush with whatever the bottom safe-area edge is".
             XCTAssertGreaterThanOrEqual(host.safeAreaInsets.bottom, 34)

@@ -145,8 +145,12 @@ enum BannerChrome {
             ?? .white
 
         GeometryReader { geometry in
-            let width = max(120, min(designWidth, geometry.size.width - 2 * sideMargin))
-            let maxHeight = max(geometry.size.height - 20, 120)
+            // On a phone the design's 600 px width would fill the screen and the panel would
+            // read as a popup lying at the bottom (device run 27). Cap it to 72 % of the width
+            // so the free side shows which edge it is docked to, and to 60 % of the height so
+            // a tall design scrolls inside a panel instead of covering the page.
+            let width = max(160, min(designWidth, geometry.size.width * 0.72))
+            let maxHeight = max(160, geometry.size.height * 0.6)
 
             ZStack(alignment: .topTrailing) {
                 popupContent(
