@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 30 run(s)**: 77 pass, 2 fail, 17 pass with caveat, 66 not yet run. Details per row in the Result column and in section 5.
+**Status after 31 run(s)**: 77 pass, 2 fail, 17 pass with caveat, 66 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -222,7 +222,7 @@ Fixtures: one banner block per displayType and trigger, attached to the Home pag
 | BAN-02 | P0 | 1.0.4 | Popup, delaySeconds 5 | Trigger delaySeconds = 5. | Open Home, count. | Appears ~5 s later. Leaving Home before 5 s cancels it. | Impression only when shown. | ✅ Run 20: block f34a090d-… switched to a delay trigger; screen view at 08:51:30, impression at 08:51:40 → the banner appeared after the configured delay and was counted once. |
 | BAN-03 | P0 | 1.0.4 | Bar top with close | Bar banner, displayPosition top. | Open Home → tap X. | Bar under the safe area; close removes it; log `Banner action 'bannerClose' tracked`. | Timeline `bannerClose`; Redis suppression set → reopening Home does not return this banner (unless `showAlways`). | ❌ Run 20: bar under the status bar, own white frame, small X. Run 21: bar under the navigation bar (title and cart button on top). Run 22 (overlay window): the bar is above the app's bars now, but the overlay window came up in LIGHT appearance over the dark app — the status-bar strip was white with dark status-bar text — and the strip took Unlayer's default body colour (#F7F8F9). Fixed on the branch: the overlay window copies the app window's light/dark style; the strip takes the first row's or first column's colour, else the system background of the current theme. Tracking (bannerClick / bannerClose) was correct in every run. Re-test: top bar with a dark strip and white status-bar text above the title. |
 | BAN-04 | P0 | 1.0.4 | Bar bottom | displayPosition bottom. | Open Home. | Bar above the tab bar / home indicator. | Impression. | ⚠️ Run 21: bottom bar edge to edge with the X in the corner, tap on the strip closed it (bannerClose 202). With the overlay window it will now cover the tab bar like the web bottom:0 bar; confirm that is wanted and that the home-indicator strip takes the row colour. |
-| BAN-05 | P0 | 1.0.4 | Flyout left and right | Two flyout blocks. | Open Home. | Side panels slide in from the configured side; close works. | Impressions and closes. | ⚠️ Run 26: flyout rendered as a full-height sheet with the X under the status bar → rebuilt to the web spec (bottom-anchored content-sized panel, 20 pt side margin, no overlay). Run 27: with the 600 px design capped only to the screen the panel filled the width and height and read as a popup at the bottom. Now capped to 72 % of the width and 60 % of the height so the docking side is visible and tall designs scroll inside; snapshot + contract tests pass. Re-test left and right after rebuild. Design guidance: a flyout made for a corner (narrow, short) looks best, as on the web. |
+| BAN-05 | P0 | 1.0.4 | Flyout left and right | Two flyout blocks. | Open Home. | Side panels slide in from the configured side; close works. | Impressions and closes. | ⚠️ Run 26: full-height sheet, X under the status bar → rebuilt to the web spec (bottom panel, 20 pt side gap). Runs 27–29: on the phone it read as a popup lying at the bottom (600 px design capped to the screen, gap, radius, body colour around a 200 px image); width/height caps and the image source-width fix landed. Run 30, tester's spec for mobile: a sheet flush with the left/right edge, no gap, no radius, width hugging the content (image-only design → image width + padding), height hugging the content, scroll beyond 60 %. Implemented as a deliberate deviation from the web's 20 px gap; contract tests encode it. Re-test left and right; CTO to confirm the mobile deviation. |
 | BAN-06 | P0 | 1.0.4 | Static banners: afterbegin / beforeend / afterend / replace | Four static blocks with cssSelector `#home-content`. | Open Home. | Inline placement matches the strategy; `replace` hides the grid. Impression on display. | Impressions. | ✅ Run 2: block f34a090d-… is configured Static / After / #home-content in the admin (screenshot). SDK appended it below the Home content, edge to edge above the tab bar, no close button, persistent while Home is shown: exactly the static afterend contract. Other three strategies not yet run. |
 | BAN-07 | P0 | 1.0.4 | Static banner with a non-matching selector | cssSelector `#other`. | Open Home. | Not rendered, no impression. | No event. | ☐ |
 | BAN-08 | P0 | 1.0.4 | scrollPercentage 50 | Trigger scrollPercentage 50. | Open Home, scroll halfway. | Appears when the grid passes 50 %. | Impression. | ☐ |
@@ -622,6 +622,13 @@ Rebuilt with the 72 % / 60 % cap and the image-width fix; Flyout block (200x600 
 
 - Flyout now docked left at 72 % width with the image at its 200 px source width. Height cap did not apply (panel ~650 pt): the fit check compared the design with the whole safe area. Replaced by measured content with an explicit cap, shared with the popup; tall-design test added.
 - White space around the image is the design (200 px image centred in a 500 px body with 10 px padding), identical on the web. A flyout flush with the screen edge and full height would be a spec change (web: bottom 0, side 20 px, width auto) — CTO decision.
+
+### Run 30 — flyout as an edge sheet (mobile spec) (2026-09-04)
+
+Rebuilt with the 72 % / 60 % caps, image source width and measured height cap; Flyout block left and right.
+
+- Flyout docked and capped correctly, but the tester's expectation for mobile is a sheet flush with the screen edge, no gap or radius, hugging its content. Implemented: image-only designs take the image width + padding; other designs their declared width; both capped. Deviation from the web spec recorded for the CTO.
+- Attach/detach/showing/hiding and impressions/closes all correct in the log across four Home visits.
 
 ## Appendix A. Temp-code snippets
 
