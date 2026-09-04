@@ -49,6 +49,9 @@ final class BannerOverlayHost: ObservableObject {
 
     /// The modifier calls this on appear. The last attached view model is the one drawn.
     func attach(_ viewModel: BannerDisplayViewModel, onLinkTap: @escaping (String) -> Void) {
+        if self.viewModel !== viewModel {
+            relevaLog("RelevaSDK: BannerOverlay - attached view model \(ObjectIdentifier(viewModel).hashValue)")
+        }
         self.viewModel = viewModel
         self.onLinkTap = onLinkTap
         cancellable = viewModel.objectWillChange
@@ -63,11 +66,25 @@ final class BannerOverlayHost: ObservableObject {
     /// screen leaving behind another that attached later does not blank the overlay.
     func detach(_ viewModel: BannerDisplayViewModel) {
         guard self.viewModel === viewModel else { return }
+        relevaLog("RelevaSDK: BannerOverlay - detached view model \(ObjectIdentifier(viewModel).hashValue)")
         self.viewModel = nil
         cancellable = nil
         interactiveFrames = []
         coversScreen = false
         updateVisibility()
+    }
+
+    /// A started view model got a banner to show. If it is not the attached one — SwiftUI can
+    /// fire a screen's onDisappear during launch while tabs and navigation settle, which
+    /// detached it (device run 25: impression tracked, window never shown) — attach it again;
+    /// a screen that is really gone has called stop() and receives nothing.
+    func contentChanged(in viewModel: BannerDisplayViewModel, onLinkTap: ((String) -> Void)?) {
+        if self.viewModel !== viewModel {
+            relevaLog("RelevaSDK: BannerOverlay - banner arrived on a detached view model, re-attaching")
+            attach(viewModel, onLinkTap: onLinkTap ?? { _ in })
+        } else {
+            updateVisibility()
+        }
     }
 
     private func ensureWindow() {

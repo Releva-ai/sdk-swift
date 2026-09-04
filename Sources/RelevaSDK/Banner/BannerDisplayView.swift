@@ -46,6 +46,7 @@ public struct BannerDisplayModifier: ViewModifier {
             // the app's navigation and tab bars (see BannerOverlayWindow.swift).
         }
         .onAppear {
+            viewModel.usesOverlayWindow = true
             viewModel.start(tracker: client, targetSelector: targetSelector, onLinkTap: onLinkTap)
             BannerOverlayHost.shared.attach(viewModel, onLinkTap: onLinkTap)
         }
@@ -117,6 +118,10 @@ class BannerDisplayViewModel: ObservableObject {
 
     var hasReplaceBanner: Bool { !replaceBanners.isEmpty }
 
+    /// Set by the SwiftUI modifier: overlay banners of this view model are drawn by
+    /// `BannerOverlayHost`. `BannerPresenter` draws its own and leaves this false.
+    var usesOverlayWindow = false
+
     /// Display types that do not need a place in the host's view hierarchy, and so can be
     /// shown by an overlay-only surface such as `BannerPresenter`.
     private static let overlayDisplayTypes: Set<String> = ["popup", "flyout", "bar"]
@@ -186,6 +191,11 @@ class BannerDisplayViewModel: ObservableObject {
     }
 
     private func show(_ banner: BannerResponse) {
+        defer {
+            if usesOverlayWindow, Self.overlayDisplayTypes.contains(banner.displayType ?? "") {
+                BannerOverlayHost.shared.contentChanged(in: self, onLinkTap: onLinkTap)
+            }
+        }
         switch banner.displayType {
         case "popup":
             popupBanner = banner
