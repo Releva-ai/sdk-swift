@@ -146,6 +146,47 @@ public class RelevaClient {
     // it no-ops once the client is freed; the `NSObjectProtocol` token lives only until
     // the (typically singleton) client is itself deallocated.
 
+    // MARK: - Shutdown
+
+    /// `true` once `shutdown()` has run. The instance then ignores app-lifecycle events and
+    /// `refreshPushToken()`.
+    public private(set) var isShutDown = false
+
+    /// Tears this client down so that a replacement instance can take over.
+    ///
+    /// Call it before creating a new `RelevaClient` (new realm, new access token, or a host that
+    /// re-creates the client on login/logout). Without it the old instance stays alive — `init`
+    /// pins the first client as `RelevaClient.shared` — and keeps reacting to `didBecomeActive`,
+    /// re-registering the push token under its *previous* profile on every foreground (device
+    /// run 45: the token flipped between two profiles each time the app came back).
+    ///
+    /// Removes the lifecycle observer, stops engagement batching, disposes the banner, story and
+    /// NPS managers, hands the notification-centre delegate back if it is ours, and clears the
+    /// shared slot. The inbox is a process-wide singleton the replacement re-initialises.
+    public func shutdown() {
+        guard !isShutDown else { return }
+        isShutDown = true
+
+        if let observer = pushTokenLifecycleObserver {
+            NotificationCenter.default.removeObserver(observer)
+            pushTokenLifecycleObserver = nil
+        }
+        engagementService?.stopTracking()
+        bannerManager?.dispose()
+        storyManager?.dispose()
+        npsManager?.dispose()
+        if let service = notificationService,
+           UNUserNotificationCenter.current().delegate === service {
+            UNUserNotificationCenter.current().delegate = nil
+        }
+        if RelevaClient.shared === self {
+            RelevaClient.shared = nil
+        }
+        if config.enableDebugLogging {
+            relevaLog("RelevaSDK: Client shut down (profile '\(profileId ?? "none")')")
+        }
+    }
+
     // MARK: - User Identification
 
     /// Set device ID
@@ -691,7 +732,7 @@ public class RelevaClient {
     /// 24 hours ago. Safe to call anytime; no-ops if the provider isn't set or the
     /// provider returns nil. Called automatically on app launch and on foreground.
     public func refreshPushToken() {
-        guard config.enablePushNotifications else { return }
+        guard config.enablePushNotifications, !isShutDown else { return }
         guard let provider = pushTokenProvider else {
             if config.enableDebugLogging {
                 relevaLog("RelevaSDK: refreshPushToken skipped - pushTokenProvider not set")
