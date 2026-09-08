@@ -551,7 +551,19 @@ public class RelevaClient {
                 let delay = banner.delaySeconds.map { $0 > 0 ? " \($0)s" : "" } ?? ""
                 return "\(banner.token.prefix(8)) \(banner.displayType ?? "?")/\(banner.trigger ?? "?")\(threshold)\(delay)"
             }
-            relevaLog("RelevaSDK: Response: \(response.banners.count) banner(s) [\(banners.joined(separator: ", "))], \(response.stories.count) story(ies), nps \(response.nps == nil ? "no" : "yes")")
+            // The NPS part names the survey and what will show it, so a log alone tells a
+            // "waiting for a custom event" apart from "not returned" (device run 53).
+            let nps: String
+            if let survey = response.nps {
+                let triggers = survey.triggers.isEmpty
+                    ? "server-side trigger"
+                    : survey.triggers.map { "\($0.type)\($0.eventName.map { " \($0)" } ?? "")" }.joined(separator: "/")
+                let cancels = survey.cancelOnEvents.isEmpty ? "" : ", cancel on \(survey.cancelOnEvents.joined(separator: ","))"
+                nps = "yes (\(survey.token.prefix(8)) \(triggers), delay \(survey.triggerDelaySeconds)s\(cancels))"
+            } else {
+                nps = "no"
+            }
+            relevaLog("RelevaSDK: Response: \(response.banners.count) banner(s) [\(banners.joined(separator: ", "))], \(response.stories.count) story(ies), nps \(nps)")
         }
 
         // Initialize banners from response
