@@ -16,6 +16,10 @@ final class BannerImageCache {
 
     func cached(_ url: URL) -> UIImage? { images[url] }
 
+    /// Puts an already-decoded image in the cache. For tests that need a known image at a URL
+    /// without a download.
+    func store(_ image: UIImage, for url: URL) { images[url] = image }
+
     /// The image at `url`, from memory when seen before, otherwise downloaded once (concurrent
     /// callers share the download).
     func load(_ url: URL) async -> UIImage? {
@@ -88,26 +92,45 @@ struct CachedRemoteImage<Content: View>: View {
     let url: URL
     let content: (CachedImagePhase) -> Content
 
+    /// The URL that `image` and `failed` describe. SwiftUI keeps a view's state when only its
+    /// inputs change, and a story moving to its next slide changes this view's `url` without
+    /// changing its identity; showing the previous slide's image for the new URL kept every
+    /// slide looking like the first one (device run 40).
+    @State private var loadedURL: URL
     @State private var image: UIImage?
     @State private var failed = false
 
     init(url: URL, @ViewBuilder content: @escaping (CachedImagePhase) -> Content) {
         self.url = url
         self.content = content
+        _loadedURL = State(initialValue: url)
         _image = State(initialValue: BannerImageCache.shared.cached(url))
     }
 
     var body: some View {
         content(phase)
             .task(id: url) {
+                if loadedURL != url {
+                    loadedURL = url
+                    image = BannerImageCache.shared.cached(url)
+                    failed = false
+                }
                 guard image == nil, !failed else { return }
-                let loaded = await BannerImageCache.shared.load(url)
+                let requested = url
+                let loaded = await BannerImageCache.shared.load(requested)
+                // The URL may have moved on again while this download ran.
+                guard requested == loadedURL else { return }
                 if let loaded = loaded { image = loaded } else { failed = true }
             }
     }
 
     private var phase: CachedImagePhase {
-        if let image = image { return .success(Image(uiImage: image)) }
-        return failed ? .failure : .empty
+        if loadedURL == url {
+            if let image = image { return .success(Image(uiImage: image)) }
+            return failed ? .failure : .empty
+        }
+        // `url` changed and the task above has not run yet: never show the old image.
+        if let cached = BannerImageCache.shared.cached(url) { return .success(Image(uiImage: cached)) }
+        return .empty
     }
 }

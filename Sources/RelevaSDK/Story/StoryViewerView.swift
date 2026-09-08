@@ -101,6 +101,9 @@ public struct StoryViewerView: View {
                                     onLinkTap(url)
                                 }
                             }
+                            // Each slide is its own view: the next slide starts scrolled to the
+                            // top instead of wherever the previous one was left.
+                            .id(currentSlideIndex)
                         }
 
                         // Navigation tap areas: the outer thirds step back/forward, the middle
