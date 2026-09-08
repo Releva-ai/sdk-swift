@@ -64,9 +64,9 @@ RESULTS = {
  "INB-11": ("warn", "Run 6: message button sent inboxMessageClick 202 and opened the product. Run 12: the design renders (heading, text, button) and the button navigates. Run 17 offline: the message rendered from the cache and the button navigated, but POST /inbox/messages/{id}/action went out with no network and was silently dropped (inbox errors are swallowed, no queue), so that inbox click is lost. Only push engagement events are queued offline; note for the README / CTO."),
  "PUSH-09": ("pass", "Run 5 (incidental): the previous session ended with one engagement event still pending (the crash); on the next launch the SDK logged 'Loaded 1 pending engagement events' and fired the callback (200). Same mechanism as an offline tap."),
  "STO-01": ("pass", "Run 5: story ae643a37-… shown full screen on Home (screenshots), storyImpression → /push/events 202."),
- "STO-02": ("pass", "Run 5: three slides with progress bars, storySlideView for slide ids 1, 2, 4 (auto-advance and taps)."),
+ "STO-02": ("pass", "Run 5: three slides with progress bars, storySlideView per slide. Run 39: slides 1 → 2 → 4 auto-advanced at the configured 5 s (09:01:38 / :43 / :48), one storySlideView each, storyComplete after the last."),
  "STO-03": ("pass", "Run 5: X closed the viewer → storyClose 202. Tap/swipe navigation produced the slide views."),
- "STO-06": ("warn", "Run 5: a duplicate storyImpression fired immediately after every storyClose with no slide view: three Home screen views at launch each returned the story and the display queue kept every copy. Fixed on the SDK branch (token dedupe in StoryDisplayViewModel.enqueue); re-test."),
+ "STO-06": ("warn", "Run 5: duplicate storyImpression after every storyClose → fixed (queue dedupe). Run 39: no duplicate after any of the four closes. Two running stories in one response not yet tested; also observed: the story is returned again on every Home visit right after a storyClose (backend suppression key not applied or story is showAlways) — record when two stories are tried."),
  "BAN-14": ("pass", "Run 5: the 'Fullscreen banner' (fd4de9a7-…, showUntilClick) that was clicked in run 2 is no longer returned for this device; 'Carousel banner' (aa275c11-…) still returns after a close, so it is showAlways or reentrable. Suppression after click works as designed; a clicked banner reappears only with showAlways/reentry or a new device id."),
  "CART-02": ("pass", "Run 6: second-ever add (prod_001) → 'Cart changes synced to backend' with cart.products[price 129.99, qty 1, size/color custom], cartChanged true, empty page."),
  "BAN-03": ("pass", "Runs 20–22: bar under the status bar / under the navigation bar / light strip → fixed (edge-to-edge strip, first-row colour under the status bar, overlay window above the app's bars, theme mirrored). Runs 23–33: tester validated top bars on the device; bannerClick and bannerClose tracked every time."),
@@ -115,6 +115,11 @@ RESULTS = {
   "BAN-15": ("pass", "Run 37: tester validated the sessionInterval 2 block on consecutive cold starts (sessions 78–82): shown on the sessions it was returned for, skipped on the others; once the popup queue landed it no longer collided with the normal popup. Session numbers are visible as device.sessions in each request."),
  "BAN-19": ("pass", "Not applicable on mobile and handled as documented: BannerManagerService treats a leaveIntent trigger as a no-op (there is no mouse leaving a viewport), so such a block is never shown and never counted. No device fixture needed; tester agrees (run 38)."),
  "BAN-20": ("pass", "Runs 6–33: Cart, Checkout and Success screen views went out with no page token ('Tracked screen view - token: none') and every such response carried 0 banners — a block attached to those pages in the admin is never returned without a token. Since run 33 the harness sends the cart and product tokens and those pages get their banners. Client guide: every screen that should show banners needs a Page token (or pageUrl)."),
+  "STO-04": ("fail", "Run 39: a button inside the slide design never produced storySlideClick — taps only flipped slides (slide views 2,1,2,4 in quick succession). Cause in the viewer: the previous/next tap overlay covered the whole slide, so links and buttons in the design were unreachable (same defect the carousel had). Fixed on the branch: outer thirds navigate, the middle third passes taps to the design. Also harness: link paths without a scheme (`product/prod_002`) are now routed as in-app deep links; `myapp://consumer.app/product/prod_002` already routed. Re-test: tap the button in the middle of slide 2 → storySlideClick 202 → product 2 opens."),
+  "STO-05": ("pass", "Run 39: dismiss → storyComplete and storyClose sent together at the end (09:09:32) and the viewer closed; loop → after storyComplete (09:01:53) slide views restarted from slide 1; stayOnLast → viewer stayed on the last slide after storyComplete until closed. One storyComplete per run-through. Note for CTO: auto-dismiss on completion also emits storyClose, which counts as a close nobody performed."),
+  "STO-07": ("pass", "Run 39: a running story with zero slides is skipped — nothing shown, no impression; the tester confirmed."),
+  "STO-08": ("fail", "Run 39: the profile timeline has every story event (storyImpression, storySlideView, storyComplete, storyClose with storyId = story token), but the admin story statistics show nothing. Matches mismatch 4 in the plan: the SDK sends the story token, the stats aggregate on the numeric story id. Backend fix needed (aggregate on token or map token→id); no SDK change."),
+  "STO-09": ("pass", "Run 39: story with a delay trigger appeared about 4–5 s after the Home screen view (impression 09:09:17), tester confirmed."),
 }
 
 RUNS = [
@@ -379,6 +384,13 @@ RUNS = [
       findings=[
         "Two popups now show one after the other, each counted when it appears (BAN-18 pass). Empty design not shown (BAN-17 pass). Session interval validated by the tester (BAN-15 pass). Wrong-selector static filtered as before.",
         "Harness duplicate screen views at launch are skipped ('Skipped duplicate screen view'); one pageView per launch now.",
+      ]),
+  dict(date="2026-09-08", title="Run 39 — stories: end behaviours, delay, zero slides, slide link, stats", env="Story ae643a37-… on Home reconfigured step by step (dismiss / loop / stayOnLast, delay, slide button); empty story; admin timeline + story stats.",
+      findings=[
+        "Auto-advance 5 s, complete once, loop restarts, stayOnLast holds, dismiss closes (STO-02/05 pass); delay trigger (STO-09 pass); zero-slide story skipped (STO-07 pass); no duplicate impression after close (STO-06 dedupe confirmed).",
+        "Slide button never sent storySlideClick: the prev/next overlay covered the slide. Fixed (outer thirds navigate, middle passes taps); harness now routes schemeless link paths (STO-04 re-test).",
+        "Admin story stats empty while the timeline has all events: token vs numeric id aggregation, backend fix (STO-08 fail).",
+        "Observations for CTO: auto-dismiss on completion also sends storyClose; the story is returned again on the next Home visit right after a close.",
       ]),
 ]
 

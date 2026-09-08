@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 38 run(s)**: 87 pass, 1 fail, 15 pass with caveat, 59 not yet run. Details per row in the Result column and in section 5.
+**Status after 39 run(s)**: 90 pass, 3 fail, 15 pass with caveat, 54 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -246,14 +246,14 @@ Stories are returned in the push response and shown one at a time in a full-scre
 | ID | Prio | Since | Scenario | Precondition | Steps | Expect on device / in log | Expect in backend | Result |
 |---|---|---|---|---|---|---|---|---|
 | STO-01 | P1 | 1.1 | Story, trigger immediately | Running story with 3 slides on Home. | Open Home. | Full-screen viewer; `Sending POST request to …/api/v0/push/events` with `action: storyImpression`, 202. | Timeline `storyImpression` with `products[0].storyId`. | ✅ Run 5: story ae643a37-… shown full screen on Home (screenshots), storyImpression → /push/events 202. |
-| STO-02 | P1 | 1.1 | Auto-advance and progress bars | Slides with durationSeconds 3. | Watch. | Advances every 3 s; bars fill; `storySlideView` per slide. | Events per slide. | ✅ Run 5: three slides with progress bars, storySlideView for slide ids 1, 2, 4 (auto-advance and taps). |
+| STO-02 | P1 | 1.1 | Auto-advance and progress bars | Slides with durationSeconds 3. | Watch. | Advances every 3 s; bars fill; `storySlideView` per slide. | Events per slide. | ✅ Run 5: three slides with progress bars, storySlideView per slide. Run 39: slides 1 → 2 → 4 auto-advanced at the configured 5 s (09:01:38 / :43 / :48), one storySlideView each, storyComplete after the last. |
 | STO-03 | P1 | 1.1 | Tap and swipe navigation, close | Story open. | Tap right, tap left, swipe down. | Next/previous slide; close sends `storyClose`. | `storyClose`; Redis `story/view/…` key set → not shown again. | ✅ Run 5: X closed the viewer → storyClose 202. Tap/swipe navigation produced the slide views. |
-| STO-04 | P1 | 1.1 | Slide link tap | Slide with a link to `myapp://consumer.app/product/2`. | Tap. | `storySlideClick` with slideId; viewer closes; product 2 opens. | `storySlideClick` event and story attribution. | ☐ |
-| STO-05 | P1 | 1.1 | Completion and end behaviours | Three stories: dismiss, loop, stayOnLast. | Let each play out. | `storyComplete` sent once; then dismisses / loops / stays on last slide respectively. | One `storyComplete` per story. | ☐ |
-| STO-06 | P1 | 1.1 | Two stories queue sequentially | Two running stories. | Open Home. | Second starts after the first closes; two impressions. | — | ⚠️ Run 5: a duplicate storyImpression fired immediately after every storyClose with no slide view: three Home screen views at launch each returned the story and the display queue kept every copy. Fixed on the SDK branch (token dedupe in StoryDisplayViewModel.enqueue); re-test. |
-| STO-07 | P1 | 1.1 | Story with zero slides is skipped | Story with no slides. | Open Home. | Nothing shown, no impression. | — | ☐ |
-| STO-08 | P1 | 1.1 | Story stats in admin | STO-01..05 done. | Admin → story stats. | — | Mismatch 4: the SDK sends `storyId = story token`, the stats aggregate on numeric `story.id`. Record whether impressions/clicks show up. If 0 while events exist in the timeline, backend fix needed. | ☐ |
-| STO-09 | P1 | 1.1 | Delay trigger | Story with delaySeconds 5. | Open Home. | Appears after 5 s. | — | ☐ |
+| STO-04 | P1 | 1.1 | Slide link tap | Slide with a link to `myapp://consumer.app/product/2`. | Tap. | `storySlideClick` with slideId; viewer closes; product 2 opens. | `storySlideClick` event and story attribution. | ❌ Run 39: a button inside the slide design never produced storySlideClick — taps only flipped slides (slide views 2,1,2,4 in quick succession). Cause in the viewer: the previous/next tap overlay covered the whole slide, so links and buttons in the design were unreachable (same defect the carousel had). Fixed on the branch: outer thirds navigate, the middle third passes taps to the design. Also harness: link paths without a scheme (`product/prod_002`) are now routed as in-app deep links; `myapp://consumer.app/product/prod_002` already routed. Re-test: tap the button in the middle of slide 2 → storySlideClick 202 → product 2 opens. |
+| STO-05 | P1 | 1.1 | Completion and end behaviours | Three stories: dismiss, loop, stayOnLast. | Let each play out. | `storyComplete` sent once; then dismisses / loops / stays on last slide respectively. | One `storyComplete` per story. | ✅ Run 39: dismiss → storyComplete and storyClose sent together at the end (09:09:32) and the viewer closed; loop → after storyComplete (09:01:53) slide views restarted from slide 1; stayOnLast → viewer stayed on the last slide after storyComplete until closed. One storyComplete per run-through. Note for CTO: auto-dismiss on completion also emits storyClose, which counts as a close nobody performed. |
+| STO-06 | P1 | 1.1 | Two stories queue sequentially | Two running stories. | Open Home. | Second starts after the first closes; two impressions. | — | ⚠️ Run 5: duplicate storyImpression after every storyClose → fixed (queue dedupe). Run 39: no duplicate after any of the four closes. Two running stories in one response not yet tested; also observed: the story is returned again on every Home visit right after a storyClose (backend suppression key not applied or story is showAlways) — record when two stories are tried. |
+| STO-07 | P1 | 1.1 | Story with zero slides is skipped | Story with no slides. | Open Home. | Nothing shown, no impression. | — | ✅ Run 39: a running story with zero slides is skipped — nothing shown, no impression; the tester confirmed. |
+| STO-08 | P1 | 1.1 | Story stats in admin | STO-01..05 done. | Admin → story stats. | — | Mismatch 4: the SDK sends `storyId = story token`, the stats aggregate on numeric `story.id`. Record whether impressions/clicks show up. If 0 while events exist in the timeline, backend fix needed. | ❌ Run 39: the profile timeline has every story event (storyImpression, storySlideView, storyComplete, storyClose with storyId = story token), but the admin story statistics show nothing. Matches mismatch 4 in the plan: the SDK sends the story token, the stats aggregate on the numeric story id. Backend fix needed (aggregate on token or map token→id); no SDK change. |
+| STO-09 | P1 | 1.1 | Delay trigger | Story with delaySeconds 5. | Open Home. | Appears after 5 s. | — | ✅ Run 39: story with a delay trigger appeared about 4–5 s after the Home screen view (impression 09:09:17), tester confirmed. |
 
 ### L. NPS surveys
 
@@ -678,6 +678,15 @@ Build with the popup queue and empty-design skip; Home blocks: static wrong sele
 
 - Two popups now show one after the other, each counted when it appears (BAN-18 pass). Empty design not shown (BAN-17 pass). Session interval validated by the tester (BAN-15 pass). Wrong-selector static filtered as before.
 - Harness duplicate screen views at launch are skipped ('Skipped duplicate screen view'); one pageView per launch now.
+
+### Run 39 — stories: end behaviours, delay, zero slides, slide link, stats (2026-09-08)
+
+Story ae643a37-… on Home reconfigured step by step (dismiss / loop / stayOnLast, delay, slide button); empty story; admin timeline + story stats.
+
+- Auto-advance 5 s, complete once, loop restarts, stayOnLast holds, dismiss closes (STO-02/05 pass); delay trigger (STO-09 pass); zero-slide story skipped (STO-07 pass); no duplicate impression after close (STO-06 dedupe confirmed).
+- Slide button never sent storySlideClick: the prev/next overlay covered the slide. Fixed (outer thirds navigate, middle passes taps); harness now routes schemeless link paths (STO-04 re-test).
+- Admin story stats empty while the timeline has all events: token vs numeric id aggregation, backend fix (STO-08 fail).
+- Observations for CTO: auto-dismiss on completion also sends storyClose; the story is returned again on the next Home visit right after a close.
 
 ## Appendix A. Temp-code snippets
 
