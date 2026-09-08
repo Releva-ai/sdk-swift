@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 54 run(s)**: 102 pass, 1 fail, 13 pass with caveat, 46 not yet run. Details per row in the Result column and in section 5.
+**Status after 55 run(s)**: 104 pass, 1 fail, 13 pass with caveat, 44 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -270,9 +270,9 @@ The backend picks at most one eligible survey per push response. Fixture: survey
 | NPS-07 | P1 | 1.1 | sessionCount trigger | Trigger sessionCount minSessions 2. Fresh install. | First session: Home. Cold start: Home. | Not on session 1; shows on session 2. | — | ☐ |
 | NPS-08 | P2 | 1.1 | appVersion and platform gating | appVersionMin 2.0.0; S3 sets 1.2.3. Second survey with platforms [android]. | Open Home. | Neither shows. Set version 2.5.0 → the first shows. | — | ✅ Run 54 (QA-NPS-08 'needs app 2.0.0', screen view, delay 2 s; QA-NPS-01 deactivated mid-run): with `device.version 2.5.4` the Home response returned `nps yes (22475da3 server-side trigger, delay 2s)`; with `1.5.4` four Home responses in a row said `nps no`. The Min app gate works when a version is sent. Earlier in the run, while QA-NPS-01 (no gate, Custom Event) was still Active, it was the survey returned regardless of version — first-eligible rule again. Not tried: the Android-only survey (optional). Run 53 (QA-NPS-01 with Min app 2.0.0): before any version was set the Home response still said `nps yes` — the backend lets a version-gated survey through when the device sends no `version` (isVersionInRange returns true for a missing value; client guide: call setAppVersion, or the gate is a no-op). With 2.5.4 set: `nps yes` (≥ 2.0.0, consistent). No survey appeared on Home because the trigger was still Custom Event, waiting for `selectedColor` — not a gate failure. Still to run: trigger back to Screen / Page View, version 1.2.3 → `nps no`; 2.5.4 → survey; android-only survey never returned. |
 | NPS-09 | P2 | 1.1 | Appearance | Survey with custom colours, dark variant, pill buttons. | Toggle dark mode. | Colours and button style match the config in both modes. | — | ✅ Run 48 (QA-NPS-01 alone Active, primary #E4572E / background #FFF8E7 / text #1B2A41, dark set #4ECDC4 / #101820 / #F2F2F2, pill, logo URL): light mode — cream sheet edge to edge, navy question, orange score chips and Submit pill, custom scale labels LOW 0 / HIGH 10, logo centred; dark mode — near-black sheet, light text, teal chips and Submit, comment 'dark5' readable, teal check on the thank-you. Submissions 8 (nps-b4) and 4 (nps-b5) → 202 on 5d2769d8. Run 47 (dark-mode phone, survey with default light colours and no dark set): sheet white edge to edge, question and typed comment readable, purple pill buttons — the run-44 layout fix is confirmed on device. Still open, low priority: a survey with custom colours and the dark colour set enabled, to see the dark values applied. Run 44 (dark-mode app, survey without dark colours): the survey background covered only the content, so the sheet was a white card in a near-black sheet; the thank-you text below the card was dark-on-dark; the follow-up TextEditor kept the system black background so the typed comment was unreadable. Fixed on the branch: background fills the sheet, editor uses the survey colours. Re-test in dark mode: white sheet edge to edge, readable comment; then the configured colours (NPS-09 proper). Note: the admin Position field (Bottom Sheet / Modal) is decoded by the SDK but never used — SwiftUI always presents a sheet with medium/large detents, UIKit always a page sheet. Logo URL renders (AsyncImage, centred, scaled to fit). |
-| NPS-10 | P1 | 5.0 | Submit while offline | Airplane mode. | Submit a score. | Up to 4 attempts (~4 s of backoff), then an error is logged by the app's onSubmit task; no crash; thank-you still shows (submission is fire-and-forget in the app). | No submission recorded; document. | ☐ |
+| NPS-10 | P1 | 5.0 | Submit while offline | Airplane mode. | Submit a score. | Up to 4 attempts (~4 s of backoff), then an error is logged by the app's onSubmit task; no crash; thank-you still shows (submission is fire-and-forget in the app). | No submission recorded; document. | ✅ Run 55: airplane mode on, Submit tapped → POST …/nps/5d2769d8/submissions, `Request failed, retrying... (1 attempts left)`, second POST, second retry line, then the harness logged `Failed to submit NPS response - networkError("The Internet connection appears to be offline.")` about 2 s after the tap; the thank-you sheet still showed (the app's submit is fire-and-forget) and nothing crashed. Admin timeline for nps-g1: only Viewed Page and Push Notification Subscribe, no submission — documented behaviour, no offline queue for NPS. |
 | NPS-11 | P2 | 1.1 | Admin 'Opens' column | NPS-01 done. | Admin → NPS scores. | — | Mismatch 5: the backend counts `npsOpen`, the SDK never sends it, so Opens = 0. Known gap. | ⚠️ Not device-testable: neither the iOS nor the web SDK sends `npsOpen` (the web sends `npsSkipped`/`npsDismissed` only), so the admin Opens column is 0 on both platforms — a backend/product gap, not an iOS one. |
-| NPS-12 | P2 | 1.1 | followUpRequired | Survey with followUpRequired true. | Try to submit without a comment. | Submit disabled until a comment is entered. | — | ☐ |
+| NPS-12 | P2 | 1.1 | followUpRequired | Survey with followUpRequired true. | Try to submit without a comment. | Submit disabled until a comment is entered. | — | ✅ Run 55 (QA-NPS-01, follow-up comment required, dark mode): after tapping 5 the Submit pill was dimmed while the comment box was empty and lit up as soon as text was typed (screenshots). |
 
 ### M. App inbox
 
@@ -800,6 +800,13 @@ QA-NPS-08 (Min app 2.0.0, screen view) Active; QA-NPS-01 deactivated during the 
 
 - 2.5.4 → gated survey returned; 1.5.4 → nps no ×4 (NPS-08 pass).
 - Observation: a flood of 'invalid numeric value (NaN) to CoreGraphics' lines while typing in the harness Settings QA fields with the keyboard up — harness screen warning, no crash, not the SDK.
+
+### Run 55 — NPS follow-up required and offline submit (2026-09-09)
+
+QA-NPS-01 screen view, delay 8 s, comment required; profile nps-g1; airplane mode for the submit.
+
+- Submit disabled until a comment is typed (NPS-12 pass).
+- Offline submit: two attempts, network error surfaced by the app, thank-you shown, no submission recorded (NPS-10 pass, documented: no offline queue for NPS).
 
 ## Appendix A. Temp-code snippets
 
