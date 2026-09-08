@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 38 run(s)**: 85 pass, 1 fail, 15 pass with caveat, 61 not yet run. Details per row in the Result column and in section 5.
+**Status after 38 run(s)**: 87 pass, 1 fail, 15 pass with caveat, 59 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -236,8 +236,8 @@ Fixtures: one banner block per displayType and trigger, attached to the Home pag
 | BAN-16 | P1 | 1.0.4 | Dark mode and rotation | Any popup and bar. | Toggle dark mode; rotate. | Legible in both; bar re-lays out. | — | ⚠️ Dark mode: the device ran in dark mode for runs 5–12 and popups, static blocks and the inbox rendered with their design colours (screenshots). Rotation not tested yet. |
 | BAN-17 | P1 | 1.0.4 | Banner without a design is ignored | Block with html only (design null) or displayType custom. | Open Home. | Nothing rendered, no impression, no crash. | No event. | ✅ Run 36: a popup with an empty design was shown as an empty card and counted → SDK now skips designs with no rows or content. Run 37: tester confirms the no-design block is not shown; responses list only blocks with content. |
 | BAN-18 | P1 | 1.0.4 | Two banners at once | Popup + bar both immediate. | Open Home. | Both render; closing one leaves the other. | Two impressions. | ✅ Run 36: two immediate popups — both counted, only the second shown → fixed with a popup/flyout queue. Run 37 (2026-09-08): immediate popup f3616491-… shown and counted; the 5 s delay popup fired while it was up ('trigger fired' with no 'showing window'), waited, and was shown and counted the moment the first was closed (08:26:38: bannerClose for the first, impression for the second), then closed itself. Sequential display with one impression each. |
-| BAN-19 | P2 | 1.0.4 | leaveIntent never fires on mobile | Block with leaveIntent. | Use the app. | Never shown (documented). | — | ☐ |
-| BAN-20 | P2 | 1.0.4 | Banners on token-less screens<br>_Client guide item._ | Block attached to a Cart page in the admin. | Open Cart. | Never returned: the request has no page token, so no Page resolves. | — | ☐ |
+| BAN-19 | P2 | 1.0.4 | leaveIntent never fires on mobile | Block with leaveIntent. | Use the app. | Never shown (documented). | — | ✅ Not applicable on mobile and handled as documented: BannerManagerService treats a leaveIntent trigger as a no-op (there is no mouse leaving a viewport), so such a block is never shown and never counted. No device fixture needed; tester agrees (run 38). |
+| BAN-20 | P2 | 1.0.4 | Banners on token-less screens<br>_Client guide item._ | Block attached to a Cart page in the admin. | Open Cart. | Never returned: the request has no page token, so no Page resolves. | — | ✅ Runs 6–33: Cart, Checkout and Success screen views went out with no page token ('Tracked screen view - token: none') and every such response carried 0 banners — a block attached to those pages in the admin is never returned without a token. Since run 33 the harness sends the cart and product tokens and those pages get their banners. Client guide: every screen that should show banners needs a Page token (or pageUrl). |
 
 ### K. Stories
 

@@ -113,6 +113,8 @@ RESULTS = {
   "BAN-07": ("pass", "Run 36: static block 492d4835-… with a selector other than #home-content returned for Home; the manager fired it, the Home screen filtered it (selector mismatch), nothing rendered, no impression."),
   "BAN-17": ("pass", "Run 36: a popup with an empty design was shown as an empty card and counted → SDK now skips designs with no rows or content. Run 37: tester confirms the no-design block is not shown; responses list only blocks with content."),
   "BAN-15": ("pass", "Run 37: tester validated the sessionInterval 2 block on consecutive cold starts (sessions 78–82): shown on the sessions it was returned for, skipped on the others; once the popup queue landed it no longer collided with the normal popup. Session numbers are visible as device.sessions in each request."),
+ "BAN-19": ("pass", "Not applicable on mobile and handled as documented: BannerManagerService treats a leaveIntent trigger as a no-op (there is no mouse leaving a viewport), so such a block is never shown and never counted. No device fixture needed; tester agrees (run 38)."),
+ "BAN-20": ("pass", "Runs 6–33: Cart, Checkout and Success screen views went out with no page token ('Tracked screen view - token: none') and every such response carried 0 banners — a block attached to those pages in the admin is never returned without a token. Since run 33 the harness sends the cart and product tokens and those pages get their banners. Client guide: every screen that should show banners needs a Page token (or pageUrl)."),
 }
 
 RUNS = [
