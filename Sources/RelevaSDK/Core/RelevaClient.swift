@@ -147,6 +147,47 @@ public class RelevaClient {
     // it no-ops once the client is freed; the `NSObjectProtocol` token lives only until
     // the (typically singleton) client is itself deallocated.
 
+    // MARK: - Derived event actions
+
+    /// The event actions the backend derives from a cart change — `cartCreate` (first product
+    /// into an empty cart), `cartAdd`, `cartRemove`, `cartUpdate` (any change leaving the cart
+    /// non-empty) — mirrored on the device so an NPS survey that triggers or cancels on one of
+    /// them reacts to `setCart` without a round-trip. The admin fills those lists from exactly
+    /// these actions; before this a survey set to cancel on `cartAdd` kept showing after an
+    /// add-to-cart (device run 51). Products are compared by id.
+    static func cartEventActions(from previous: Cart?, to current: Cart) -> [String] {
+        let previousIds = Set(previous?.products.map(\.id) ?? [])
+        let currentIds = Set(current.products.map(\.id))
+        var actions: [String] = []
+        if !currentIds.subtracting(previousIds).isEmpty {
+            if previousIds.isEmpty { actions.append("cartCreate") }
+            actions.append("cartAdd")
+        }
+        if !previousIds.subtracting(currentIds).isEmpty {
+            actions.append("cartRemove")
+        }
+        if !current.products.isEmpty {
+            actions.append("cartUpdate")
+        }
+        return actions
+    }
+
+    /// Wishlist counterpart of `cartEventActions`: `wishlistCreate`, `wishlistAdd`,
+    /// `wishlistRemove`.
+    static func wishlistEventActions(from previous: [WishlistProduct], to current: [WishlistProduct]) -> [String] {
+        let previousIds = Set(previous.map(\.id))
+        let currentIds = Set(current.map(\.id))
+        var actions: [String] = []
+        if !currentIds.subtracting(previousIds).isEmpty {
+            if previousIds.isEmpty { actions.append("wishlistCreate") }
+            actions.append("wishlistAdd")
+        }
+        if !previousIds.subtracting(currentIds).isEmpty {
+            actions.append("wishlistRemove")
+        }
+        return actions
+    }
+
     // MARK: - Shutdown
 
     /// `true` once `shutdown()` has run. The instance then ignores app-lifecycle events and
@@ -308,6 +349,14 @@ public class RelevaClient {
             bannerManager?.onCartChanged()
             storyManager?.onCartChanged()
         }
+        // The same change, expressed as the event actions the backend will derive from it,
+        // feeds the NPS trigger and cancel list (see `cartEventActions`). Skipped on the
+        // first restore, which the sync below skips as well.
+        if !isFirstInitialization && cartChanged {
+            for action in Self.cartEventActions(from: previousCart, to: cart) {
+                npsManager?.trackEvent(action)
+            }
+        }
 
         if config.enableDebugLogging {
             relevaLog("RelevaSDK: Cart updated with \(cart.products.count) products (changed: \(cartChanged))")
@@ -383,6 +432,11 @@ public class RelevaClient {
         if wishlistChanged {
             bannerManager?.onWishlistChanged()
             storyManager?.onWishlistChanged()
+        }
+        if !isFirstInitialization && wishlistChanged {
+            for action in Self.wishlistEventActions(from: previousWishlist ?? [], to: products) {
+                npsManager?.trackEvent(action)
+            }
         }
 
         if config.enableDebugLogging {

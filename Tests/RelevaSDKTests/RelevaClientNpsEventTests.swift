@@ -81,4 +81,43 @@ final class RelevaClientNpsEventTests: XCTestCase {
 
         await fulfillment(of: [shown], timeout: 1)
     }
+
+    // MARK: - Cart and wishlist changes as event actions (device run 51)
+
+    func testCartChangesMapToTheBackendsEventActions() {
+        let p1 = CartProduct(id: "p1", price: 1)
+        let p2 = CartProduct(id: "p2", price: 2)
+        XCTAssertEqual(RelevaClient.cartEventActions(from: nil, to: .active([p1])),
+                       ["cartCreate", "cartAdd", "cartUpdate"], "first product into an empty cart")
+        XCTAssertEqual(RelevaClient.cartEventActions(from: .active([p1]), to: .active([p1, p2])),
+                       ["cartAdd", "cartUpdate"])
+        XCTAssertEqual(RelevaClient.cartEventActions(from: .active([p1, p2]), to: .active([p1])),
+                       ["cartRemove", "cartUpdate"])
+        XCTAssertEqual(RelevaClient.cartEventActions(from: .active([p1]), to: .empty()),
+                       ["cartRemove"], "an emptied cart is not an update")
+        XCTAssertEqual(RelevaClient.wishlistEventActions(from: [], to: [WishlistProduct(id: "w1")]),
+                       ["wishlistCreate", "wishlistAdd"])
+        XCTAssertEqual(RelevaClient.wishlistEventActions(from: [WishlistProduct(id: "w1")], to: []),
+                       ["wishlistRemove"])
+    }
+
+    func testAddingToTheCartCancelsASurveyThatCancelsOnCartAdd() async throws {
+        let (client, manager) = makeClient()
+        manager.initialize(config(cancelOn: ["cartAdd"]))
+        // The first `setCart` is the restore the SDK does not report; the second one is a
+        // real change and must reach the survey as `cartAdd`.
+        client.setCart(.empty())
+        client.setCart(.active([CartProduct(id: "p1", price: 1)]))
+
+        let shown = expectation(description: "survey published")
+        shown.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { published in
+                if published.token == "nps-custom" { shown.fulfill() }
+            }
+            .store(in: &cancellables)
+
+        _ = try await client.trackCustomEvent(CustomEvent(action: "selectedColor"))
+        await fulfillment(of: [shown], timeout: 1)
+    }
 }
