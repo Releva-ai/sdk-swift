@@ -103,14 +103,19 @@ public struct StoryViewerView: View {
                             }
                         }
 
-                        // Navigation tap areas
+                        // Navigation tap areas: the outer thirds step back/forward, the middle
+                        // third is not hit-tested so links and buttons inside the slide design
+                        // reach `onLinkTap`. The two halves used to cover the whole slide, so a
+                        // button in the design only ever flipped slides and no storySlideClick
+                        // was ever sent (device run 39).
                         HStack(spacing: 0) {
-                            // Left half - previous
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture { goToPreviousSlide() }
 
-                            // Right half - next
+                            Color.clear
+                                .allowsHitTesting(false)
+
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture { goToNextSlide() }
