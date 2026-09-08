@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 57 run(s)**: 110 pass, 1 fail, 15 pass with caveat, 36 not yet run. Details per row in the Result column and in section 5.
+**Status after 58 run(s)**: 112 pass, 1 fail, 15 pass with caveat, 34 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -307,8 +307,8 @@ The example app is SwiftUI, so these need a scratch `UIViewController` (temp cod
 | UIK-04 | P1 | 4.2 | Banner arrives while a modal is up | S11 presents a modal then triggers the request. | Run. | Banner shows above the modal (topMostPresentedViewController). | — | ✅ Run 56: 'Present a modal, then Home screen view' — the UIAlertController is visible behind the flyout and the popup in the screenshot; the overlay was presented from the frontmost controller. |
 | UIK-05 | P2 | 4.2 | stop() then start() re-presents without a second impression | Popup on screen. | Pop the controller (stop), push again (start). | Same popup returns; no second `Banner impression tracked` line (documented limitation). | — | ⚠️ Not device-testable with this harness: the SwiftUI NavigationLink pushes a fresh controller (and presenter) on every visit, so each return re-fetched and re-counted by design. The retained-banner case is covered by BannerPresenterTests.testStopThenStartDoesNotCountASecondImpressionForTheRetainedBanner; the presenter's stop/start on leave/return was exercised (`presenters stopped/started` on every navigation) with nothing left on screen. |
 | UIK-06 | P1 | 4.2 | Close reports bannerClose and takes app modals down | Popup up, then present an alert from the host. | Tap the banner's X. | `Banner action 'bannerClose'`; the alert is dismissed too (documented trade-off). | `bannerClose` event. | ✅ Run 56: every close on the UIKit path sent `bannerClose` 202 (addef82d, aa275c11, f34a090d, several times). Whether closing a banner also took the alert down was not reported by the tester — documented trade-off, no change either way. |
-| UIK-07 | P1 | 4.2 | NpsPresenter | S11 with `NpsPresenter(host:onSubmit:onSkip:)`; NPS fixture. | Trigger; skip once; trigger on a new session; submit. | Page sheet; skip closes it; submit calls onSubmit (S11 forwards to `submitNpsResponse`) → 202. | Submission recorded. | ☐ |
-| UIK-08 | P1 | 4.2 | StoryViewerView in a UIHostingController | S11 story branch. | Present. | Viewer works; S11 calls `storyImpression` manually; slide events fire; `onClose` dismisses. | Events. | ☐ |
+| UIK-07 | P1 | 4.2 | NpsPresenter | S11 with `NpsPresenter(host:onSubmit:onSkip:)`; NPS fixture. | Trigger; skip once; trigger on a new session; submit. | Page sheet; skip closes it; submit calls onSubmit (S11 forwards to `submitNpsResponse`) → 202. | Submission recorded. | ✅ Run 57 (NpsPresenter on the UIKit host, survey QA-NPS-01 Custom Event `selectedColor`, delay 8 s): 'NPS custom event' from the host → survey sheet presented from the host controller → score 6 with comment → onSubmit forwarded to submitNpsResponse → 202, `UIKit host: NPS submitted 6`. |
+| UIK-08 | P1 | 4.2 | StoryViewerView in a UIHostingController | S11 story branch. | Present. | Viewer works; S11 calls `storyImpression` manually; slide events fire; `onClose` dismisses. | Events. | ✅ Run 57: 'Show latest story' presented StoryViewerView in a UIHostingController (.fullScreen); the host sent the manual storyImpression and the viewer reported storySlideView slide 1. Harness artifact seen once: the full-screen presentation fires the host's viewWillDisappear, which re-enabled ContentView's SwiftUI story surface, and that surface presented the same story again (second impression, 'Attempt to present … while a presentation is in progress'). Fixed in the harness (flag flips only on pop); not an SDK issue — a UIKit app has no second surface. Close event not captured in this run; re-check X → storyClose when convenient. |
 | UIK-09 | P2 | 4.2 | Static banners dropped on UIKit path | Static fixture. | Run S11. | Not shown and NOT counted. | No impression. | ✅ Unit-tested on the branch: BannerPresenterTests.testStaticBannerIsNeitherShownNorCounted drives a static banner through the presenter's view model (overlayOnly) — not shown, no impression. Nothing to add on device: the UIKit host has no static surface by design. |
 | UIK-10 | P2 | 4.2 | iOS 15 bar height | An iOS 15 device, if any. | UIK-03 on it; rotate. | Height correct on first show; may be stale after rotation until the next banner event (documented). | — | ⚠️ No iOS 15 device available. The measurement path (`measureBars`, height constraint) only exists below iOS 16; on iOS 16+ `sizingOptions = .intrinsicContentSize` is used and UIK-03 covers it. Documented limitation stays. |
 
@@ -823,6 +823,14 @@ Settings → QA: UIKit surfaces → Open UIKit host; Home page with scroll popup
 - Bar, flyout, delayed bar and scroll popup presented over the UIKit host with one impression each and a bannerClose per X (UIK-01/02/03/06 pass); banners above an alert (UIK-04 pass).
 - Story button tapped only on fresh host instances that had not received a story — harness now keeps the story across visits (UIK-08 re-test). Survey sheet via NpsPresenter: no skip/submit line in the log — tester to confirm whether it appeared (UIK-07).
 - Observation: while the UIKit host is up and a screen view is triggered from it, leaving the host and landing on Home shows the same queued story through the SwiftUI surface — expected, the two surfaces are exclusive.
+
+### Run 57 — UIKit host: survey sheet and story in a hosting controller (2026-09-09)
+
+UIKit host; QA-NPS-01 Custom Event trigger; Home page banners and story; Product page scroll popup.
+
+- NpsPresenter sheet after the custom event, submit → 202 (UIK-07 pass). Story in UIHostingController with manual impression and slide view (UIK-08 pass).
+- Scroll popup on the UIKit path: 'Report scroll 100 %' after the Product screen view → popup, impression, close (adds to UIK-01).
+- Harness artifact: full-screen story presentation triggered the host's disappear callback and handed the story back to the SwiftUI surface, which showed it again — fixed in the harness (flag flips only when the host is popped).
 
 ## Appendix A. Temp-code snippets
 
