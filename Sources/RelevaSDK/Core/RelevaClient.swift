@@ -72,7 +72,8 @@ public class RelevaClient {
     private var bannerManager: BannerManagerService?
 
     /// NPS manager service
-    private var npsManager: NpsManagerService?
+    /// Internal (not private) so tests can install a manager without going through a push.
+    var npsManager: NpsManagerService?
 
     /// Story manager service
     private var storyManager: StoryManagerService?
@@ -604,7 +605,13 @@ public class RelevaClient {
         _ event: CustomEvent,
         screenToken: String? = nil
     ) async throws -> RelevaResponse {
-        try await push(PushRequest.forCustomEvent(event, screenToken: screenToken))
+        // A tracked custom event is also an NPS event: the admin's Custom Event trigger and
+        // "cancel on events" pick from the event actions the app tracks, so an action that
+        // reaches the backend here must reach the survey's trigger too. Before this the app
+        // had to call `trackEvent` separately, and a colour pick tracked as `selectedColor`
+        // never triggered a survey configured on it (device run 50).
+        npsManager?.trackEvent(event.action)
+        return try await push(PushRequest.forCustomEvent(event, screenToken: screenToken))
     }
 
     // MARK: - Banner Tracking
