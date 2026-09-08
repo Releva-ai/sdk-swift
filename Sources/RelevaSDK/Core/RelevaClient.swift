@@ -503,6 +503,13 @@ public class RelevaClient {
     /// Cart and wishlist auto-syncs use `incrementViews: false` to avoid inflating
     /// the page-view count with non-navigation push calls.
     private func push(_ request: any PushRequestConvertible, incrementViews: Bool) async throws -> RelevaResponse {
+        // Each request type carries its own rules (an empty search query, an unpaid or empty
+        // checkout cart, a negative cart price). Nothing invoked them before this: the 4.0
+        // rewrite made `validate()` a protocol requirement so the rules would be reached
+        // through the existential, but `push` never called it, so an empty search went out
+        // on the wire (device test plan TRK-06 / CHK-03). Validation now runs before any
+        // payload is built, so a bad request throws with no network traffic.
+        try request.validate()
         guard let prepared = preparePush(request, incrementViews: incrementViews) else {
             return RelevaResponse.empty()
         }
