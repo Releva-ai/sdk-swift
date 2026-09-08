@@ -130,8 +130,15 @@ struct NpsSurveyView: View {
             case .thankYou:
                 thankYouStep
             }
+
+            Spacer(minLength: 0)
         }
-        .background(bgColor)
+        // The survey's background must paint the whole sheet, not just the content's own
+        // height: in a dark-mode app the rest of the sheet was the system's near-black, so the
+        // survey looked like a white card floating in a dark sheet and the thank-you text below
+        // the card was dark-on-dark (device run 44).
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(bgColor.ignoresSafeArea())
         .onDisappear {
             dismissTimer?.invalidate()
         }
@@ -233,12 +240,21 @@ struct NpsSurveyView: View {
             TextEditor(text: $comment)
                 .frame(minHeight: 80, maxHeight: 120)
                 .padding(8)
+                // TextEditor paints the system background (black in dark mode) under the
+                // survey's text colour, which made the typed comment unreadable (device run
+                // 44). It takes the survey's own colours instead.
+                .modifier(PlainEditorBackground())
                 .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(bgColor)
+                )
+                .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(textColor.opacity(0.2), lineWidth: 1)
                 )
                 .font(.system(size: 14))
                 .foregroundColor(textColor)
+                .tint(primaryColor)
 
             Button {
                 submitFollowUp()
@@ -334,6 +350,17 @@ private enum NpsStep {
 }
 
 // MARK: - Presentation Detents Compatibility
+
+/// Hides `TextEditor`'s own (system-coloured) scroll background where the API exists.
+private struct PlainEditorBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content.scrollContentBackground(.hidden)
+        } else {
+            content
+        }
+    }
+}
 
 private struct PresentationDetentsModifier: ViewModifier {
     func body(content: Content) -> some View {
