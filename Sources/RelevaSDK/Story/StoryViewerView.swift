@@ -99,6 +99,7 @@ public struct StoryViewerView: View {
                                 ) { url in
                                     trackSlideClick()
                                     onLinkTap(url)
+                                    leaveForLink()
                                 }
                             }
                             // Each slide is its own view: the next slide starts scrolled to the
@@ -233,14 +234,24 @@ public struct StoryViewerView: View {
         onClose()
     }
 
+    /// A link was followed: take the viewer down so the destination is visible. On the web the
+    /// story vanishes with the page navigation and no storyClose is sent, so none is sent here
+    /// either; the storySlideClick already suppresses the story. Leaving the full-screen cover
+    /// up made the navigation invisible and the tester tapped the link four times (device run
+    /// 42).
+    private func leaveForLink() {
+        timer?.invalidate()
+        onClose()
+    }
+
     private func handleSlideAction() {
         trackSlideClick()
         if let url = currentSlide.actionUrl, !url.isEmpty {
+            onLinkTap(url)
             if currentSlide.actionType == "dismiss" {
-                onLinkTap(url)
                 close()
             } else {
-                onLinkTap(url)
+                leaveForLink()
             }
         }
     }
