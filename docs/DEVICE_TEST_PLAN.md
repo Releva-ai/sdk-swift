@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 55 run(s)**: 104 pass, 1 fail, 13 pass with caveat, 44 not yet run. Details per row in the Result column and in section 5.
+**Status after 56 run(s)**: 105 pass, 1 fail, 14 pass with caveat, 42 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -309,8 +309,8 @@ The example app is SwiftUI, so these need a scratch `UIViewController` (temp cod
 | UIK-06 | P1 | 4.2 | Close reports bannerClose and takes app modals down | Popup up, then present an alert from the host. | Tap the banner's X. | `Banner action 'bannerClose'`; the alert is dismissed too (documented trade-off). | `bannerClose` event. | ☐ |
 | UIK-07 | P1 | 4.2 | NpsPresenter | S11 with `NpsPresenter(host:onSubmit:onSkip:)`; NPS fixture. | Trigger; skip once; trigger on a new session; submit. | Page sheet; skip closes it; submit calls onSubmit (S11 forwards to `submitNpsResponse`) → 202. | Submission recorded. | ☐ |
 | UIK-08 | P1 | 4.2 | StoryViewerView in a UIHostingController | S11 story branch. | Present. | Viewer works; S11 calls `storyImpression` manually; slide events fire; `onClose` dismisses. | Events. | ☐ |
-| UIK-09 | P2 | 4.2 | Static banners dropped on UIKit path | Static fixture. | Run S11. | Not shown and NOT counted. | No impression. | ☐ |
-| UIK-10 | P2 | 4.2 | iOS 15 bar height | An iOS 15 device, if any. | UIK-03 on it; rotate. | Height correct on first show; may be stale after rotation until the next banner event (documented). | — | ☐ |
+| UIK-09 | P2 | 4.2 | Static banners dropped on UIKit path | Static fixture. | Run S11. | Not shown and NOT counted. | No impression. | ✅ Unit-tested on the branch: BannerPresenterTests.testStaticBannerIsNeitherShownNorCounted drives a static banner through the presenter's view model (overlayOnly) — not shown, no impression. Nothing to add on device: the UIKit host has no static surface by design. |
+| UIK-10 | P2 | 4.2 | iOS 15 bar height | An iOS 15 device, if any. | UIK-03 on it; rotate. | Height correct on first show; may be stale after rotation until the next banner event (documented). | — | ⚠️ No iOS 15 device available. The measurement path (`measureBars`, height constraint) only exists below iOS 16; on iOS 16+ `sizingOptions = .intrinsicContentSize` is used and UIK-03 covers it. Documented limitation stays. |
 
 ### O. Resilience, retries and threading
 
@@ -807,6 +807,14 @@ QA-NPS-01 screen view, delay 8 s, comment required; profile nps-g1; airplane mod
 
 - Submit disabled until a comment is typed (NPS-12 pass).
 - Offline submit: two attempts, network error surfaced by the app, thank-you shown, no submission recorded (NPS-10 pass, documented: no offline queue for NPS).
+
+### UIKit chapter — coverage check and harness host (2026-09-09)
+
+Review of UIK-01…10 against unit tests and the SwiftUI runs; harness gains Settings → QA: UIKit surfaces → Open UIKit host.
+
+- Overlap: the UIKit presenters render the same views as the SwiftUI path (BannerChrome popup/flyout/bar, NpsSurveyView, StoryViewerView) through the same BannerDisplayViewModel, so every visual and tracking result from runs 20–55 applies. Presenter mechanics are unit-tested: overFullScreen presentation and impression (UIK-01), frontmost-modal target (UIK-04), popup+flyout in one overlay (UIK-02), bar hosted in the host view (UIK-03), static dropped (UIK-09), close reporting (UIK-06), stop/start without a second impression (UIK-05), NPS sheet/second-survey/stop (UIK-07).
+- What only a device shows: the UIKit path has no overlay window — the overlay is presented .overFullScreen from the topmost controller, bars sit inside the host's safe area (not edge-to-edge as in SwiftUI), and popup/flyout get no safe-area insets from a host. One pass through the UIKit host (popup, popup+flyout, bar+rotation, banner over an alert, close, NPS sheet, story) settles UIK-01…08. UIK-10 needs an iOS 15 device (none).
+- Harness: QAUIKitHostViewController with BannerPresenter + NpsPresenter, buttons for Home/Product screen views, scroll 100 %, modal-then-screen-view, latest story in a UIHostingController (manual storyImpression), NPS custom event. ContentView's SwiftUI story/NPS surfaces are off while it is up.
 
 ## Appendix A. Temp-code snippets
 
