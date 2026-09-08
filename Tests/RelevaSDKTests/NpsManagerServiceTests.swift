@@ -236,4 +236,49 @@ final class NpsManagerServiceTests: XCTestCase {
 
         XCTAssertTrue(receivedTokens.isEmpty, "a disposed manager must not show its delayed survey")
     }
+
+    /// Device run 52: a push with no page context answers `nps: null`; that must not drop a
+    /// held custom-event config, or the cancel event that follows has nothing to act on.
+    func testAResponseWithoutASurveyKeepsTheHeldConfig() {
+        let manager = NpsManagerService()
+        let config = NpsConfig(
+            token: "kept",
+            question: "Rate us?",
+            triggers: [NpsTrigger(type: "customEvent", eventName: "selectedColor")],
+            triggerDelaySeconds: 0,
+            cancelOnEvents: ["cartAdd"]
+        )
+        manager.initialize(config)
+        manager.initialize(nil)
+
+        let shown = expectation(description: "NPS published")
+        shown.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { if $0.token == "kept" { shown.fulfill() } }
+            .store(in: &cancellables)
+
+        manager.trackEvent("cartAdd")        // still knows the config, so this cancels
+        manager.trackEvent("selectedColor")  // and this is therefore ignored
+        wait(for: [shown], timeout: 1)
+    }
+
+    func testAHeldConfigStillFiresAfterAResponseWithoutASurvey() {
+        let manager = NpsManagerService()
+        let config = NpsConfig(
+            token: "kept-fires",
+            question: "Rate us?",
+            triggers: [NpsTrigger(type: "customEvent", eventName: "selectedColor")],
+            triggerDelaySeconds: 0
+        )
+        manager.initialize(config)
+        manager.initialize(nil)
+
+        let shown = expectation(description: "NPS published")
+        NpsDisplayController.shared.npsPublisher
+            .sink { if $0.token == "kept-fires" { shown.fulfill() } }
+            .store(in: &cancellables)
+
+        manager.trackEvent("selectedColor")
+        wait(for: [shown], timeout: 2)
+    }
 }

@@ -35,9 +35,17 @@ public class NpsManagerService {
     public func initialize(_ config: NpsConfig?) {
         queue.async { [weak self] in
             guard let self = self else { return }
+            // A response with no survey does not forget the one already held. Cart syncs and
+            // custom-event pushes carry no page context and come back with `nps: null`; an
+            // armed custom-event trigger or its cancel event must survive them (device run 52:
+            // a colour pick armed the survey, the event's own response cleared the config, the
+            // add-to-cart that followed had nothing to cancel, and the next screen view put the
+            // config back just in time for the timer). The web SDK ignores a null NPS field the
+            // same way; only `startNewSession` forgets a config.
+            guard let config = config else { return }
             self.config = config
 
-            guard !self.suppressedThisSession, let config = config else { return }
+            guard !self.suppressedThisSession else { return }
             if self.triggered { return }
 
             let hasCustomEventTriggers = config.triggers.contains { $0.type == "customEvent" }
