@@ -66,7 +66,14 @@ public class NotificationService: NSObject {
         if config.enableDebugLogging {
             relevaLog("RelevaSDK: Setting notification center delegate...")
         }
-        previousDelegate = notificationCenter.delegate
+        // Idempotent: a second `initialize()` on the same instance (`enablePushEngagementTracking()`
+        // is public and reuses the service) would otherwise capture `self` as "previous", and
+        // `restorePreviousDelegate()` would then re-install this shut-down service instead of
+        // whatever the host had before the *first* call — the only capture `previousDelegate`
+        // (held `weak`) ever gets.
+        if notificationCenter.delegate !== self {
+            previousDelegate = notificationCenter.delegate
+        }
         notificationCenter.delegate = self
 
         // Verify delegate was set

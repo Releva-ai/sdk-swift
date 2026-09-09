@@ -17,11 +17,19 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
     /// Delivers `content` through `contentHandler` exactly once. `contentHandler` and
     /// `bestAttemptContent` are `open`, so a subclass that replies through them directly
     /// rather than through this method can still double-reply.
+    ///
+    /// `serviceExtensionTimeWillExpire()` is delivered on the main thread, but
+    /// `downloadAndAttachImage`'s completion runs on `URLSession.shared`'s delegate queue — a
+    /// background queue. Both can call `reply` at once, so the guard-and-set on `hasReplied` /
+    /// `contentHandler` is hopped onto one queue to make it atomic instead of a plain
+    /// read-modify-write raced from two threads.
     private func reply(_ content: UNNotificationContent) {
-        guard !hasReplied, let handler = contentHandler else { return }
-        hasReplied = true
-        contentHandler = nil
-        handler(content)
+        DispatchQueue.main.async { [self] in
+            guard !hasReplied, let handler = contentHandler else { return }
+            hasReplied = true
+            contentHandler = nil
+            handler(content)
+        }
     }
 
     open override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {

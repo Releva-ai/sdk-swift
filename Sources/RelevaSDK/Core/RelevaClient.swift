@@ -215,10 +215,11 @@ public class RelevaClient {
         npsManager?.dispose()
         // `SessionService` is a process-wide singleton that binds to whichever `npsManager` was
         // live when `preparePush` first initialized it (`initialize` is `if initialized { return
-        // }`), so without this the replacement client's first push finds it already
-        // initialized and never rebinds — the old, now-disposed `npsManager` keeps getting
-        // `startNewSession()` for the rest of the process.
-        SessionService.shared.dispose()
+        // }`), so without this the disposed `npsManager` keeps getting `startNewSession()` for
+        // the rest of the process. `rebind` (not `dispose`) because `dispose` also resets
+        // `initialized`, and the next client's `preparePush` would then re-run the cold-start
+        // path in `initialize` and double-count a device session per replacement.
+        SessionService.shared.rebind(npsManager: nil)
         notificationService?.restorePreviousDelegate()
         if RelevaClient.shared === self {
             RelevaClient.shared = nil
@@ -528,6 +529,10 @@ public class RelevaClient {
 
         // Ensure lifecycle-based session tracking is initialized
         SessionService.shared.initialize(storage: storage, npsManager: npsManager)
+        // `initialize` no-ops past the first ever call, so a replacement client's own manager
+        // still needs pointing at explicitly — otherwise it stays on whatever `shutdown()` last
+        // rebound it to (`nil`, or a previous client's manager).
+        SessionService.shared.rebind(npsManager: npsManager)
 
         let pushRequest = request.pushRequest
 
@@ -569,24 +574,35 @@ public class RelevaClient {
             relevaLog("RelevaSDK: Response: \(response.banners.count) banner(s) [\(banners.joined(separator: ", "))], \(response.stories.count) story(ies), nps \(nps)")
         }
 
+        // Whether this push named a page is what tells `NpsManagerService` whether `nps: null`
+        // means "no survey for this screen" (clear) or "this request carries no page context" (a
+        // cart/wishlist sync, a bare custom event — hold whatever was already armed). It also
+        // means a new screen, which is why the scroll replay below is scoped to it: without this,
+        // `lastScrollPercentage` is client-, not screen-scoped, and a screen whose content is
+        // still loading when the response lands (so its `RelevaScrollObserver` has not corrected
+        // it yet) replays the *previous* screen's offset and can open a banner over a screen the
+        // user has not scrolled at all.
+        let hasPageContext = (prepared.payload["page"] as? [String: Any])?["token"] != nil
+        if hasPageContext {
+            lastScrollPercentage = 0
+        }
         // Initialize banners from response
         if !response.banners.isEmpty {
             bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
             // `initialize` re-arms every trigger from scratch; without replaying the last known
             // offset, a `scrollPercentage` banner for a screen the user already scrolled past
             // stays pending until the next offset change, which may never come.
-            bannerManager?.onScroll(percentage: lastScrollPercentage)
+            if lastScrollPercentage > 0 {
+                bannerManager?.onScroll(percentage: lastScrollPercentage)
+            }
         }
         // Initialize stories from response
         if !response.stories.isEmpty {
             storyManager?.initialize(newStories: response.stories, scrollPercentageProvider: nil)
-            storyManager?.onScroll(percentage: lastScrollPercentage)
+            if lastScrollPercentage > 0 {
+                storyManager?.onScroll(percentage: lastScrollPercentage)
+            }
         }
-        // Initialize NPS from response. Whether this push named a page is what tells
-        // `NpsManagerService` whether `nps: null` means "no survey for this screen" (clear) or
-        // "this request carries no page context" (a cart/wishlist sync, a bare custom event —
-        // hold whatever was already armed).
-        let hasPageContext = (prepared.payload["page"] as? [String: Any])?["token"] != nil
         npsManager?.initialize(response.nps, clearsWhenAbsent: hasPageContext)
 
         return response

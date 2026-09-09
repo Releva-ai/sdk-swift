@@ -109,6 +109,18 @@ class SessionService {
         return sessionId
     }
 
+    /// Repoints `startNewSession()`'s notification at a different manager (or `nil`) without
+    /// touching `storage`, `initialized` or any counter. `initialize(storage:npsManager:)` is a
+    /// once-only cold-start guarded by `initialized`, so it cannot be reused to hand the pointer
+    /// to a replacement `RelevaClient`'s manager — that would re-run `startNewSession()` and
+    /// double-count a session per client replacement. `shutdown()` calls this with `nil` so a
+    /// disposed manager is never notified again; `RelevaClient.preparePush` calls it with the
+    /// live manager on every push so a replacement's manager is current even though `initialize`
+    /// itself no-ops for it.
+    func rebind(npsManager: NpsManagerService?) {
+        self.npsManager = npsManager
+    }
+
     func dispose() {
         // Name-scoped removals mirroring the two addObserver registrations in
         // initialize(), rather than the bare removeObserver(self) form: this is a
