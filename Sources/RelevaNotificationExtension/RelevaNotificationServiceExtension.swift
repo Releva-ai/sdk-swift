@@ -14,22 +14,32 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
     /// instead of triggering "Ignoring additional replacement content replies".
     private var hasReplied = false
 
+    /// Guards the `hasReplied` / `contentHandler` claim only, not the delivery.
+    private let replyLock = NSLock()
+
     /// Delivers `content` through `contentHandler` exactly once. `contentHandler` and
     /// `bestAttemptContent` are `open`, so a subclass that replies through them directly
     /// rather than through this method can still double-reply.
     ///
     /// `serviceExtensionTimeWillExpire()` is delivered on the main thread, but
     /// `downloadAndAttachImage`'s completion runs on `URLSession.shared`'s delegate queue — a
-    /// background queue. Both can call `reply` at once, so the guard-and-set on `hasReplied` /
-    /// `contentHandler` is hopped onto one queue to make it atomic instead of a plain
-    /// read-modify-write raced from two threads.
+    /// background queue. Both can call `reply` at once, so the guard-and-set is taken under a
+    /// lock rather than left as a plain read-modify-write. The lock is released before
+    /// `handler` runs: the delivery stays synchronous on the calling thread, which
+    /// `serviceExtensionTimeWillExpire` requires — it is the system's last call before the
+    /// extension is terminated, so a reply deferred to another queue may never be made and the
+    /// user would get the unmodified push.
     private func reply(_ content: UNNotificationContent) {
-        DispatchQueue.main.async { [self] in
-            guard !hasReplied, let handler = contentHandler else { return }
-            hasReplied = true
-            contentHandler = nil
-            handler(content)
+        replyLock.lock()
+        guard !hasReplied, let handler = contentHandler else {
+            replyLock.unlock()
+            return
         }
+        hasReplied = true
+        contentHandler = nil
+        replyLock.unlock()
+
+        handler(content)
     }
 
     open override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {

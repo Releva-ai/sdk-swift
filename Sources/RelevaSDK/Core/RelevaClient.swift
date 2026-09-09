@@ -535,9 +535,20 @@ public class RelevaClient {
         SessionService.shared.rebind(npsManager: npsManager)
 
         let pushRequest = request.pushRequest
+        let payload = pushRequest.toDict()
+
+        // A push that names a page is a new screen, so the previous screen's offset no longer
+        // applies and must not be replayed onto this screen's banners. The reset belongs here,
+        // where the push is *issued*, and not on the response path: a `reportScrollPercentage`
+        // that lands while the request is in flight already describes the new screen, and
+        // resetting after the round trip would discard it — which is the case the replay in
+        // `send` exists for.
+        if (payload["page"] as? [String: Any])?["token"] != nil {
+            lastScrollPercentage = 0
+        }
 
         return PreparedPush(
-            payload: pushRequest.toDict(),
+            payload: payload,
             context: buildContext(for: pushRequest, incrementViews: incrementViews)
         )
     }
@@ -576,16 +587,8 @@ public class RelevaClient {
 
         // Whether this push named a page is what tells `NpsManagerService` whether `nps: null`
         // means "no survey for this screen" (clear) or "this request carries no page context" (a
-        // cart/wishlist sync, a bare custom event — hold whatever was already armed). It also
-        // means a new screen, which is why the scroll replay below is scoped to it: without this,
-        // `lastScrollPercentage` is client-, not screen-scoped, and a screen whose content is
-        // still loading when the response lands (so its `RelevaScrollObserver` has not corrected
-        // it yet) replays the *previous* screen's offset and can open a banner over a screen the
-        // user has not scrolled at all.
+        // cart/wishlist sync, a bare custom event — hold whatever was already armed).
         let hasPageContext = (prepared.payload["page"] as? [String: Any])?["token"] != nil
-        if hasPageContext {
-            lastScrollPercentage = 0
-        }
         // Initialize banners from response
         if !response.banners.isEmpty {
             bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
@@ -921,6 +924,8 @@ public class RelevaClient {
     /// the managers so a `scrollPercentage` banner or story returned for a screen the user has
     /// already scrolled past its threshold on fires immediately rather than waiting for the next
     /// scroll offset change, which may never come (e.g. the user is already at the bottom).
+    ///
+    /// Scoped to a screen by `preparePush`, which clears it whenever a push names a page token.
     private var lastScrollPercentage = 0
 
     /// Subscribe to `didBecomeActive` so that every app launch / foreground triggers
