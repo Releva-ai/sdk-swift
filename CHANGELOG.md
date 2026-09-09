@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [5.1.0] - 2026-09-09
 
-Everything here comes from the first pass over the SDK on a physical iPhone (iOS 26) since 1.0.2, run through the example app. The row-by-row record, the harness facts and the open backend questions are in `docs/DEVICE_TEST_PLAN.md`; `docs/tools/` holds the generator that produces it and the checkable page.
+Everything here comes from the first pass over the SDK on a physical iPhone (iOS 26) since 1.0.2, run through the example app (`Releva-ai/example-swift`).
 
 ### Added
 
@@ -12,7 +12,6 @@ Everything here comes from the first pass over the SDK on a physical iPhone (iOS
 - `RelevaClient.reportScrollPercentage(_:)` and the `relevaScrollTracking()` SwiftUI modifier, which observes the underlying `UIScrollView`. Scroll-triggered banners and stories never fired before: the preference-based reporter does not deliver on iOS 26.
 - A public initialiser for `StoryViewerView`, so a `UIHostingController` outside the SDK can present a story.
 - `os_log` logging (subsystem `ai.releva.sdk`) for the SDK and the notification extension, so Console.app can filter it. The response debug line names the banners with their trigger, the stories and the NPS survey with its trigger and cancel events; every banner trigger firing is logged.
-- `docs/DEVICE_TEST_PLAN.md` and `docs/tools/gen_plan.py` (162 rows, results per device run).
 
 ### Changed
 
