@@ -580,6 +580,17 @@ This default behavior is ideal for:
 - Account linking
 - Profile migrations
 
+### Replacing the client
+
+If your app builds a new `RelevaClient` on login or logout instead of keeping one instance, shut the old one down first:
+
+```swift
+AppDelegate.relevaClient?.shutdown()
+AppDelegate.relevaClient = RelevaClient(config: config)
+```
+
+`shutdown()` stops engagement tracking and turns `refreshPushToken()` into a no-op on that instance. Without it the replaced client stays alive and keeps re-registering the push token under the previous profile on every foreground. Keeping a single client and calling `setProfileId` on it does not need this.
+
 ### 2. Configure Push Notifications
 
 #### Enable Push Capabilities
@@ -810,6 +821,8 @@ Posts a `RelevaNavigateToInbox` notification. Your app navigates to the inbox sc
 
 Most tracking — screen views, product views, search, checkout, recommendations — is sent through a single API: build a `PushRequest` using the fluent builder, then hand it to `client.push(...)`. The builder methods can be chained in any order.
 
+Every screen that should record a page view or receive banners and stories needs its own page token from the Releva admin (Pages). A screen view sent without a token, or with a token the backend does not know, is accepted but produces no `pageView` event and returns no banners or stories — the request is not rejected, so a missing token is easy to miss. The SDK does not send a page URL, so URL filters on banners and stories do not apply on iOS; use segments or page tokens instead.
+
 `PushRequest` is a `Sendable` value type and each builder returns a new copy rather than mutating the receiver, so a request can be shared across tasks and a partly built one can be reused as the base for several pushes. Since the returned copy is the only thing that carries the change, the builders are deliberately not `@discardableResult` — calling one as a bare statement is a dropped edit, and the compiler flags it.
 
 ```swift
@@ -977,10 +990,23 @@ Banners are configured with triggers in the Releva dashboard:
 
 - **immediately** — Shows as soon as the screen loads
 - **delaySeconds** — Shows after a specified delay
-- **scrollPercentage** — Shows when user scrolls to a certain percentage (requires scroll percentage provider)
+- **scrollPercentage** — Shows when the user has scrolled a given percentage of the screen. The SDK cannot see your scroll view, so report it (below)
 - **cartChanged** — Shows when cart is modified
 - **wishlistChanged** — Shows when wishlist is modified
 - **leaveIntent** — Not supported on mobile (web-only feature)
+
+For `scrollPercentage` attach the `relevaScrollTracking()` modifier to the scroll view of the screen; it observes the underlying `UIScrollView` and reports the position to the client. A UIKit host, or a view that scrolls in some other way, calls `client.reportScrollPercentage(_:)` itself with a value from 0 to 100:
+
+```swift
+ScrollView {
+    content
+}
+.relevaScrollTracking()          // SwiftUI
+
+client.reportScrollPercentage(percent)   // UIKit / manual
+```
+
+Stories with a scroll trigger use the same report.
 
 ### Banner Types
 
@@ -1470,7 +1496,7 @@ client.setEndpointOverride("https://abc123.ngrok-free.app")
 client.setEndpointOverride(nil)
 ```
 
-The override takes precedence over both the realm-based URL and the `customEndpoint` in `RelevaConfig`.
+The override takes precedence over both the realm-based URL and the `customEndpoint` in `RelevaConfig`. It is used as given: pass the scheme and host with no trailing slash and no path — `https://host/` produces requests to `https://host//api/v0/push`, which the backend answers with a 404.
 
 ## Configuration Options
 
