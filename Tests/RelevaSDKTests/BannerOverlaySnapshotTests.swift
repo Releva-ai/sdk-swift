@@ -14,7 +14,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             "popupWidth": "600px", "borderRadius": "10px", "popupBackgroundColor": "#FFFFFF",
             "popupOverlay_backgroundColor": "rgba(0, 0, 0, 0.5)", "contentWidth": "500px",
             "backgroundColor": "#F7F8F9", "textColor": "#FFFFFF",
-            "popupCloseButton_backgroundColor": "#DDDDDD", "popupCloseButton_iconColor": "#000000",
+            "popupCloseButton_backgroundColor": "#DDDDDD", "popupCloseButton_iconColor": "#000000"
         ]
         for (k, v) in extraBody { bodyValues[k] = v }
         return [
@@ -29,22 +29,21 @@ final class BannerOverlaySnapshotTests: XCTestCase {
                                 "contents": [
                                     ["type": "heading", "values": ["text": "🎉Нова зона🎉", "fontSize": "32px", "textAlign": "center", "containerPadding": "24px 10px 10px", "color": "#FFFFFF"]],
                                     ["type": "text", "values": ["text": "<p>Заповядайте в новата SPARK зона в West Mall в кв. \"Люлин\"</p>", "fontSize": "18px", "textAlign": "center", "containerPadding": "10px", "color": "#FFFFFF"]],
-                                    ["type": "button", "values": ["text": "OK", "href": ["values": ["href": "https://spark.bg"]], "buttonColors": ["backgroundColor": "#FFFFFF", "color": "#000000"], "borderRadius": "30px", "containerPadding": "20px 10px 28px", "padding": "14px 40px", "textAlign": "center"]],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
+                                    ["type": "button", "values": ["text": "OK", "href": ["values": ["href": "https://spark.bg"]], "buttonColors": ["backgroundColor": "#FFFFFF", "color": "#000000"], "borderRadius": "30px", "containerPadding": "20px 10px 28px", "padding": "14px 40px", "textAlign": "center"]]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
         ]
     }
 
     /// Lays the overlay out in an iPhone-sized window over a fake dark app, runs `check` on the
     /// resulting geometry, and — only when `RLV_SNAPSHOT_DIR` is set — writes a PNG for eyes.
     ///
-    /// The geometry checks always run: each display type has its own layout contract, and a
-    /// change to one (device run 21: the bar rework) must not be able to break another (the
-    /// popup) without a test going red.
+    /// The geometry checks always run: each display type has its own layout contract, and a change
+    /// to one must not break another without a test going red.
     @MainActor
     private func snapshot(
         named name: String,
@@ -57,7 +56,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         let viewModel = BannerDisplayViewModel()
         configure(viewModel)
         let host = BannerOverlayHost.shared
-        host.attach(viewModel, onLinkTap: { _ in })
+        host.attach(viewModel) { _ in }
 
         let controller = BannerOverlayHostingController(rootView: BannerOverlayRoot(host: host))
         controller.host = host
@@ -111,21 +110,21 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     /// a short design must not become a screen-high card — sitting inside the safe area.
     @MainActor
     func testPopupSnapshot() throws {
-        try snapshot(named: "popup", configure: { vm in
+        try snapshot(named: "popup") { vm in
             vm.popupBanner = BannerResponse(token: "popup", displayType: "popup", design: design(rowColor: "#3A3FE0"))
-        }, check: { host, window in
+        } check: { host, _ in
             XCTAssertTrue(host.coversScreen, "a popup owns every touch")
             XCTAssertTrue(host.interactiveFrames.isEmpty, "a popup reports no pass-through frames")
-        })
+        }
     }
 
     /// Bar contract: one full-width strip touching the screen edge it is pinned to, reported as
     /// the only touch-claiming frame so the rest of the app stays usable.
     @MainActor
     func testTopBarSnapshot() throws {
-        try snapshot(named: "bar_top", configure: { vm in
+        try snapshot(named: "bar_top") { vm in
             vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", displayPosition: "top", design: design(rowColor: "#3A3FE0"))]
-        }, check: { host, window in
+        } check: { host, window in
             XCTAssertFalse(host.coversScreen)
             guard let bar = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
                 return XCTFail("expected exactly one bar frame, got \(host.interactiveFrames)")
@@ -134,7 +133,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             XCTAssertEqual(bar.width, window.bounds.width, accuracy: 0.5, "top bar spans the width")
             XCTAssertGreaterThan(bar.height, 59, "top bar pads for the status bar")
             XCTAssertLessThan(bar.height, window.bounds.height / 2, "a short design stays a strip")
-        })
+        }
     }
 
     /// Flyout contract (mobile spec, deviating from the web's 20 px gap on purpose): one
@@ -142,9 +141,9 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     /// whole screen, and the rest of the screen passes touches through.
     @MainActor
     func testFlyoutRightSnapshot() throws {
-        try snapshot(named: "flyout_right", configure: { vm in
+        try snapshot(named: "flyout_right") { vm in
             vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "right", design: design(rowColor: "#3A3FE0"))
-        }, check: { host, window in
+        } check: { host, window in
             XCTAssertFalse(host.coversScreen, "a flyout has no overlay")
             guard let panel = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
                 return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
@@ -157,19 +156,19 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(host.safeAreaInsets.bottom, 34)
             XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "reaches the screen bottom")
             XCTAssertEqual(panel.minY, host.safeAreaInsets.top, accuracy: 1, "drawer fills to just under the status bar even for a short design")
-        })
+        }
     }
 
     /// A design taller than the screen grows to just under the status bar and scrolls there.
     @MainActor
     func testFlyoutCapsTallDesign() throws {
         var tall = design(rowColor: "#3A3FE0")
-        var body = tall["body"]!.objectValue!
-        var rows = body["rows"]!.arrayValue!
-        var row = rows[0].objectValue!
-        var columns = row["columns"]!.arrayValue!
-        var column = columns[0].objectValue!
-        var contents = column["contents"]!.arrayValue!
+        var body = try XCTUnwrap(tall["body"]?.objectValue)
+        var rows = try XCTUnwrap(body["rows"]?.arrayValue)
+        var row = try XCTUnwrap(rows[0].objectValue)
+        var columns = try XCTUnwrap(row["columns"]?.arrayValue)
+        var column = try XCTUnwrap(columns[0].objectValue)
+        var contents = try XCTUnwrap(column["contents"]?.arrayValue)
         for i in 0..<14 {
             contents.append(["type": "text", "values": ["text": .string("<p>Line \(i) of a very long design</p>"), "fontSize": "18px", "containerPadding": "10px", "color": "#FFFFFF"]])
         }
@@ -177,13 +176,13 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         row["columns"] = .array(columns); rows[0] = .object(row)
         body["rows"] = .array(rows); tall["body"] = .object(body)
 
-        try snapshot(named: "flyout_tall", configure: { vm in
+        try snapshot(named: "flyout_tall") { vm in
             vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "left", design: tall)
-        }, check: { host, window in
+        } check: { host, window in
             guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
             XCTAssertEqual(panel.minY, host.safeAreaInsets.top, accuracy: 1, "grows up to the status bar, never under it")
             XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "reaches the screen bottom")
-        })
+        }
     }
 
     /// An image-only design gets exactly its image width plus padding, no body colour around it.
@@ -198,62 +197,62 @@ final class BannerOverlaySnapshotTests: XCTestCase {
                         "values": ["padding": "0px"],
                         "contents": [[
                             "type": "image",
-                            "values": ["containerPadding": "10px", "src": ["url": "https://example.invalid/x.jpg", "width": 200, "height": 600]],
-                        ]],
-                    ]],
-                ]],
-            ],
+                            "values": ["containerPadding": "10px", "src": ["url": "https://example.invalid/x.jpg", "width": 200, "height": 600]]
+                        ]]
+                    ]]
+                ]]
+            ]
         ]
-        try snapshot(named: "flyout_image", configure: { vm in
+        try snapshot(named: "flyout_image") { vm in
             vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "left", design: imageDesign)
-        }, check: { host, _ in
+        } check: { host, _ in
             guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
             XCTAssertEqual(panel.width, 220, accuracy: 0.5, "200 px image + 10 px padding each side")
             XCTAssertEqual(panel.minX, 0, accuracy: 0.5)
-        })
+        }
     }
 
     /// The drawer fills the height on small and large phones alike.
     @MainActor
     func testFlyoutFillsOnDifferentScreens() throws {
         for (name, size) in [("se", CGSize(width: 375, height: 667)), ("promax", CGSize(width: 430, height: 932))] {
-            try snapshot(named: "flyout_\(name)", size: size, configure: { vm in
+            try snapshot(named: "flyout_\(name)", size: size) { vm in
                 vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "right", design: design(rowColor: "#3A3FE0"))
-            }, check: { host, window in
+            } check: { host, window in
                 guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame on \(name)") }
                 XCTAssertEqual(panel.minY, host.safeAreaInsets.top, accuracy: 1, "\(name): top under the status bar")
                 XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "\(name): bottom at the screen edge")
                 XCTAssertEqual(panel.maxX, window.bounds.width, accuracy: 0.5, "\(name): flush right")
                 XCTAssertLessThanOrEqual(panel.width, window.bounds.width * 0.72 + 0.5)
-            })
+            }
         }
     }
 
     @MainActor
     func testFlyoutLeftSnapshot() throws {
-        try snapshot(named: "flyout_left", configure: { vm in
+        try snapshot(named: "flyout_left") { vm in
             vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "left", design: design(rowColor: "#3A3FE0"))
-        }, check: { host, window in
+        } check: { host, window in
             guard let panel = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
                 return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
             }
             XCTAssertEqual(panel.minX, 0, accuracy: 0.5, "flush with the left edge")
             XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5)
-        })
+        }
     }
 
     @MainActor
     func testBottomBarSnapshot() throws {
-        try snapshot(named: "bar_bottom", configure: { vm in
+        try snapshot(named: "bar_bottom") { vm in
             vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", displayPosition: "bottom", design: design(rowColor: "#3A3FE0"))]
-        }, check: { host, window in
+        } check: { host, window in
             guard let bar = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
                 return XCTFail("expected exactly one bar frame, got \(host.interactiveFrames)")
             }
             XCTAssertEqual(bar.maxY, window.bounds.height, accuracy: 0.5, "bottom bar touches the bottom edge")
             XCTAssertEqual(bar.width, window.bounds.width, accuracy: 0.5)
             XCTAssertLessThan(bar.height, window.bounds.height / 2)
-        })
+        }
     }
 }
 

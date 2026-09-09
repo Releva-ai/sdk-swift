@@ -16,13 +16,12 @@ import SwiftUI
 enum BannerChrome {
     // MARK: - Popup Banner
 
-    /// A popup is a centred card sized from the design's body values, the way the web SDK and
-    /// Unlayer's own preview draw it: `popupWidth` (default 600 px, capped to the screen width
-    /// minus a 16 pt margin on each side), `borderRadius`, `popupBackgroundColor` and
-    /// `popupOverlay_backgroundColor`. Height follows the content; when the content is taller
-    /// than the safe area the card fills it and scrolls inside. A `popupHeight` in `vh` units
-    /// (for example "100vh") asks for the full-height card. The close button sits inside the
-    /// card's top-right corner with a 44 pt hit target, like a native sheet.
+    /// A centred card sized from the design's body values as the web SDK draws it: `popupWidth`
+    /// (default 600 px, capped to the screen width minus 16 pt each side), `borderRadius`,
+    /// `popupBackgroundColor`, `popupOverlay_backgroundColor`. Height follows the content and
+    /// scrolls inside the card when taller than the safe area; a `popupHeight` in `vh` units forces
+    /// the full-height card. The close button sits inside the top-right corner with a 44 pt hit
+    /// target.
     @ViewBuilder
     static func popup(
         _ banner: BannerResponse,
@@ -78,6 +77,7 @@ enum BannerChrome {
     /// The rendered design inside a popup card: sized to its content when it fits, otherwise
     /// a scrolling area of `maxHeight`. `fullHeight` forces the scrolling area.
     @ViewBuilder
+    // swiftlint:disable:next function_parameter_count
     private static func popupContent(
         _ banner: BannerResponse,
         viewModel: BannerDisplayViewModel,
@@ -105,15 +105,13 @@ enum BannerChrome {
 
     // MARK: - Flyout Banner
 
-    /// The mobile flyout is a sheet flush with the left or right screen edge, anchored at the
-    /// bottom of the safe area: no gap, no corner radius, width hugging the design's content
-    /// (an image-only design gets exactly its image width plus padding; otherwise the design's
-    /// width), capped to 72 % of the screen; height hugging the content, capped to 60 % with
-    /// scrolling beyond. Tester's spec, device runs 27–30. This deviates from the web flyout
-    /// (`bottom: 0; left/right: 20px; width: auto`) on purpose: on a phone the 20 px gap and
-    /// the design's 600 px width made it read as a popup lying at the bottom. The close button
-    /// sits inside the panel's top-right corner like the popup's; there is no dimmed overlay,
-    /// the page around the panel stays usable.
+    /// The mobile flyout: a drawer flush with the left or right screen edge, from the top of the
+    /// safe area to the screen bottom, no corner radius, width hugging the design's content (an
+    /// image-only design gets its image width plus padding) and capped to 72 % of the screen,
+    /// scrolling when the content is taller. A deliberate deviation from the web flyout (`bottom:
+    /// 0; left/right: 20px; width: auto`), which reads as a popup on a phone. The close button sits
+    /// inside the panel's top-right corner; there is no dimmed overlay and the page around the
+    /// panel stays usable.
     @ViewBuilder
     static func flyout(
         _ banner: BannerResponse,
@@ -129,9 +127,8 @@ enum BannerChrome {
             ?? DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"])
             ?? DesignRenderer.parseDimensionRaw(bodyValues["contentWidth"])
             ?? 360
-        // Colours for the parts of the drawer the content does not cover: the first row's
-        // colour above the content (the top bounce), the last row's below it (the filler when
-        // the design is shorter than the screen, the bottom bounce, the home-indicator strip).
+        // Colours for the parts of the drawer the content does not cover: the first row's above
+        // it, the last row's below it.
         let rows = banner.design?["body"]?["rows"]?.arrayValue?.compactMap { $0.objectValue } ?? []
         let fallback = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
             ?? DesignRenderer.parseColor(bodyValues["backgroundColor"])
@@ -139,9 +136,9 @@ enum BannerChrome {
         let topColor = rowColor(rows.first) ?? fallback
         let bottomColor = rowColor(rows.last) ?? fallback
 
-        // `geometry` spans from the top of the safe area to the bottom of the screen (the
-        // caller ignores the bottom safe area). The drawer always fills that height: content
-        // at the top, scrolling when taller, the design's colours filling the rest.
+        // `geometry` spans from the top of the safe area to the bottom of the screen. The drawer
+        // fills it: content at the top, scrolling when taller, the design's colours filling the
+        // rest.
         GeometryReader { geometry in
             let width = max(160, min(designWidth, geometry.size.width * 0.72))
             let maxHeight = max(160, geometry.size.height - bottomInset)
@@ -181,8 +178,11 @@ enum BannerChrome {
             .clipped()
             .shadow(color: Color.black.opacity(0.25), radius: 16, x: isLeft ? 4 : -4, y: 0)
             .reportBannerFrame()
-            .frame(width: geometry.size.width, height: geometry.size.height,
-                   alignment: isLeft ? .bottomLeading : .bottomTrailing)
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height,
+                alignment: isLeft ? .bottomLeading : .bottomTrailing
+            )
         }
     }
 
@@ -203,17 +203,14 @@ enum BannerChrome {
     /// screen: the SwiftUI modifier pins it with a `GeometryReader` and `Spacer`, while
     /// `BannerPresenter` pins it with layout constraints on a child view controller.
     ///
-    /// Mirrors the web SDK's bar (`render.js`): a full-width strip at the screen edge with no
-    /// dimmed overlay, the design drawn edge to edge with no padding of ours, the design's body
-    /// colour as the strip's background, and the close button inside the strip's top-right
-    /// corner exactly like the popup card. A tap on the strip itself, outside the design's
-    /// content, closes the bar (the web closes on a click on the modal element); taps on the
-    /// page around the bar are left alone because a bar is not modal.
+    /// The bar as the web SDK draws it: a full-width strip at the screen edge, no dimmed overlay,
+    /// the design edge to edge, the body colour as the strip's background, the close button inside
+    /// the top-right corner. A tap on the strip outside the design closes the bar; the page around
+    /// it stays usable.
     /// - Parameter safeAreaInset: extra padding on the screen-edge side. The modifier reads
     ///   this off its `GeometryReader` because it draws past the safe area; a presenter that
-    ///   constrains to the safe area passes `0`. For a top bar the key window's own inset is
-    ///   used as a floor, because a `GeometryReader` that ignores the safe area has reported
-    ///   `0` on the device and the bar then sat under the status bar (device run 20).
+    ///   constrains to the safe area passes `0`. For a top bar the key window's own inset is the
+    ///   floor, because a `GeometryReader` that ignores the safe area can report `0`.
     @ViewBuilder
     static func bar(
         _ banner: BannerResponse,
@@ -223,11 +220,9 @@ enum BannerChrome {
         width: CGFloat? = nil,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
-        // The strip behind the design and under the status bar / home indicator: the first
-        // row's own colour when it has one (that is the colour the user sees as "the banner"),
-        // else the first column's, else the system background so it follows light/dark mode.
-        // Unlayer's default body colour (#F7F8F9) is deliberately not used: it reads as a
-        // white strip over a dark app (device run 22).
+        // The strip behind the design: the first row's colour, else the first column's, else the
+        // system background. Unlayer's default body colour (#F7F8F9) is not used; it reads as a
+        // white strip over a dark app.
         let firstRow = banner.design?["body"]?["rows"]?.arrayValue?.first?.objectValue ?? [:]
         let firstRowValues = firstRow["values"]?.objectValue ?? [:]
         let firstColumnValues = firstRow["columns"]?.arrayValue?.first?["values"]?.objectValue ?? [:]
@@ -239,9 +234,8 @@ enum BannerChrome {
 
         ZStack(alignment: .topTrailing) {
             if let design = banner.design {
-                // `width` is the container's real width; `UIScreen` is only a fallback because
-                // it is wrong whenever the window is not the screen (iPad split view, and the
-                // snapshot test's 393 pt window on a 402 pt simulator).
+                // `width` is the container's real width; `UIScreen` is a fallback that is wrong
+                // when the window is not the screen (iPad split view, the snapshot test's window).
                 DesignRenderer.render(
                     design: design,
                     maxWidth: width ?? UIScreen.main.bounds.width
@@ -335,13 +329,9 @@ private struct ContentHeightKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-/// Shows `content` at its own height, or inside a scroll view of `maxHeight` when it is taller
-/// (or when `forceScroll` asks for the full height).
-///
-/// `ViewThatFits` could not do this: it compares the content with the height it is *offered*,
-/// which in the overlay window is the whole safe area, so a 60 % cap was never applied (device
-/// run 29); and wrapping it in `frame(maxHeight:)` stretched a short design to that height
-/// (run 23). Measuring the content once and choosing explicitly does both right.
+/// Shows `content` at its own height, or inside a scroll view of `maxHeight` when taller (or when
+/// `forceScroll` is set). The content is measured once; `ViewThatFits` compares against the offered
+/// height, which in the overlay window is the whole safe area.
 struct CappedHeightContent<Content: View>: View {
     let maxHeight: CGFloat
     let forceScroll: Bool
@@ -352,7 +342,7 @@ struct CappedHeightContent<Content: View>: View {
     var bottomInset: CGFloat = 0
     /// Drawn above the content inside the scroll view so a bounce at the top shows this colour
     /// instead of the container's background.
-    var topBleedColor: Color? = nil
+    var topBleedColor: Color?
     @ViewBuilder let content: () -> Content
 
     @State private var contentHeight: CGFloat = 0

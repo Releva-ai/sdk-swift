@@ -25,7 +25,7 @@ final class BannerDisplayViewModelTests: XCTestCase {
 
     /// One row, one column, one text block: the smallest design the view model will display.
     static let minimalDesign: [String: JSONValue] = [
-        "body": ["rows": [["columns": [["contents": [["type": "text", "values": ["text": "x"]]]]]]]],
+        "body": ["rows": [["columns": [["contents": [["type": "text", "values": ["text": "x"]]]]]]]]
     ]
 
     // MARK: - empty designs and popup queueing

@@ -17,11 +17,9 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
             return
         }
 
-        // Firebase's helper attaches `fcm_options.image` and then calls the handler it is given.
-        // Handing it the real `contentHandler` while also calling it ourselves below made iOS log
-        // "Ignoring additional replacement content replies" on every push. Firebase is only used
-        // for its image download here, and Releva pushes attach their own image below, so a
-        // non-Releva push is the only case where Firebase's reply should reach the system.
+        // Firebase attaches `fcm_options.image` and calls the handler it is given. Only a
+        // non-Releva push lets that reply reach the system; a Releva push is completed once,
+        // below.
         let isRelevaPush = Self.isRelevaMessage(bestAttemptContent.userInfo)
         if !isRelevaPush {
             Messaging.serviceExtension().populateNotificationContent(
@@ -127,9 +125,8 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
         )
 
         UNUserNotificationCenter.current().getNotificationCategories { existingCategories in
-            // `Set.insert` is a no-op when a category with the same identifier already exists,
-            // which left the action label frozen at the first button text ever received.
-            // Drop the stale RELEVA_DYNAMIC before inserting the new one.
+            // `Set.insert` keeps an existing category, so drop the stale RELEVA_DYNAMIC before
+            // inserting the one with the new label.
             var categories = existingCategories.filter { $0.identifier != "RELEVA_DYNAMIC" }
             categories.insert(category)
             UNUserNotificationCenter.current().setNotificationCategories(categories)
@@ -154,9 +151,8 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
                 }
             }
 
-            // UNNotificationAttachment only displays JPEG, PNG and GIF. WebP and HEIC download fine
-            // but the attachment is silently dropped, so transcode them to JPEG first. UIImage
-            // decodes WebP and HEIC on every iOS this package supports.
+            // UNNotificationAttachment displays only JPEG, PNG and GIF; WebP and HEIC are
+            // transcoded to JPEG.
             var tempUrl = URL(fileURLWithPath: NSTemporaryDirectory())
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension(fileExtension)

@@ -48,9 +48,8 @@ public class InboxService: ObservableObject {
 
         if initialized {
             if profileChanged {
-                // The cache is one set of UserDefaults keys, not per profile. Restoring it here
-                // handed the new profile the previous user's messages with a fresh fetch time,
-                // so `refreshIfStale()` never fetched. Start empty and fetch for the new user.
+                // The cache is one set of UserDefaults keys, not per profile; restoring it here
+                // would hand the new profile the previous user's messages. Start empty and fetch.
                 resetForProfileChange()
             }
             return

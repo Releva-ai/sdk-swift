@@ -167,10 +167,8 @@ public struct DesignRenderer {
         let href = actionValues["href"]?.stringValue ?? ""
 
         if !url.isEmpty, let imageUrl = URL(string: url) {
-            // Unlayer renders an image block as `width: 100%; max-width: <src.width>px`
-            // unless the block sets an explicit percentage width (size.autoWidth == false).
-            // Without the cap a 200 px image stretched to the whole content width and a
-            // 200x600 placeholder became a screen-high strip (device run 28).
+            // Unlayer renders an image block as `width: 100%; max-width: <src.width>px` unless the
+            // block sets an explicit percentage width (size.autoWidth == false).
             let srcWidth = src["width"]?.doubleValue
             let srcHeight = src["height"]?.doubleValue
             let size = values["size"]?.objectValue ?? [:]
@@ -598,8 +596,7 @@ struct CarouselView: View {
         let firstSrc = images.first?["src"]?.objectValue ?? [:]
         let width = firstSrc["width"]?.doubleValue ?? 16
         let height = firstSrc["height"]?.doubleValue ?? 9
-        // A missing or zero dimension produced an infinite/NaN ratio and CoreGraphics
-        // "invalid numeric value" errors on the device; fall back to 16:9.
+        // A missing or zero dimension gives an infinite or NaN ratio; fall back to 16:9.
         guard width > 0, height > 0, width.isFinite, height.isFinite else { return 16.0 / 9.0 }
         return CGFloat(width / height)
     }
@@ -609,9 +606,9 @@ struct CarouselView: View {
             EmptyView()
         } else {
             VStack(spacing: 0) {
-                // Main image area. The size is fixed from the available width: a page-style
-                // TabView under a bare `.aspectRatio` is measured before it has a width and
-                // passes NaN to CoreGraphics ("invalid numeric value" on the device, run 16).
+                // Main image area, sized from the available width: a page-style TabView under a
+                // bare `.aspectRatio` is measured before it has a width and passes NaN to
+                // CoreGraphics.
                 GeometryReader { geometry in
                     let width = geometry.size.width
                     let height = width.isFinite && width > 0 ? width / aspectRatio : 0
@@ -627,9 +624,8 @@ struct CarouselView: View {
                         }
                         .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
 
-                        // Tap zones on the outer thirds step back/forward; the middle third is not
-                        // hit-tested so the image's own link tap still reaches `onLinkTap`
-                        // (previously the overlay covered the whole image and links were unreachable).
+                        // The outer thirds step back/forward; the middle third is not hit-tested
+                        // so the image's own link tap reaches `onLinkTap`.
                         HStack(spacing: 0) {
                             Color.clear
                                 .contentShape(Rectangle())

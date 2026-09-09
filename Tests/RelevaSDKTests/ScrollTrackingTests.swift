@@ -3,8 +3,7 @@ import UIKit
 import XCTest
 @testable import RelevaSDK
 
-/// `relevaScrollTracking` must turn a real scroll into 0–100 reports: the device run 34 log
-/// showed scroll-triggered banners returned by the backend but no scroll ever reported.
+/// `relevaScrollTracking` must turn a real scroll into 0–100 reports.
 final class ScrollTrackingTests: XCTestCase {
     private struct Host: View {
         let onChange: (Int) -> Void

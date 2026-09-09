@@ -2,10 +2,9 @@ import UIKit
 import XCTest
 @testable import RelevaSDK
 
-/// A host that replaces its `RelevaClient` (new account, new realm) used to leave the old one
-/// alive: `init` pins the first instance as `RelevaClient.shared`, and its foreground observer
-/// kept calling `refreshPushToken()`, re-registering the push token under the *previous*
-/// profile on every app activation (device run 45). `shutdown()` makes an instance inert.
+/// `init` pins the first `RelevaClient` as `RelevaClient.shared`, and a replaced instance that is
+/// still alive keeps calling `refreshPushToken()` from its foreground observer under its previous
+/// profile. `shutdown()` makes an instance inert.
 @MainActor
 final class RelevaClientShutdownTests: XCTestCase {
     private var savedShared: RelevaClient?

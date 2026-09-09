@@ -5,14 +5,12 @@ import Combine
 /// Hosts the overlay banners (popup, flyout, bar) of the SwiftUI `bannerDisplay` modifier in a
 /// window of their own, above the app's navigation and tab bars.
 ///
-/// Drawing them inside the modified view put them *under* `NavigationStack`'s bar: the title
-/// and toolbar buttons rendered on top of a bar banner and stayed tappable (device run 21). The
-/// web SDK positions these banners `fixed` over the whole page, and this is the UIKit equivalent.
-/// Static banners stay inline in the host view; only the three overlay types move here.
+/// Drawn inside the modified view they would sit under `NavigationStack`'s bar. The web SDK
+/// positions these banners `fixed` over the whole page; this is the UIKit equivalent. Static
+/// banners stay inline in the host view.
 ///
-/// The window passes touches through wherever no banner is drawn, so the app remains fully
-/// usable around a bar or flyout. A popup covers the screen with its dimmed overlay and takes
-/// every touch, as before.
+/// The window passes touches through wherever no banner is drawn. A popup covers the screen with
+/// its dimmed overlay and takes every touch.
 @MainActor
 final class BannerOverlayHost: ObservableObject {
     static let shared = BannerOverlayHost()
@@ -20,8 +18,8 @@ final class BannerOverlayHost: ObservableObject {
     @Published private(set) var viewModel: BannerDisplayViewModel?
     private(set) var onLinkTap: (String) -> Void = { _ in }
 
-    /// The overlay window's safe-area insets, published from UIKit's layout pass because a
-    /// `GeometryReader` that ignores the safe area has reported zero on the device.
+    /// The overlay window's safe-area insets, published from UIKit's layout pass; a
+    /// `GeometryReader` that ignores the safe area can report zero.
     @Published fileprivate(set) var safeAreaInsets: UIEdgeInsets = .zero
 
     /// Screen-space frames of the bars and flyout currently drawn; touches outside them fall
@@ -74,10 +72,9 @@ final class BannerOverlayHost: ObservableObject {
         updateVisibility()
     }
 
-    /// A started view model got a banner to show. If it is not the attached one — SwiftUI can
-    /// fire a screen's onDisappear during launch while tabs and navigation settle, which
-    /// detached it (device run 25: impression tracked, window never shown) — attach it again;
-    /// a screen that is really gone has called stop() and receives nothing.
+    /// A started view model got a banner to show. If it is not the attached one (SwiftUI can fire a
+    /// screen's onDisappear during launch while tabs and navigation settle), attach it again; a
+    /// screen that is really gone has called stop() and receives nothing.
     func contentChanged(in viewModel: BannerDisplayViewModel, onLinkTap: ((String) -> Void)?) {
         if self.viewModel !== viewModel {
             relevaLog("RelevaSDK: BannerOverlay - banner arrived on a detached view model, re-attaching")
@@ -112,10 +109,8 @@ final class BannerOverlayHost: ObservableObject {
         relevaLog("RelevaSDK: BannerOverlay - window created on scene (state \(scene.activationState.rawValue))")
     }
 
-    /// The overlay window is a separate view hierarchy, so it does not inherit a colour scheme
-    /// the app forces on its own window. Copy the app window's resolved style so the strip
-    /// colours and the status bar match the app (device run 22: the overlay came up light
-    /// over a dark app).
+    /// The overlay window does not inherit a colour scheme the app forces on its own window; copy
+    /// the app window's resolved style so the strip colours and the status bar match.
     private func mirrorAppearance() {
         guard let window = window else { return }
         let appWindow = UIApplication.shared.connectedScenes
@@ -138,8 +133,7 @@ final class BannerOverlayHost: ObservableObject {
             }()
             let hasContent = !shown.isEmpty
             if hasContent && self.window == nil {
-                // A banner arrived before any scene was connected at attach time (device run
-                // 24: impression tracked, nothing on screen). Try again now.
+                // A banner arrived before any scene was connected at attach time; try again now.
                 self.ensureWindow()
                 self.mirrorAppearance()
             }

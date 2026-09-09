@@ -102,16 +102,13 @@ public struct StoryViewerView: View {
                                     leaveForLink()
                                 }
                             }
-                            // Each slide is its own view: the next slide starts scrolled to the
-                            // top instead of wherever the previous one was left.
+                            // Each slide is its own view, so the next slide starts scrolled to the
+                            // top.
                             .id(currentSlideIndex)
                         }
 
-                        // Navigation tap areas: the outer thirds step back/forward, the middle
-                        // third is not hit-tested so links and buttons inside the slide design
-                        // reach `onLinkTap`. The two halves used to cover the whole slide, so a
-                        // button in the design only ever flipped slides and no storySlideClick
-                        // was ever sent (device run 39).
+                        // The outer thirds step back/forward; the middle third is not hit-tested
+                        // so links and buttons inside the slide design reach `onLinkTap`.
                         HStack(spacing: 0) {
                             Color.clear
                                 .contentShape(Rectangle())
@@ -234,11 +231,8 @@ public struct StoryViewerView: View {
         onClose()
     }
 
-    /// A link was followed: take the viewer down so the destination is visible. On the web the
-    /// story vanishes with the page navigation and no storyClose is sent, so none is sent here
-    /// either; the storySlideClick already suppresses the story. Leaving the full-screen cover
-    /// up made the navigation invisible and the tester tapped the link four times (device run
-    /// 42).
+    /// A link was followed: take the viewer down so the destination is visible. As on the web, no
+    /// storyClose is sent; the storySlideClick already suppresses the story.
     private func leaveForLink() {
         timer?.invalidate()
         onClose()

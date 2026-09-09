@@ -133,10 +133,8 @@ struct NpsSurveyView: View {
 
             Spacer(minLength: 0)
         }
-        // The survey's background must paint the whole sheet, not just the content's own
-        // height: in a dark-mode app the rest of the sheet was the system's near-black, so the
-        // survey looked like a white card floating in a dark sheet and the thank-you text below
-        // the card was dark-on-dark (device run 44).
+        // The survey's background paints the whole sheet, not just the content's height; otherwise
+        // a dark-mode app shows a white card in a near-black sheet.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(bgColor.ignoresSafeArea())
         .onDisappear {
@@ -240,9 +238,8 @@ struct NpsSurveyView: View {
             TextEditor(text: $comment)
                 .frame(minHeight: 80, maxHeight: 120)
                 .padding(8)
-                // TextEditor paints the system background (black in dark mode) under the
-                // survey's text colour, which made the typed comment unreadable (device run
-                // 44). It takes the survey's own colours instead.
+                // TextEditor paints the system background under the survey's text colour; give it
+                // the survey's own colours.
                 .modifier(PlainEditorBackground())
                 .background(
                     RoundedRectangle(cornerRadius: 8)

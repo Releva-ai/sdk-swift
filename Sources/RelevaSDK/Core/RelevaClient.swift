@@ -149,12 +149,10 @@ public class RelevaClient {
 
     // MARK: - Derived event actions
 
-    /// The event actions the backend derives from a cart change — `cartCreate` (first product
-    /// into an empty cart), `cartAdd`, `cartRemove`, `cartUpdate` (any change leaving the cart
-    /// non-empty) — mirrored on the device so an NPS survey that triggers or cancels on one of
-    /// them reacts to `setCart` without a round-trip. The admin fills those lists from exactly
-    /// these actions; before this a survey set to cancel on `cartAdd` kept showing after an
-    /// add-to-cart (device run 51). Products are compared by id.
+    /// The event actions the backend derives from a cart change — `cartCreate` (first product into
+    /// an empty cart), `cartAdd`, `cartRemove`, `cartUpdate` (any change leaving the cart
+    /// non-empty) — mirrored on the device so an NPS survey that triggers or cancels on one of them
+    /// reacts to `setCart` without a round-trip. Products are compared by id.
     static func cartEventActions(from previous: Cart?, to current: Cart) -> [String] {
         let previousIds = Set(previous?.products.map(\.id) ?? [])
         let currentIds = Set(current.products.map(\.id))
@@ -194,13 +192,10 @@ public class RelevaClient {
     /// `refreshPushToken()`.
     public private(set) var isShutDown = false
 
-    /// Tears this client down so that a replacement instance can take over.
-    ///
-    /// Call it before creating a new `RelevaClient` (new realm, new access token, or a host that
-    /// re-creates the client on login/logout). Without it the old instance stays alive — `init`
-    /// pins the first client as `RelevaClient.shared` — and keeps reacting to `didBecomeActive`,
-    /// re-registering the push token under its *previous* profile on every foreground (device
-    /// run 45: the token flipped between two profiles each time the app came back).
+    /// Tears this client down so that a replacement instance can take over. Call it before creating
+    /// a new `RelevaClient`: `init` pins the first client as `RelevaClient.shared`, and an instance
+    /// that is not shut down keeps reacting to `didBecomeActive` and re-registers the push token
+    /// under its previous profile.
     ///
     /// Removes the lifecycle observer, stops engagement batching, disposes the banner, story and
     /// NPS managers, hands the notification-centre delegate back if it is ours, and clears the
@@ -504,11 +499,8 @@ public class RelevaClient {
     /// the page-view count with non-navigation push calls.
     private func push(_ request: any PushRequestConvertible, incrementViews: Bool) async throws -> RelevaResponse {
         // Each request type carries its own rules (an empty search query, an unpaid or empty
-        // checkout cart, a negative cart price). Nothing invoked them before this: the 4.0
-        // rewrite made `validate()` a protocol requirement so the rules would be reached
-        // through the existential, but `push` never called it, so an empty search went out
-        // on the wire (device test plan TRK-06 / CHK-03). Validation now runs before any
-        // payload is built, so a bad request throws with no network traffic.
+        // checkout cart, a negative cart price). Validation runs before any payload is built, so a
+        // bad request throws with no network traffic.
         try request.validate()
         guard let prepared = preparePush(request, incrementViews: incrementViews) else {
             return RelevaResponse.empty()
@@ -558,8 +550,8 @@ public class RelevaClient {
                 let delay = banner.delaySeconds.map { $0 > 0 ? " \($0)s" : "" } ?? ""
                 return "\(banner.token.prefix(8)) \(banner.displayType ?? "?")/\(banner.trigger ?? "?")\(threshold)\(delay)"
             }
-            // The NPS part names the survey and what will show it, so a log alone tells a
-            // "waiting for a custom event" apart from "not returned" (device run 53).
+            // The NPS part names the survey and its trigger, so the log tells a survey waiting for
+            // a custom event from one that was not returned.
             let nps: String
             if let survey = response.nps {
                 let triggers = survey.triggers.isEmpty
@@ -678,11 +670,8 @@ public class RelevaClient {
         _ event: CustomEvent,
         screenToken: String? = nil
     ) async throws -> RelevaResponse {
-        // A tracked custom event is also an NPS event: the admin's Custom Event trigger and
-        // "cancel on events" pick from the event actions the app tracks, so an action that
-        // reaches the backend here must reach the survey's trigger too. Before this the app
-        // had to call `trackEvent` separately, and a colour pick tracked as `selectedColor`
-        // never triggered a survey configured on it (device run 50).
+        // A tracked custom event is also an NPS event: the admin's Custom Event trigger and cancel
+        // list pick from the event actions the app tracks.
         npsManager?.trackEvent(event.action)
         return try await push(PushRequest.forCustomEvent(event, screenToken: screenToken))
     }
@@ -859,9 +848,8 @@ public class RelevaClient {
         let tokenChanged = (stored?.token != token)
         let lastUpload = storage.getPushTokenUploadedAt()
         let isStale = lastUpload.map { Date().timeIntervalSince($0) > RelevaClient.pushTokenRefreshInterval } ?? true
-        // The backend binds the token to (deviceId, profileId); a login/logout since the last
-        // upload needs a new upload even when the token is unchanged and recent (device run 16:
-        // the new profile never received the token because this check looked at the token only).
+        // The backend binds the token to (deviceId, profileId); a profile change since the last
+        // upload needs a new upload even when the token is unchanged and recent.
         let profileChangedSinceUpload = (storage.getPushTokenProfileId() != profileId)
 
         guard tokenChanged || isStale || profileChangedSinceUpload else {

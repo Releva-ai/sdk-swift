@@ -61,8 +61,11 @@ final class CachedRemoteImageTests: XCTestCase {
 
         box.url = second
         drainMainQueue()
-        XCTAssertEqual(idealSize(of: hosting), CGSize(width: 20, height: 20),
-                       "the view must render the image for its current URL, not the one it loaded first")
+        XCTAssertEqual(
+            idealSize(of: hosting),
+            CGSize(width: 20, height: 20),
+            "the view must render the image for its current URL, not the one it loaded first"
+        )
     }
 
     func testChangingToAnUncachedURLShowsNothingUntilItLoads() {
@@ -80,7 +83,10 @@ final class CachedRemoteImageTests: XCTestCase {
         drainMainQueue()
         // The download of `missing` is in flight (or has failed); either way the stale 10×10
         // image is gone and the placeholder is what is laid out.
-        XCTAssertEqual(idealSize(of: hosting), CGSize(width: 1, height: 1),
-                       "a URL with no image yet shows the placeholder, never the previous image")
+        XCTAssertEqual(
+            idealSize(of: hosting),
+            CGSize(width: 1, height: 1),
+            "a URL with no image yet shows the placeholder, never the previous image"
+        )
     }
 }

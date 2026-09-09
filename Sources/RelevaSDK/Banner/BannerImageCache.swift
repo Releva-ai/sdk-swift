@@ -1,10 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// In-memory images for banner designs, so a popup or bar appears with its pictures already in
-/// place instead of flashing empty and filling in a moment later (device run 24). The view
-/// model prefetches a design's images before it shows an overlay banner, with a short timeout
-/// so a slow image never holds the banner back for long.
+/// In-memory images for banner designs. The view model prefetches a design's images before showing
+/// an overlay banner, with a short timeout so a slow image does not hold it back.
 @MainActor
 final class BannerImageCache {
     static let shared = BannerImageCache()
@@ -92,10 +90,9 @@ struct CachedRemoteImage<Content: View>: View {
     let url: URL
     let content: (CachedImagePhase) -> Content
 
-    /// The URL that `image` and `failed` describe. SwiftUI keeps a view's state when only its
-    /// inputs change, and a story moving to its next slide changes this view's `url` without
-    /// changing its identity; showing the previous slide's image for the new URL kept every
-    /// slide looking like the first one (device run 40).
+    /// The URL that `image` and `failed` describe. `url` can change without the view's identity
+    /// changing (a story moving to its next slide), and the old image must not be shown for the new
+    /// URL.
     @State private var loadedURL: URL
     @State private var image: UIImage?
     @State private var failed = false

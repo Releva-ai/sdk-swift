@@ -77,9 +77,9 @@ class StoryDisplayViewModel: ObservableObject {
     private var cancellable: AnyCancellable?
     private var tracker: StoryTracker?
 
-    /// `true` from the moment a story is handed to the cover until the cover reports that it
-    /// has disappeared. `activeStory` alone is not enough: it is `nil` for the ~0.5 s the
-    /// dismissal animates, and a story presented in that window is counted but never shown.
+    /// `true` from the moment a story is handed to the cover until the cover reports that it has
+    /// disappeared. `activeStory` is `nil` while the dismissal animates, and a story presented in
+    /// that window is counted but never shown.
     private(set) var coverOnScreen = false
 
     /// If the cover never reports its disappearance, the queue resumes after this long.
@@ -107,9 +107,8 @@ class StoryDisplayViewModel: ObservableObject {
         }
     }
 
-    /// The cover's content left the screen. With two running stories the second one's
-    /// impression used to be sent while the first was still animating out, and SwiftUI then
-    /// dropped the new presentation: counted, never seen (device run 41).
+    /// The cover's content left the screen. A story presented before this point is dropped by
+    /// SwiftUI: counted, never seen.
     func coverDidDisappear() {
         // `onDisappear` can also fire while the story is still up (e.g. a re-parented view);
         // only a closed story frees the cover.
@@ -122,9 +121,8 @@ class StoryDisplayViewModel: ObservableObject {
 
     private func enqueue(_ story: StoryResponse) {
         guard !story.slides.isEmpty else { return }
-        // Several screen views in quick succession each return the same story; without this
-        // guard the queue held N copies and every close dequeued the next one, firing a
-        // storyImpression with nothing new on screen.
+        // Several screen views in quick succession return the same story; keep one copy so a close
+        // does not fire a storyImpression with nothing new on screen.
         guard activeStory?.story.token != story.token,
               !storyQueue.contains(where: { $0.token == story.token }) else { return }
         storyQueue.append(story)

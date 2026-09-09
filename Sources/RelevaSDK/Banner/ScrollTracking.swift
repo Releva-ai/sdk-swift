@@ -15,9 +15,8 @@ import UIKit
 /// the top, 100 when the bottom of the content reaches the bottom of the viewport. Reported
 /// only when the whole-number value changes.
 ///
-/// Implemented by observing the underlying `UIScrollView`'s offset. A SwiftUI preference
-/// read from a `GeometryReader` inside the scroll view — the textbook approach — never
-/// reported anything on iOS 26 (device run 34 and `ScrollTrackingTests`).
+/// Implemented by observing the underlying `UIScrollView`'s offset; a SwiftUI preference read from
+/// a `GeometryReader` inside the scroll view does not report on iOS 26.
 public extension View {
     /// Report the enclosing `ScrollView`'s progress (0–100) to `client`.
     func relevaScrollTracking(_ client: RelevaClient) -> some View {

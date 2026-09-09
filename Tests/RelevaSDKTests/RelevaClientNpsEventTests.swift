@@ -82,19 +82,25 @@ final class RelevaClientNpsEventTests: XCTestCase {
         await fulfillment(of: [shown], timeout: 1)
     }
 
-    // MARK: - Cart and wishlist changes as event actions (device run 51)
+    // MARK: - Cart and wishlist changes as event actions
 
     func testCartChangesMapToTheBackendsEventActions() {
         let p1 = CartProduct(id: "p1", price: 1)
         let p2 = CartProduct(id: "p2", price: 2)
-        XCTAssertEqual(RelevaClient.cartEventActions(from: nil, to: .active([p1])),
-                       ["cartCreate", "cartAdd", "cartUpdate"], "first product into an empty cart")
+        XCTAssertEqual(
+            RelevaClient.cartEventActions(from: nil, to: .active([p1])),
+            ["cartCreate", "cartAdd", "cartUpdate"],
+            "first product into an empty cart"
+        )
         XCTAssertEqual(RelevaClient.cartEventActions(from: .active([p1]), to: .active([p1, p2])),
                        ["cartAdd", "cartUpdate"])
         XCTAssertEqual(RelevaClient.cartEventActions(from: .active([p1, p2]), to: .active([p1])),
                        ["cartRemove", "cartUpdate"])
-        XCTAssertEqual(RelevaClient.cartEventActions(from: .active([p1]), to: .empty()),
-                       ["cartRemove"], "an emptied cart is not an update")
+        XCTAssertEqual(
+            RelevaClient.cartEventActions(from: .active([p1]), to: .empty()),
+            ["cartRemove"],
+            "an emptied cart is not an update"
+        )
         XCTAssertEqual(RelevaClient.wishlistEventActions(from: [], to: [WishlistProduct(id: "w1")]),
                        ["wishlistCreate", "wishlistAdd"])
         XCTAssertEqual(RelevaClient.wishlistEventActions(from: [WishlistProduct(id: "w1")], to: []),

@@ -1,11 +1,8 @@
 import XCTest
 @testable import RelevaSDK
 
-/// `StoryDisplayViewModel` feeds `fullScreenCover(item:)`. With two running stories, device run
-/// 41 showed the second story's impression going out while the first cover was still animating
-/// away, and the second viewer never appearing. These tests pin the order: a queued story waits
-/// for the cover to report that it has disappeared, and is counted exactly when it is handed
-/// to the cover.
+/// `StoryDisplayViewModel` feeds `fullScreenCover(item:)`. A queued story waits for the cover to
+/// report that it has disappeared, and is counted exactly when it is handed to the cover.
 @MainActor
 final class StoryDisplayViewModelTests: XCTestCase {
     private final class StoryTrackerSpy: StoryTracker {
@@ -14,8 +11,11 @@ final class StoryDisplayViewModelTests: XCTestCase {
     }
 
     private func story(_ token: String) -> StoryResponse {
-        StoryResponse(token: token, trigger: "immediately",
-                      slides: [StorySlideResponse(id: "\(token)-s1", durationSeconds: 5)])
+        StoryResponse(
+            token: token,
+            trigger: "immediately",
+            slides: [StorySlideResponse(id: "\(token)-s1", durationSeconds: 5)]
+        )
     }
 
     private func makeViewModel() -> (StoryDisplayViewModel, StoryTrackerSpy) {
@@ -36,8 +36,11 @@ final class StoryDisplayViewModelTests: XCTestCase {
 
         viewModel.storyClosed()
         XCTAssertNil(viewModel.activeStory)
-        XCTAssertEqual(spy.impressions, ["first"],
-                       "closing hands nothing to the cover while it is still animating out")
+        XCTAssertEqual(
+            spy.impressions,
+            ["first"],
+            "closing hands nothing to the cover while it is still animating out"
+        )
         XCTAssertTrue(viewModel.coverOnScreen)
 
         viewModel.coverDidDisappear()

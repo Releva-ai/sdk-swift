@@ -173,9 +173,8 @@ class BannerDisplayViewModel: ObservableObject {
         guard !displayedBanners.contains(banner.token) else { return }
         displayedBanners.insert(banner.token)
 
-        // Overlay banners appear all at once: load the design's images first (bounded by
-        // `imagePrefetchTimeout`) so the card does not flash empty and fill in a moment
-        // later (device run 24). Static banners are page content and render as they load.
+        // Overlay banners appear all at once: load the design's images first, bounded by
+        // `imagePrefetchTimeout`. Static banners render as they load.
         if Self.overlayDisplayTypes.contains(banner.displayType ?? ""),
            let design = banner.design {
             let urls = BannerImageCache.imageURLs(in: design)
@@ -200,9 +199,8 @@ class BannerDisplayViewModel: ObservableObject {
         }
         switch banner.displayType {
         case "popup":
-            // One popup at a time. A second one arriving while the first is up used to replace
-            // it, so the first was counted but never seen (device run 36). It now waits and is
-            // shown, and counted, when the first is closed.
+            // One popup at a time; a second one waits and is shown, and counted, when the first
+            // closes.
             if popupBanner != nil {
                 queuedPopups.append(banner)
                 return
@@ -231,8 +229,7 @@ class BannerDisplayViewModel: ObservableObject {
     private var queuedFlyouts: [BannerResponse] = []
 
     private func shouldDisplay(_ banner: BannerResponse) -> Bool {
-        // No design, or a design with nothing in it (an Unlayer body with no rows or no
-        // content), has nothing to show; showing it drew an empty card (device run 36).
+        // A missing design, or one with no rows or content, is neither shown nor counted.
         guard let design = banner.design, Self.hasRenderableContent(design) else { return false }
         guard banner.displayType != "custom" else { return false }
         if overlayOnly { return Self.overlayDisplayTypes.contains(banner.displayType ?? "") }
