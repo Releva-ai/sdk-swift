@@ -537,13 +537,16 @@ public class RelevaClient {
         let pushRequest = request.pushRequest
         let payload = pushRequest.toDict()
 
-        // A push that names a page is a new screen, so the previous screen's offset no longer
-        // applies and must not be replayed onto this screen's banners. The reset belongs here,
-        // where the push is *issued*, and not on the response path: a `reportScrollPercentage`
-        // that lands while the request is in flight already describes the new screen, and
-        // resetting after the round trip would discard it — which is the case the replay in
-        // `send` exists for.
-        if (payload["page"] as? [String: Any])?["token"] != nil {
+        // A push naming a *different* page is a new screen, so the previous screen's offset must
+        // not be replayed onto this screen's banners. The test is the token, not its presence:
+        // `forCustomEvent`/`forSearch`/`forProductView`/`forCheckoutSuccess` set `page.token` too
+        // and are issued from the screen the user is already on. Resetting at issue rather than on
+        // the response path keeps a `reportScrollPercentage` that lands while the request is in
+        // flight — the case the replay in `send` exists for. A push with no token leaves the value
+        // alone, so a screen that never names one still replays the previous screen's offset;
+        // closing that needs per-screen observer lifecycle, which this change does not add.
+        if let pageToken = Self.pageToken(in: payload), pageToken != lastScrollPageToken {
+            lastScrollPageToken = pageToken
             lastScrollPercentage = 0
         }
 
@@ -551,6 +554,12 @@ public class RelevaClient {
             payload: payload,
             context: buildContext(for: pushRequest, incrementViews: incrementViews)
         )
+    }
+
+    /// The `page.token` a built payload carries, if any. Two decisions read it — the scroll
+    /// scoping in `preparePush` and `clearsWhenAbsent` in `send` — and they must not drift.
+    private static func pageToken(in payload: [String: Any]) -> String? {
+        (payload["page"] as? [String: Any])?["token"] as? String
     }
 
     /// The asynchronous half of `push`: the transfer, plus the main-actor bookkeeping that
@@ -588,7 +597,7 @@ public class RelevaClient {
         // Whether this push named a page is what tells `NpsManagerService` whether `nps: null`
         // means "no survey for this screen" (clear) or "this request carries no page context" (a
         // cart/wishlist sync, a bare custom event — hold whatever was already armed).
-        let hasPageContext = (prepared.payload["page"] as? [String: Any])?["token"] != nil
+        let hasPageContext = Self.pageToken(in: prepared.payload) != nil
         // Initialize banners from response
         if !response.banners.isEmpty {
             bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
@@ -925,8 +934,13 @@ public class RelevaClient {
     /// already scrolled past its threshold on fires immediately rather than waiting for the next
     /// scroll offset change, which may never come (e.g. the user is already at the bottom).
     ///
-    /// Scoped to a screen by `preparePush`, which clears it whenever a push names a page token.
+    /// Scoped to a screen by `preparePush`, which clears it when a push names a page token other
+    /// than `lastScrollPageToken`.
     private var lastScrollPercentage = 0
+
+    /// The `page.token` of the most recent push that carried one; `preparePush` compares against
+    /// it so a push issued from the current screen keeps that screen's reported offset.
+    private var lastScrollPageToken: String?
 
     /// Subscribe to `didBecomeActive` so that every app launch / foreground triggers
     /// `refreshPushToken()`. The first emission happens once the app finishes launching,
