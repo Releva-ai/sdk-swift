@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 61 run(s)**: 123 pass, 1 fail, 16 pass with caveat, 22 not yet run. Details per row in the Result column and in section 5.
+**Status after 62 run(s)**: 124 pass, 1 fail, 16 pass with caveat, 21 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -228,7 +228,7 @@ Fixtures: one banner block per displayType and trigger, attached to the Home pag
 | BAN-08 | P0 | 1.0.4 | scrollPercentage 50 | Trigger scrollPercentage 50. | Open Home, scroll halfway. | Appears when the grid passes 50 %. | Impression. | ✅ Run 33: never fired — SDK had no scroll input (nil provider) → RelevaClient.reportScrollPercentage added. Run 34: harness's SwiftUI preference reporter reported nothing (dead on iOS 26, reproduced in a hosted test) → SDK modifier relevaScrollTracking observing the UIScrollView. Run 35: Home block fd4de9a7-… at 10 %: 'Scroll: 10%' → 'Banner trigger fired (scrollPercentage)' → popup shown (after the image prefetch) → impression 200 → close 202; product page block 425b5763-… at 20 %: fired at 'Scroll: 20%' → shown → impression. README: apply relevaScrollTracking to every scroll view whose page carries scroll-triggered banners. |
 | BAN-09 | P0 | 1.0.4 | cartChanged and wishlistChanged triggers | Two blocks with those triggers. | Open Home → Product 1 → Add to cart → back to Home. Then heart a product on Home. | Banner appears after the cart/wishlist change (`RelevaClient.setCart` calls the SDK's own `BannerManagerService.onCartChanged`). | Impression. | ✅ Run 34 (product page, block 425b5763-… attached to the product page): Add to Cart → 'Banner trigger fired: 425b5763 (cartChanged)' → popup shown → impression 200 → close 202. Heart → 'Banner trigger fired (wishlistChanged)' → popup shown → impression → close. Both fire on the screen whose response carried the banner; a cart-changed block attached to Home cannot fire on the product page (same as web). |
 | BAN-10 | P1 | 1.2 | Full-screen popup and background image | Popup with full-screen option and a background image. | Open Home. | Covers the screen; image renders with the configured fit. | — | ⚠️ Run 6: a tall portrait image in a popup is capped to the screen height and scrolls inside the card (web parity). Run 23: with the card-height fix a tall design gets the capped scrolling card and a short one a compact card; the image filling a too-tall card was masking the height bug. Decide with the CTO: keep scroll (as web) or scale-to-fit on phones. |
-| BAN-11 | P1 | 1.2 | Content-level text colour | Banner with white text (`color`) on a dark background. | Open Home. | Text is white, not body-default black (1.2.0 fix). | — | ☐ |
+| BAN-11 | P1 | 1.2 | Content-level text colour | Banner with white text (`color`) on a dark background. | Open Home. | Text is white, not body-default black (1.2.0 fix). | — | ✅ Run 61: QA-BAN-11 (white heading and body text on `#111111`) renders white on the device — the content-level `color` wins over the body default. Reported by the tester on the phone, no log needed. |
 | BAN-12 | P0 | 1.0.4 | Link tap reports click and navigates | Popup with a button linking to `myapp://consumer.app/cart` and another to `https://releva.ai`. | Tap each. | `Banner action 'bannerClick' tracked`; app navigates / Safari opens. | Timeline `bannerClick`; banner attribution row; suppression set. | ✅ Run 1: bannerClick 202 on every tap; myapp://consumer.app/cart navigated. https link did nothing because of the app handler (fixed in HomeView.swift after run 1). Run 2: tap sent bannerClick 202 and opened the browser (Chrome, the default). Bar/static banner stays on screen after the link tap by design; a popup dismisses itself. |
 | BAN-13 | P1 | 1.0.4 | Dedupe within a session | Popup banner. | Home → Cart → Home. | Banner does not reappear (already displayed this init) or reappears only if the backend returned it again and the SDK's displayed set was reset; record what happens. | Count impressions. | ⚠️ Run 1: repeat Home visits did not re-show or re-count the bar banner. Run 2: after visiting Cart and returning, the bar banner was displayed and counted again (impressions at 14:20:23 and 14:20:34). Dedupe lives with the Home view's state, so a tab switch that recreates Home re-shows it. Comparable to a web page reload; decide if acceptable. |
 | BAN-14 | P1 | 1.0.4 | showAlways vs one-time | One block `showAlways`, one normal; both closed once. | Reopen Home. | showAlways returns; the other does not (`banner/click/<domainId>/<bannerId>/p:<deviceId>` key). | — | ✅ Run 5: the 'Fullscreen banner' (fd4de9a7-…, showUntilClick) that was clicked in run 2 is no longer returned for this device; 'Carousel banner' (aa275c11-…) still returns after a close, so it is showAlways or reentrable. Suppression after click works as designed; a clicked banner reappears only with showAlways/reentry or a new device id. |
@@ -854,6 +854,13 @@ Settings → API Endpoint Override → devtunnels URL to a local magellan-api; f
 
 - Override reaches the local backend (400 domain-not-found from its database); default host used without an override (SET-07 pass).
 - A trailing slash in the override is used verbatim → host//api/v0/push → 404. Kept as is; documented for the client guide.
+
+### Run 61 — visual confirmations on the phone (2026-09-09)
+
+Same install; results reported from the device and the admin, no console log.
+
+- BAN-11 pass: white content-level text on a dark pop-up renders white.
+- Orders placed from the harness are visible in the admin (backend side of CHK-01 re-confirmed).
 
 ## Appendix A. Temp-code snippets
 
