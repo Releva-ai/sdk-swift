@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 63 run(s)**: 125 pass, 1 fail, 16 pass with caveat, 20 not yet run. Details per row in the Result column and in section 5.
+**Status after 64 run(s)**: 129 pass, 1 fail, 16 pass with caveat, 16 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -288,12 +288,12 @@ The backend picks at most one eligible survey per push response. Fixture: survey
 | INB-06 | P1 | 1.1 | Delete from list and from detail | Two messages. | Swipe-delete one; open the other and tap trash. | Rows vanish; `DELETE …/inbox/messages/<id>` 204. | PG `status = 'deleted'`; timeline `inboxMessageDelete`. | ✅ Run 4+5: swipe/detail delete → DELETE /inbox/messages/<id> → 204 for three messages. Backend status=deleted still to be checked. |
 | INB-07 | P1 | 1.1 / 5.0 | Rollback on failure | Airplane mode ON, one unread message cached. | Open Inbox → tap the unread message. | Optimistic read applies, then reverts to unread when the request fails; no crash. | Row unchanged. | ☐ |
 | INB-08 | P1 | 1.1 | Cached inbox offline after cold start | Inbox loaded once. Airplane mode ON. | Kill, relaunch, open Inbox. | Cached list and count appear (restored from `rlv_inbox_*`). | — | ✅ Run 15: airplane mode, cold launch → the cached inbox list is shown, no request attempted, no crash. (Pull to refresh offline ends quietly because the SDK swallows fetch errors; the list keeps the cache.) |
-| INB-09 | P1 | 1.1 | Stale refresh on foreground | Inbox loaded. | Background >5 min, foreground. | GETs fire again (`refreshIfStale`). | — | ☐ |
-| INB-10 | P1 | 1.1 | Silent push sync | App in foreground on Home. | Send an appInbox-only campaign. | Badge increments without opening Inbox; opening Inbox shows the new message without pull-to-refresh. | — | ☐ |
+| INB-09 | P1 | 1.1 | Stale refresh on foreground | Inbox loaded. | Background >5 min, foreground. | GETs fire again (`refreshIfStale`). | — | ✅ Run 63: marked pass by the tester on the shared checklist page (no console log attached): after >5 min in the background the inbox GETs fired again on foreground. |
+| INB-10 | P1 | 1.1 | Silent push sync | App in foreground on Home. | Send an appInbox-only campaign. | Badge increments without opening Inbox; opening Inbox shows the new message without pull-to-refresh. | — | ✅ Run 63: marked pass by the tester on the shared checklist page: an appInbox-only campaign raised the badge without opening Inbox and the message was listed on open without pull-to-refresh. |
 | INB-11 | P1 | 1.1 | Message rendering and link action | Message with image, text and a button to `myapp://consumer.app/product/3`. | Open it; tap the button. | `InboxMessageView` renders the design; `POST …/inbox/messages/<id>/action` 202; product 3 opens. | Timeline `inboxMessageClick` with `devicePlatform: ios`; campaign stats 'Inbox clicks' +1. | ⚠️ Run 6: message button sent inboxMessageClick 202 and opened the product. Run 12: the design renders (heading, text, button) and the button navigates. Run 17 offline: the message rendered from the cache and the button navigated, but POST /inbox/messages/{id}/action went out with no network and was silently dropped (inbox errors are swallowed, no queue), so that inbox click is lost. Only push engagement events are queued offline; note for the README / CTO. |
 | INB-12 | P1 | 1.1 | Profile change reloads the inbox | Two profiles with different inboxes. | Settings → switch Profile ID → Inbox. | Old list cleared; new GETs with the new userId. | — | ✅ Run 15 fail: after a profile switch the old user's inbox stayed with no request (un-scoped UserDefaults cache restored with its fetch time). Fixed on the branch (cache tagged with its owner profile, cleared and refetched on change, setProfileId forwards to the inbox). Run 16: GET /inbox/messages and /unread-count for the new profile fired right after the switch, and again for the original profile on the switch back; the cached list stayed available in airplane mode. |
-| INB-13 | P2 | 1.1 | Wrong token shows an empty inbox | Invalid access token. | Open Inbox. | Empty state, no error (documented limitation). | — | ☐ |
-| INB-14 | P2 | 1.1 | Expired messages are hidden | Message with `expiresAt` in the past. | Refresh. | Not listed. | — | ☐ |
+| INB-13 | P2 | 1.1 | Wrong token shows an empty inbox | Invalid access token. | Open Inbox. | Empty state, no error (documented limitation). | — | ✅ Run 63: marked pass by the tester on the shared checklist page: with an invalid access token the Inbox shows the empty state and no error (documented limitation; a 401 is indistinguishable from an empty inbox). |
+| INB-14 | P2 | 1.1 | Expired messages are hidden | Message with `expiresAt` in the past. | Refresh. | Not listed. | — | ✅ Run 63: marked pass by the tester on the shared checklist page: a message with `expiresAt` in the past is not listed after refresh. |
 
 ### N. UIKit presenters
 
@@ -868,6 +868,13 @@ Product page with the scroll pop-up, 4 items in the cart, Place Order and swipe 
 
 - CHK-04 pass: the checkout success POST (cartPaid true, orderId 7AD9B910-…) got its 200 in 150 ms, before the swipe; reopening was clean and the Home screen view tracked normally.
 - Also seen: scroll pop-up 425b5763 fired at 20 %, impression 200, close 202; cart auto-sync `changed: true` with 4 products; screen view with the cart page token `1962cd17-…` returned 0 banners.
+
+### Run 63 — tester marks from the shared checklist page (2026-09-09)
+
+The checklist page now keeps hand-set marks in the artifact's shared store (`marks/tester`); these rows were carried from there into this document.
+
+- INB-09, INB-10, INB-13, INB-14 pass (tester-marked, no console log).
+- The tester also set BAN-10, BAN-13 and BAN-16 to pass on the page; this document keeps them as caveats — BAN-10 and BAN-13 are behaviour decisions for the CTO, BAN-16 still lacks the rotation check.
 
 ## Appendix A. Temp-code snippets
 
