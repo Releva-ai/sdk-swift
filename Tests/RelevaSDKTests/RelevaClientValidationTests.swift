@@ -115,4 +115,27 @@ final class RelevaClientValidationTests: XCTestCase {
             XCTAssertEqual(RelevaErrorKind(error), .invalidConfiguration, "unexpected error: \(error)")
         }
     }
+
+    // MARK: - SET-09
+
+    /// The presets gate features, not just logging: with push off, `registerPushToken` is a
+    /// silent no-op (it does not even reach the device-id check that throws otherwise); with
+    /// tracking off, a screen view returns an empty response without a request. Realm "test"
+    /// does not resolve, so any request that had been attempted would surface as networkError.
+    func testPresetsGateTheirFeaturesWithoutThrowing() async throws {
+        let defaults = UserDefaults.standard
+        let saved = defaults.string(forKey: "rlv_device_id")
+        defaults.removeObject(forKey: "rlv_device_id")
+        defer { if let saved = saved { defaults.set(saved, forKey: "rlv_device_id") } }
+
+        let trackingOnly = makeClient(config: .trackingOnly())
+        XCTAssertNil(trackingOnly.getDeviceId())
+        try await trackingOnly.registerPushToken("x", deviceType: .ios) // push off → returns before any check
+
+        let pushOnly = makeClient(config: .pushOnly())
+        let response = try await pushOnly.trackScreenView(screenToken: "home") // tracking off → no request
+        XCTAssertEqual(response.recommenderCount, 0)
+        XCTAssertTrue(response.banners.isEmpty)
+        XCTAssertNil(response.nps)
+    }
 }
