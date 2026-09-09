@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+Everything here comes from the first pass over the SDK on a physical iPhone (iOS 26) since 1.0.2, run through the example app. The row-by-row record, the harness facts and the open backend questions are in `docs/DEVICE_TEST_PLAN.md`; `docs/tools/` holds the generator that produces it and the checkable page.
+
+### Added
+
+- `RelevaClient.shutdown()`. A host that rebuilds its client on login or logout left the previous instance alive, and that instance kept re-registering the push token under the old profile on every foreground. `shutdown()` stops tracking, and `refreshPushToken()` is a no-op on a shut-down client. Call it before dropping the old client.
+- `RelevaClient.reportScrollPercentage(_:)` and the `relevaScrollTracking()` SwiftUI modifier, which observes the underlying `UIScrollView`. Scroll-triggered banners and stories never fired before: the preference-based reporter does not deliver on iOS 26.
+- A public initialiser for `StoryViewerView`, so a `UIHostingController` outside the SDK can present a story.
+- `os_log` logging (subsystem `ai.releva.sdk`) for the SDK and the notification extension, so Console.app can filter it. The response debug line names the banners with their trigger, the stories and the NPS survey with its trigger and cancel events; every banner trigger firing is logged.
+- `docs/DEVICE_TEST_PLAN.md` and `docs/tools/gen_plan.py` (162 rows, results per device run).
+
+### Changed
+
+- Banners. Popups are a design-sized card with a native close button; the bar follows the web chrome; the flyout on phones is an edge-flush, full-height drawer filled with the design's colours (a deliberate deviation from the web side panel, which does not fit a phone). Popup, flyout and bar are hosted in a window above the app's navigation and tab bars. Popups and flyouts queue instead of overwriting each other; a design's images are prefetched before the overlay shows; card height is measured from the content; image blocks keep their source width as on the web; a design with no rows or content is skipped and not counted.
+- NPS. The sheet background and the comment editor use the survey's colours, so a dark-mode device no longer gets a white card with unreadable text. Custom-event triggers and `cancelOnEvents` are driven by `trackCustomEvent(_:)` and by cart and wishlist changes, reported as the backend's own event actions (`cartCreate`, `cartAdd`, `cartRemove`, `cartUpdate`, `wishlistCreate`, `wishlistAdd`, `wishlistRemove`), not only by `trackEvent(_:)`. A response that carries no survey keeps the held configuration instead of forgetting it.
+- Stories. Following a link in a slide dismisses the viewer without a `storyClose`, as the web does when the page navigates away.
+- `push(_:incrementViews:)` calls `validate()` on the request before building the payload. The validation rules existed but were never invoked, so an empty search query or an unpaid checkout went out on the wire.
+
+### Fixed
+
+- Notification extension: replies to the request exactly once; transcodes WebP and HEIC attachments to JPEG so they display; refreshes the `RELEVA_DYNAMIC` action label on every push instead of showing the first one.
+- Push: a Releva tap is recognised by `click_action` in `didReceive`; a navigation request that arrives on a cold launch is buffered until the host drains it; the token is re-registered when the profile changes; the inbox cache is scoped to the profile it belongs to.
+- Banner text decodes the HTML entities Unlayer emits; carousel tap zones and sizing; the overlay window is created even when the first screen appears before the scene, and a live screen is re-attached to it when a banner arrives.
+- Stories: the same story is not queued twice; links and buttons inside a slide receive taps (the tap zones are the outer thirds); each slide shows its own image instead of the first slide's; the next queued story is presented after the previous cover has left the screen.
+
 ## [5.0.0] - 2026-08-12
 
 ### Changed
