@@ -152,6 +152,7 @@ td code{white-space:normal}
       Progress and notes are saved in this browser only.
       <a href="#appendices">Appendices</a>
       <a href="#" id="exportBtn">Copy results as text</a>
+      <span id="syncBadge" style="font-size:.8rem;color:var(--muted)" title="Where your marks and notes are kept">Marks kept in this browser</span>
     </div>
   </nav>
 
@@ -241,9 +242,16 @@ const KEY = "releva-sdk-device-test-plan-v1";
 const STATES = ["open","pass","fail","warn"];
 const LABEL = {open:"☐ Not run", pass:"✓ Pass", fail:"✕ Fail", warn:"! Caveat"};
 
+// `store` holds only what a tester set by hand: {ID: {s, n}}. Rows without an entry show the
+// seed from DATA.results (the generator's recorded result) and are never persisted, so a later
+// regeneration can change a seeded row. Older browsers saved seeded entries too — drop them.
 let store = {};
-try { store = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { store = {}; }
-function save(){ try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
+try {
+  const raw = JSON.parse(localStorage.getItem(KEY) || "{}") || {};
+  for (const [k, v] of Object.entries(raw)) if (v && !v.seeded && v.s) store[k] = {s: v.s, n: v.n || ""};
+} catch (e) { store = {}; }
+function effective(id){ return store[id] || (DATA.results[id] ? {s: DATA.results[id].s, n: DATA.results[id].n, seeded: true} : {}); }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} schedulePush(); }
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function inline(s){ // `code` spans only
   return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -285,17 +293,61 @@ document.getElementById("toc").innerHTML = DATA.sections.map(sec =>
   `<li><a href="#sec-${sec.key}"><span class="k">${sec.key}</span><span>${esc(sec.title)}</span><span class="c" data-toc="${sec.key}"></span></a></li>`).join("");
 
 // ---- state wiring
+function applyStore(){
+  document.querySelectorAll(".row").forEach(el => {
+    const st = effective(el.dataset.id);
+    const sel = el.querySelector(".status");
+    const ta = el.querySelector("[data-note]");
+    sel.value = st.s || "open"; el.dataset.s = sel.value;
+    if (document.activeElement !== ta) ta.value = st.n || "";
+  });
+  refresh();
+}
 document.querySelectorAll(".row").forEach(el => {
   const id = el.dataset.id;
-  if (!store[id] && DATA.results[id]) store[id] = {s: DATA.results[id].s, n: DATA.results[id].n, seeded: true};
-  const st = store[id] || {};
   const sel = el.querySelector(".status");
   const ta = el.querySelector("[data-note]");
-  sel.value = st.s || "open"; el.dataset.s = sel.value; ta.value = st.n || "";
   sel.addEventListener("click", e => e.stopPropagation());
   sel.addEventListener("change", () => { el.dataset.s = sel.value; store[id] = {s: sel.value, n: ta.value}; save(); refresh(); });
   ta.addEventListener("input", () => { store[id] = {s: sel.value, n: ta.value}; save(); });
 });
+
+// ---- shared marks (artifact db). Without it the page keeps working from localStorage.
+// One document, marks/tester: {rows: {ID: {s, n}}, updatedAt}. Claude reads the same document
+// (read_db marks/tester) to carry marks into DEVICE_TEST_PLAN.md.
+let dbDoc = null, pushTimer = null;
+const badge = document.getElementById("syncBadge");
+function setBadge(t){ if (badge) badge.textContent = t; }
+function schedulePush(){ if (!dbDoc) return; clearTimeout(pushTimer); pushTimer = setTimeout(pushMarks, 600); }
+async function pushMarks(){
+  if (!dbDoc) return;
+  try { await dbDoc.set({rows: store, updatedAt: new Date().toISOString()}); setBadge("Shared marks · saved"); }
+  catch (e) { setBadge("Shared marks · save failed, kept in this browser"); }
+}
+function adoptRemote(rows){
+  store = JSON.parse(JSON.stringify(rows || {}));
+  try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {}
+  applyStore();
+}
+(async () => {
+  let db = null;
+  try { db = (window.claude && typeof window.claude.use === "function") ? await window.claude.use("db") : null; } catch (e) { db = null; }
+  if (!db) return;
+  const ref = db.doc("marks/tester");
+  let remote = {};
+  try { const snap = await ref.get(); if (snap.exists) remote = (snap.data() || {}).rows || {}; } catch (e) { return; }
+  // First contact: marks made in this browser before sharing existed move up; the shared copy wins on overlap.
+  const merged = Object.assign({}, store, JSON.parse(JSON.stringify(remote)));
+  const needsPush = Object.keys(merged).length !== Object.keys(remote).length;
+  dbDoc = ref;
+  adoptRemote(merged);
+  setBadge("Shared marks · on");
+  if (needsPush) pushMarks();
+  ref.onSnapshot(snap => {
+    if (snap.metadata && snap.metadata.hasPendingWrites) return;
+    adoptRemote(snap.exists ? ((snap.data() || {}).rows || {}) : {});
+  }, () => setBadge("Shared marks · live updates off"));
+})();
 
 function refresh(){
   let done=0, pass=0, fail=0, warn=0;
@@ -345,7 +397,7 @@ document.getElementById("collapseAll").addEventListener("click", () => document.
 // ---- export
 document.getElementById("exportBtn").addEventListener("click", e => {
   e.preventDefault();
-  const lines = allRows.map(r => { const s = store[r.id] || {}; return `${r.id}\t${r.p}\t${LABEL[s.s || "open"]}\t${r.t}${s.n ? "\t" + s.n.replace(/\s+/g," ") : ""}`; });
+  const lines = allRows.map(r => { const s = effective(r.id); return `${r.id}\t${r.p}\t${LABEL[s.s || "open"]}\t${r.t}${s.n ? "\t" + s.n.replace(/\s+/g," ") : ""}`; });
   const txt = "ID\tPrio\tResult\tScenario\tNotes\n" + lines.join("\n");
   const done = () => { e.target.textContent = "Copied"; setTimeout(() => e.target.textContent = "Copy results as text", 1600); };
   if (navigator.clipboard) navigator.clipboard.writeText(txt).then(done, () => prompt("Copy:", txt)); else prompt("Copy:", txt);
@@ -379,5 +431,5 @@ document.getElementById("appxH").innerHTML =
   DATA.fixtures.map(f => `<tr>${f.map((c,i) => `<td>${i===3 ? `<span class="mono">${esc(c)}</span>` : inline(c)}</td>`).join("")}</tr>`).join("") + `</tbody></table></div>`;
 document.getElementById("appxF").innerHTML = `<ul>${DATA.unit.map(u => `<li>${inline(u)}</li>`).join("")}</ul>`;
 
-refresh();
+applyStore();
 </script>

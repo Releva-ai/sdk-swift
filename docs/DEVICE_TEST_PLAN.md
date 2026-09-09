@@ -4,7 +4,7 @@ Manual verification of `sdk-swift` on a real iPhone using the `example-swift` ha
 
 **162 scenarios**: 57 × P0 (must pass before handover), 81 × P1 (should pass), 24 × P2 (nice to have or documented limitation). Each row names the SDK version the behaviour landed in, so the 1.0.x rows are a regression pass and everything from 1.0.3 onward is the untested surface.
 
-**Status after 62 run(s)**: 124 pass, 1 fail, 16 pass with caveat, 21 not yet run. Details per row in the Result column and in section 5.
+**Status after 63 run(s)**: 125 pass, 1 fail, 16 pass with caveat, 20 not yet run. Details per row in the Result column and in section 5.
 
 ## 1. What was and was not tested before
 
@@ -142,7 +142,7 @@ All of these are `POST /api/v0/push`. The schema is `$$strict`: an unknown key a
 | CHK-01 | P0 | 1.0 | Place order | Cart with two items, checkout form filled. | Place Order. | Body `cart.cartPaid: true`, `cart.orderId: <uuid>`, products with price and quantity, `cartChanged: true`. 200. Success screen shown. | Timeline shows the purchase (paid cart) with the orderId; revenue appears in the domain dashboard. | ✅ Run 1: order 732B9E0D-…; Run 6: order 592C6D15-… with cartPaid true, orderId, product prod_001 → 200. Run 17: order 469E5176-… with two products (prod_003 qty 1, prod_005 qty 3, colours) → cartPaid true → 200 'Tracked checkout success'. |
 | CHK-02 | P0 | 2.0 | No profile attributes on checkout | As CHK-01. | Inspect the checkout request body. | No email/name/phone keys anywhere. | — | ✅ Run 1: checkout body has no profile attributes. |
 | CHK-03 | P1 | 1.0 | Checkout validation (temp code S7) | S7. | Push `CheckoutSuccessRequest` with an empty product list, then with `Cart.active(...)` (unpaid). | Both throw `missingRequiredField` before any request. | — | ✅ Same defect and fix as TRK-06: validation was never invoked. Now, before any request: unpaid cart → invalidConfiguration, empty product list → invalidConfiguration, missing order id → missingRequiredField (RelevaClientValidationTests.testAnUnpaidOrEmptyCheckoutIsRejectedBeforeTheNetwork). The plan's expectation of missingRequiredField for all three was wrong; the kinds above are what the request rules define. |
-| CHK-04 | P1 | 1.0 | Order placed then app backgrounded immediately | Cart with items. | Tap Place Order and swipe to the home screen within a second. | `Sending POST request` appears; response may or may not arrive. Reopen: no crash. | If the purchase is missing this is app timing (fire-and-forget before navigation), not an SDK fault. | ☐ |
+| CHK-04 | P1 | 1.0 | Order placed then app backgrounded immediately | Cart with items. | Tap Place Order and swipe to the home screen within a second. | `Sending POST request` appears; response may or may not arrive. Reopen: no crash. | If the purchase is missing this is app timing (fire-and-forget before navigation), not an SDK fault. | ✅ Run 62: Place Order at 12:17:19.20 → `Sending POST request …/push` with `cartPaid true`, `orderId 7AD9B910-…`, 4 products at .262, `Response status code: 200` at .411, i.e. before the swipe to the home screen; the app came back at 12:17:24 (`refreshPushToken … skipping`), no crash, Continue Shopping → Home tracked with recommenders. The Success screen view (`views 713`) is sent in parallel with the checkout success (`views 712`, no increment for the purchase) — expected. |
 
 ### F. Push token registration
 
@@ -861,6 +861,13 @@ Same install; results reported from the device and the admin, no console log.
 
 - BAN-11 pass: white content-level text on a dark pop-up renders white.
 - Orders placed from the harness are visible in the admin (backend side of CHK-01 re-confirmed).
+
+### Run 62 — order then immediate background (2026-09-09)
+
+Product page with the scroll pop-up, 4 items in the cart, Place Order and swipe to the home screen within a second, reopen after ~5 s.
+
+- CHK-04 pass: the checkout success POST (cartPaid true, orderId 7AD9B910-…) got its 200 in 150 ms, before the swipe; reopening was clean and the Home screen view tracked normally.
+- Also seen: scroll pop-up 425b5763 fired at 20 %, impression 200, close 202; cart auto-sync `changed: true` with 4 products; screen view with the cart page token `1962cd17-…` returned 0 banners.
 
 ## Appendix A. Temp-code snippets
 
