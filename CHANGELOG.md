@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [5.1.0] - 2026-09-09
 
 Everything here comes from the first pass over the SDK on a physical iPhone (iOS 26) since 1.0.2, run through the example app. The row-by-row record, the harness facts and the open backend questions are in `docs/DEVICE_TEST_PLAN.md`; `docs/tools/` holds the generator that produces it and the checkable page.
 
