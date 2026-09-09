@@ -236,4 +236,98 @@ final class NpsManagerServiceTests: XCTestCase {
 
         XCTAssertTrue(receivedTokens.isEmpty, "a disposed manager must not show its delayed survey")
     }
+
+    /// `dispose()` only invalidated the pending timer; it left `config`/`triggered` set and had
+    /// no flag of its own, so nothing stopped a call arriving after it — `RelevaClient` still
+    /// holds a strong reference to `npsManager` after `shutdown()` and does not gate
+    /// `trackCustomEvent` on `isShutDown` — from still finding the held config and arming a
+    /// fresh timer.
+    func testTrackEventAfterDisposeDoesNotArmATimerOrFireASurvey() {
+        let manager = NpsManagerService()
+        let config = NpsConfig(
+            token: "post-dispose",
+            question: "Rate us?",
+            triggers: [NpsTrigger(type: "customEvent", eventName: "selectedColor")],
+            triggerDelaySeconds: 0
+        )
+        manager.initialize(config)
+        manager.dispose()
+
+        let shown = expectation(description: "NPS published")
+        shown.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { if $0.token == "post-dispose" { shown.fulfill() } }
+            .store(in: &cancellables)
+
+        manager.trackEvent("selectedColor")
+        wait(for: [shown], timeout: 1)
+    }
+
+    /// Device run 52: a push with no page context answers `nps: null`; that must not drop a
+    /// held custom-event config, or the cancel event that follows has nothing to act on.
+    func testAResponseWithoutASurveyKeepsTheHeldConfig() {
+        let manager = NpsManagerService()
+        let config = NpsConfig(
+            token: "kept",
+            question: "Rate us?",
+            triggers: [NpsTrigger(type: "customEvent", eventName: "selectedColor")],
+            triggerDelaySeconds: 0,
+            cancelOnEvents: ["cartAdd"]
+        )
+        manager.initialize(config)
+        manager.initialize(nil)
+
+        let shown = expectation(description: "NPS published")
+        shown.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { if $0.token == "kept" { shown.fulfill() } }
+            .store(in: &cancellables)
+
+        manager.trackEvent("cartAdd")        // still knows the config, so this cancels
+        manager.trackEvent("selectedColor")  // and this is therefore ignored
+        wait(for: [shown], timeout: 1)
+    }
+
+    /// A push that named a page (`clearsWhenAbsent: true`) answering `nps: null` means "this
+    /// screen has no survey" — the config held from an earlier screen must not leak onto it.
+    func testAScreenViewResponseWithoutASurveyClearsTheHeldConfig() {
+        let manager = NpsManagerService()
+        let config = NpsConfig(
+            token: "screen-a",
+            question: "Rate us?",
+            triggers: [NpsTrigger(type: "customEvent", eventName: "selectedColor")],
+            triggerDelaySeconds: 0
+        )
+        manager.initialize(config)              // screen A's response arms it
+        manager.initialize(nil, clearsWhenAbsent: true)  // screen B's screen-view response: no survey here
+
+        let shown = expectation(description: "NPS published")
+        shown.isInverted = true
+        NpsDisplayController.shared.npsPublisher
+            .sink { if $0.token == "screen-a" { shown.fulfill() } }
+            .store(in: &cancellables)
+
+        manager.trackEvent("selectedColor")   // fired on screen B; must not still find screen A's config
+        wait(for: [shown], timeout: 1)
+    }
+
+    func testAHeldConfigStillFiresAfterAResponseWithoutASurvey() {
+        let manager = NpsManagerService()
+        let config = NpsConfig(
+            token: "kept-fires",
+            question: "Rate us?",
+            triggers: [NpsTrigger(type: "customEvent", eventName: "selectedColor")],
+            triggerDelaySeconds: 0
+        )
+        manager.initialize(config)
+        manager.initialize(nil)
+
+        let shown = expectation(description: "NPS published")
+        NpsDisplayController.shared.npsPublisher
+            .sink { if $0.token == "kept-fires" { shown.fulfill() } }
+            .store(in: &cancellables)
+
+        manager.trackEvent("selectedColor")
+        wait(for: [shown], timeout: 2)
+    }
 }

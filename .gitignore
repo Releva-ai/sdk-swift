@@ -90,3 +90,6 @@ iOSInjectionProject/
 # macOS
 .DS_Store
 .claude/settings.local.json
+
+# QA keeps the device test plan and its generator here; they are not part of the SDK.
+docs/

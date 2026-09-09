@@ -130,8 +130,13 @@ struct NpsSurveyView: View {
             case .thankYou:
                 thankYouStep
             }
+
+            Spacer(minLength: 0)
         }
-        .background(bgColor)
+        // The survey's background paints the whole sheet, not just the content's height; otherwise
+        // a dark-mode app shows a white card in a near-black sheet.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(bgColor.ignoresSafeArea())
         .onDisappear {
             dismissTimer?.invalidate()
         }
@@ -233,12 +238,20 @@ struct NpsSurveyView: View {
             TextEditor(text: $comment)
                 .frame(minHeight: 80, maxHeight: 120)
                 .padding(8)
+                // TextEditor paints the system background under the survey's text colour; give it
+                // the survey's own colours.
+                .modifier(PlainEditorBackground())
                 .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(bgColor)
+                )
+                .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(textColor.opacity(0.2), lineWidth: 1)
                 )
                 .font(.system(size: 14))
                 .foregroundColor(textColor)
+                .tint(primaryColor)
 
             Button {
                 submitFollowUp()
@@ -334,6 +347,17 @@ private enum NpsStep {
 }
 
 // MARK: - Presentation Detents Compatibility
+
+/// Hides `TextEditor`'s own (system-coloured) scroll background where the API exists.
+private struct PlainEditorBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content.scrollContentBackground(.hidden)
+        } else {
+            content
+        }
+    }
+}
 
 private struct PresentationDetentsModifier: ViewModifier {
     func body(content: Content) -> some View {

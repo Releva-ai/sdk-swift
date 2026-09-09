@@ -187,9 +187,10 @@ final class EngagementTrackingServiceTests: XCTestCase {
         // `getPendingEventCount` cannot wait on directly, so poll rather than asserting on
         // the very next queue turn. The queue backing `processBatch` runs at `.background`
         // QoS (`EngagementTrackingService.queue`), which a loaded CI runner can starve for
-        // well over a second behind higher-priority work; 5s gives that queue room to be
-        // scheduled without weakening what's actually asserted below.
-        let drained = try await pollUntil(timeout: 5.0) {
+        // well over a second behind higher-priority work; observed flaking at 5s on a CI run
+        // sharing the box with other `xcodebuild` invocations pushed this to 10s, still well
+        // under a timeout that would mask a real regression.
+        let drained = try await pollUntil(timeout: 10.0) {
             await self.service.getPendingEventCount() == 0
         }
 

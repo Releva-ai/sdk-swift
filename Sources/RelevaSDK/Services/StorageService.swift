@@ -24,6 +24,7 @@ public class StorageService {
         case pushToken = "rlv_push_token"
         case deviceType = "rlv_device_type"
         case pushTokenUploadedAt = "rlv_push_token_uploaded_at"
+        case pushTokenProfileId = "rlv_push_token_profile_id"
 
         // Settings
         case sdkVersion = "rlv_sdk_version"
@@ -37,6 +38,7 @@ public class StorageService {
         case inboxUnreadCount = "rlv_inbox_unread_count"
         case inboxNextCursor = "rlv_inbox_next_cursor"
         case inboxLastFetch = "rlv_inbox_last_fetch"
+        case inboxCacheProfileId = "rlv_inbox_cache_profile_id"
 
         // Device analytics
         case deviceSessionCount = "rlv_device_session_count"
@@ -246,6 +248,7 @@ public class StorageService {
         userDefaults.removeObject(forKey: StorageKey.pushToken.rawValue)
         userDefaults.removeObject(forKey: StorageKey.deviceType.rawValue)
         userDefaults.removeObject(forKey: StorageKey.pushTokenUploadedAt.rawValue)
+        userDefaults.removeObject(forKey: StorageKey.pushTokenProfileId.rawValue)
     }
 
     /// Record the timestamp of the last successful push-token upload to the backend.
@@ -260,6 +263,22 @@ public class StorageService {
             return nil
         }
         return Date(timeIntervalSince1970: interval)
+    }
+
+    /// Record which profile the token was last uploaded for. A token upload binds the token
+    /// to `(deviceId, profileId)` on the backend, so a profile change must re-upload even
+    /// when the token itself is unchanged and recent.
+    public func savePushTokenProfileId(_ profileId: String?) {
+        if let profileId = profileId {
+            userDefaults.set(profileId, forKey: StorageKey.pushTokenProfileId.rawValue)
+        } else {
+            userDefaults.removeObject(forKey: StorageKey.pushTokenProfileId.rawValue)
+        }
+    }
+
+    /// The profile the token was last uploaded for, if any.
+    public func getPushTokenProfileId() -> String? {
+        userDefaults.string(forKey: StorageKey.pushTokenProfileId.rawValue)
     }
 
     // MARK: - Profile Merge Management
@@ -329,6 +348,25 @@ public class StorageService {
         userDefaults.set(timestamp, forKey: StorageKey.inboxLastFetch.rawValue)
     }
 
+    /// The profile the cached inbox belongs to: `""` for a cache written anonymously, a
+    /// profile id for one written while identified, `nil` only for a cache written before
+    /// this key existed (pre-5.1) — the three are distinguished so an anonymous cache is
+    /// never mistaken for an identified one's on the anonymous→identified transition.
+    public func getInboxCacheProfileId() -> String? {
+        userDefaults.string(forKey: StorageKey.inboxCacheProfileId.rawValue)
+    }
+
+    public func saveInboxCacheProfileId(_ profileId: String?) {
+        userDefaults.set(profileId ?? "", forKey: StorageKey.inboxCacheProfileId.rawValue)
+    }
+
+    /// Drop the cached inbox (messages, unread count, cursor, fetch time, owner).
+    public func clearInboxCache() {
+        for key in [StorageKey.inboxMessages, .inboxUnreadCount, .inboxNextCursor, .inboxLastFetch, .inboxCacheProfileId] {
+            userDefaults.removeObject(forKey: key.rawValue)
+        }
+    }
+
     /// Get inbox last fetch timestamp
     public func getInboxLastFetch() -> TimeInterval? {
         let val = userDefaults.double(forKey: StorageKey.inboxLastFetch.rawValue)
@@ -341,6 +379,7 @@ public class StorageService {
         userDefaults.removeObject(forKey: StorageKey.inboxUnreadCount.rawValue)
         userDefaults.removeObject(forKey: StorageKey.inboxNextCursor.rawValue)
         userDefaults.removeObject(forKey: StorageKey.inboxLastFetch.rawValue)
+        userDefaults.removeObject(forKey: StorageKey.inboxCacheProfileId.rawValue)
     }
 
     // MARK: - Device Analytics

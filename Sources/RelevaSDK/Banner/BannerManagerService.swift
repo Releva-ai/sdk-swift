@@ -72,6 +72,18 @@ public class BannerManagerService {
         }
     }
 
+    /// Call with the page's scroll position (0–100): triggers every pending `scrollPercentage`
+    /// banner whose threshold has been reached. Push counterpart of the polled
+    /// `scrollPercentageProvider`; `RelevaClient.reportScrollPercentage` calls it.
+    public func onScroll(percentage: Int) {
+        for banner in banners
+        where banner.trigger == "scrollPercentage"
+            && (banner.scrollPercentage ?? 0) <= percentage
+            && !displayedBanners.contains(banner.token) {
+            triggerBanner(banner)
+        }
+    }
+
     /// Call when the cart changes to trigger cart-based banners
     public func onCartChanged() {
         banners.filter { $0.trigger == "cartChanged" }.forEach { triggerBanner($0) }
@@ -85,6 +97,7 @@ public class BannerManagerService {
     private func triggerBanner(_ banner: BannerResponse) {
         guard !displayedBanners.contains(banner.token) else { return }
         displayedBanners.insert(banner.token)
+        relevaLog("RelevaSDK: Banner trigger fired: \(banner.token.prefix(8)) (\(banner.trigger ?? "?"))")
         BannerDisplayController.shared.showBanner(banner)
     }
 

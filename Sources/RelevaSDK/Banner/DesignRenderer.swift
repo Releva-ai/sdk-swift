@@ -39,7 +39,7 @@ public struct DesignRenderer {
         .background(
             Group {
                 if !transparentBody, let bgInfo = parseBackgroundImage(bodyValues["backgroundImage"], forceCover: true) {
-                    AsyncImage(url: bgInfo.url) { phase in
+                    CachedRemoteImage(url: bgInfo.url) { phase in
                         if case .success(let image) = phase {
                             image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
                         }
@@ -86,7 +86,7 @@ public struct DesignRenderer {
         .background(
             Group {
                 if let bgInfo = parseBackgroundImage(rowValues["backgroundImage"]) {
-                    AsyncImage(url: bgInfo.url) { phase in
+                    CachedRemoteImage(url: bgInfo.url) { phase in
                         if case .success(let image) = phase {
                             image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
                         }
@@ -167,16 +167,35 @@ public struct DesignRenderer {
         let href = actionValues["href"]?.stringValue ?? ""
 
         if !url.isEmpty, let imageUrl = URL(string: url) {
-            let imageView = AsyncImage(url: imageUrl) { phase in
+            // Unlayer renders an image block as `width: 100%; max-width: <src.width>px` unless the
+            // block sets an explicit percentage width (size.autoWidth == false).
+            let srcWidth = src["width"]?.doubleValue
+            let srcHeight = src["height"]?.doubleValue
+            let size = values["size"]?.objectValue ?? [:]
+            let autoWidth = size["autoWidth"]?.boolValue ?? true
+            let maxWidth: CGFloat = (autoWidth ? srcWidth.map { CGFloat($0) } : nil) ?? .infinity
+            let alignment = textAlignToAlignment(parseTextAlign(values["textAlign"]))
+            let placeholderRatio: CGFloat? = {
+                guard let w = srcWidth, let h = srcHeight, w > 0, h > 0 else { return nil }
+                return CGFloat(w / h)
+            }()
+
+            let imageView = CachedRemoteImage(url: imageUrl) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().scaledToFit()
                 case .failure:
                     EmptyView()
                 default:
-                    Color.clear.frame(height: 100)
+                    if let ratio = placeholderRatio {
+                        Color.clear.aspectRatio(ratio, contentMode: .fit)
+                    } else {
+                        Color.clear.frame(height: 100)
+                    }
                 }
             }
+            .frame(maxWidth: maxWidth)
+            .frame(maxWidth: .infinity, alignment: alignment)
 
             if !href.isEmpty, let onLinkTap = onLinkTap {
                 imageView.onTapGesture { onLinkTap(href) }
@@ -411,6 +430,33 @@ public struct DesignRenderer {
         }
     }
 
+    /// The natural width of a design made only of image blocks: the widest image's source
+    /// width plus its horizontal container padding. `nil` when the design has any other block,
+    /// so callers fall back to the design's declared width. Lets a flyout hug its picture
+    /// instead of showing the body colour around it.
+    static func intrinsicImageWidth(in design: [String: JSONValue]) -> CGFloat? {
+        let rows = design["body"]?["rows"]?.arrayValue?.compactMap { $0.objectValue } ?? []
+        var widest: CGFloat = 0
+        var sawContent = false
+        for row in rows {
+            let rowPadding = parseEdgeInsets(row["values"]?["padding"]) ?? EdgeInsets()
+            for column in row["columns"]?.arrayValue?.compactMap({ $0.objectValue }) ?? [] {
+                let columnPadding = parseEdgeInsets(column["values"]?["padding"]) ?? EdgeInsets()
+                for content in column["contents"]?.arrayValue?.compactMap({ $0.objectValue }) ?? [] {
+                    sawContent = true
+                    guard content["type"]?.stringValue == "image",
+                          let values = content["values"]?.objectValue,
+                          let srcWidth = values["src"]?["width"]?.doubleValue, srcWidth > 0 else { return nil }
+                    let padding = parseEdgeInsets(values["containerPadding"]) ?? EdgeInsets()
+                    widest = max(widest, CGFloat(srcWidth) + padding.leading + padding.trailing
+                                 + columnPadding.leading + columnPadding.trailing
+                                 + rowPadding.leading + rowPadding.trailing)
+                }
+            }
+        }
+        return sawContent && widest > 0 ? widest : nil
+    }
+
     static func parseDimensionRaw(_ value: JSONValue?) -> CGFloat? {
         let str = "\(value?.anyValue ?? "")"
             .trimmingCharacters(in: .whitespaces)
@@ -481,13 +527,35 @@ public struct DesignRenderer {
     static func stripHtml(_ html: String) -> String {
         // Remove HTML tags
         var text = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-        // Decode HTML entities
-        text = text.replacingOccurrences(of: "&amp;", with: "&")
-        text = text.replacingOccurrences(of: "&lt;", with: "<")
-        text = text.replacingOccurrences(of: "&gt;", with: ">")
-        text = text.replacingOccurrences(of: "&quot;", with: "\"")
-        text = text.replacingOccurrences(of: "&#39;", with: "'")
-        text = text.replacingOccurrences(of: "&nbsp;", with: " ")
+        // Decode HTML entities. Numeric forms first (&#8594; / &#x2192;), then the named ones
+        // Unlayer's editor emits for punctuation and arrows; `&amp;` last so a literal "&amp;lt;"
+        // is not decoded twice.
+        if let regex = try? NSRegularExpression(pattern: "&#(x[0-9a-fA-F]+|[0-9]+);") {
+            let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed()
+            for match in matches {
+                guard let whole = Range(match.range, in: text),
+                      let numberRange = Range(match.range(at: 1), in: text) else { continue }
+                let number = String(text[numberRange])
+                let scalarValue = number.hasPrefix("x")
+                    ? UInt32(number.dropFirst(), radix: 16)
+                    : UInt32(number)
+                if let value = scalarValue, let scalar = Unicode.Scalar(value) {
+                    text.replaceSubrange(whole, with: String(Character(scalar)))
+                }
+            }
+        }
+        let named: [(String, String)] = [
+            ("&nbsp;", " "), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"),
+            ("&rarr;", "→"), ("&larr;", "←"), ("&uarr;", "↑"), ("&darr;", "↓"), ("&harr;", "↔"),
+            ("&hellip;", "…"), ("&mdash;", "—"), ("&ndash;", "–"), ("&bull;", "•"), ("&middot;", "·"),
+            ("&lsquo;", "‘"), ("&rsquo;", "’"), ("&ldquo;", "“"), ("&rdquo;", "”"), ("&laquo;", "«"), ("&raquo;", "»"),
+            ("&copy;", "©"), ("&reg;", "®"), ("&trade;", "™"), ("&euro;", "€"), ("&pound;", "£"), ("&yen;", "¥"),
+            ("&deg;", "°"), ("&times;", "×"), ("&divide;", "÷"), ("&plusmn;", "±"), ("&check;", "✓"), ("&hearts;", "♥"),
+            ("&amp;", "&")
+        ]
+        for (entity, replacement) in named {
+            text = text.replacingOccurrences(of: entity, with: replacement)
+        }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -528,6 +596,8 @@ struct CarouselView: View {
         let firstSrc = images.first?["src"]?.objectValue ?? [:]
         let width = firstSrc["width"]?.doubleValue ?? 16
         let height = firstSrc["height"]?.doubleValue ?? 9
+        // A missing or zero dimension gives an infinite or NaN ratio; fall back to 16:9.
+        guard width > 0, height > 0, width.isFinite, height.isFinite else { return 16.0 / 9.0 }
         return CGFloat(width / height)
     }
 
@@ -536,29 +606,42 @@ struct CarouselView: View {
             EmptyView()
         } else {
             VStack(spacing: 0) {
-                // Main image area with aspect ratio
-                ZStack {
-                    TabView(selection: $currentPage) {
-                        ForEach(Array(images.enumerated()), id: \.offset) { index, image in
-                            carouselImage(image: image)
-                                .tag(index)
+                // Main image area, sized from the available width: a page-style TabView under a
+                // bare `.aspectRatio` is measured before it has a width and passes NaN to
+                // CoreGraphics.
+                GeometryReader { geometry in
+                    let width = geometry.size.width
+                    let height = width.isFinite && width > 0 ? width / aspectRatio : 0
+
+                    ZStack {
+                        TabView(selection: $currentPage) {
+                            ForEach(Array(images.enumerated()), id: \.offset) { index, image in
+                                carouselImage(image: image)
+                                    .frame(width: width, height: height)
+                                    .clipped()
+                                    .tag(index)
+                            }
+                        }
+                        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+
+                        // The outer thirds step back/forward; the middle third is not hit-tested
+                        // so the image's own link tap reaches `onLinkTap`.
+                        HStack(spacing: 0) {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture { goPrevious() }
+
+                            Color.clear
+                                .allowsHitTesting(false)
+
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture { goNext() }
                         }
                     }
-                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                    .aspectRatio(aspectRatio, contentMode: .fit)
-
-                    // Left/right tap navigation overlay
-                    HStack(spacing: 0) {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { goPrevious() }
-
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { goNext() }
-                    }
-                    .aspectRatio(aspectRatio, contentMode: .fit)
+                    .frame(width: width, height: height)
                 }
+                .aspectRatio(aspectRatio, contentMode: .fit)
 
                 // Indicators
                 if images.count > 1 {
@@ -588,7 +671,7 @@ struct CarouselView: View {
         let href = image["action"]?["values"]?["href"]?.stringValue ?? ""
 
         if !url.isEmpty, let imageUrl = URL(string: url) {
-            let imageView = AsyncImage(url: imageUrl) { phase in
+            let imageView = CachedRemoteImage(url: imageUrl) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().scaledToFill()
@@ -629,7 +712,7 @@ struct CarouselView: View {
                     let url = image["src"]?["url"]?.stringValue ?? ""
 
                     if !url.isEmpty, let imageUrl = URL(string: url) {
-                        AsyncImage(url: imageUrl) { phase in
+                        CachedRemoteImage(url: imageUrl) { phase in
                             switch phase {
                             case .success(let img):
                                 img.resizable().scaledToFill()

@@ -72,7 +72,8 @@ public class RelevaClient {
     private var bannerManager: BannerManagerService?
 
     /// NPS manager service
-    private var npsManager: NpsManagerService?
+    /// Internal (not private) so tests can install a manager without going through a push.
+    var npsManager: NpsManagerService?
 
     /// Story manager service
     private var storyManager: StoryManagerService?
@@ -136,7 +137,7 @@ public class RelevaClient {
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Initialized with realm '\(realm)'")
+            relevaLog("RelevaSDK: Initialized with realm '\(realm)'")
         }
     }
 
@@ -145,6 +146,88 @@ public class RelevaClient {
     // Swift 6 strict-concurrency warning. The observer block captures `[weak self]`, so
     // it no-ops once the client is freed; the `NSObjectProtocol` token lives only until
     // the (typically singleton) client is itself deallocated.
+
+    // MARK: - Derived event actions
+
+    /// The event actions the backend derives from a cart change — `cartCreate` (first product into
+    /// an empty cart), `cartAdd`, `cartRemove`, `cartUpdate` (any change leaving the cart
+    /// non-empty) — mirrored on the device so an NPS survey that triggers or cancels on one of them
+    /// reacts to `setCart` without a round-trip. Products are compared by id.
+    static func cartEventActions(from previous: Cart?, to current: Cart) -> [String] {
+        let previousIds = Set(previous?.products.map(\.id) ?? [])
+        let currentIds = Set(current.products.map(\.id))
+        var actions: [String] = []
+        if !currentIds.subtracting(previousIds).isEmpty {
+            if previousIds.isEmpty { actions.append("cartCreate") }
+            actions.append("cartAdd")
+        }
+        if !previousIds.subtracting(currentIds).isEmpty {
+            actions.append("cartRemove")
+        }
+        if !current.products.isEmpty {
+            actions.append("cartUpdate")
+        }
+        return actions
+    }
+
+    /// Wishlist counterpart of `cartEventActions`: `wishlistCreate`, `wishlistAdd`,
+    /// `wishlistRemove`.
+    static func wishlistEventActions(from previous: [WishlistProduct], to current: [WishlistProduct]) -> [String] {
+        let previousIds = Set(previous.map(\.id))
+        let currentIds = Set(current.map(\.id))
+        var actions: [String] = []
+        if !currentIds.subtracting(previousIds).isEmpty {
+            if previousIds.isEmpty { actions.append("wishlistCreate") }
+            actions.append("wishlistAdd")
+        }
+        if !previousIds.subtracting(currentIds).isEmpty {
+            actions.append("wishlistRemove")
+        }
+        return actions
+    }
+
+    // MARK: - Shutdown
+
+    /// `true` once `shutdown()` has run. The instance then ignores app-lifecycle events and
+    /// `refreshPushToken()`.
+    public private(set) var isShutDown = false
+
+    /// Tears this client down so that a replacement instance can take over. Call it before creating
+    /// a new `RelevaClient`: `init` pins the first client as `RelevaClient.shared`, and an instance
+    /// that is not shut down keeps reacting to `didBecomeActive` and re-registers the push token
+    /// under its previous profile.
+    ///
+    /// Removes the lifecycle observer, stops engagement batching, disposes the banner, story and
+    /// NPS managers, resets the process-wide session tracker so the replacement gets its own,
+    /// hands the notification-centre delegate back if it is ours, and clears the shared slot.
+    /// The inbox is a process-wide singleton the replacement re-initialises.
+    public func shutdown() {
+        guard !isShutDown else { return }
+        isShutDown = true
+
+        if let observer = pushTokenLifecycleObserver {
+            NotificationCenter.default.removeObserver(observer)
+            pushTokenLifecycleObserver = nil
+        }
+        engagementService?.stopTracking()
+        bannerManager?.dispose()
+        storyManager?.dispose()
+        npsManager?.dispose()
+        // `SessionService` is a process-wide singleton that binds to whichever `npsManager` was
+        // live when `preparePush` first initialized it (`initialize` is `if initialized { return
+        // }`), so without this the disposed `npsManager` keeps getting `startNewSession()` for
+        // the rest of the process. `rebind` (not `dispose`) because `dispose` also resets
+        // `initialized`, and the next client's `preparePush` would then re-run the cold-start
+        // path in `initialize` and double-count a device session per replacement.
+        SessionService.shared.rebind(npsManager: nil)
+        notificationService?.restorePreviousDelegate()
+        if RelevaClient.shared === self {
+            RelevaClient.shared = nil
+        }
+        if config.enableDebugLogging {
+            relevaLog("RelevaSDK: Client shut down (profile '\(profileId ?? "none")')")
+        }
+    }
 
     // MARK: - User Identification
 
@@ -158,7 +241,7 @@ public class RelevaClient {
         storage.saveDeviceId(deviceId)
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Device ID set to '\(deviceId)' (changed: \(deviceIdChanged))")
+            relevaLog("RelevaSDK: Device ID set to '\(deviceId)' (changed: \(deviceIdChanged))")
         }
     }
 
@@ -180,7 +263,7 @@ public class RelevaClient {
             storage.clearMergeProfileIds()
 
             if config.enableDebugLogging {
-                print("RelevaSDK: Profile ID changed to '\(profileId)' (skip merge = true)")
+                relevaLog("RelevaSDK: Profile ID changed to '\(profileId)' (skip merge = true)")
             }
         } else if let prevId = previousId, prevId != profileId {
             // Normal behavior: merge previous profile with new one
@@ -189,20 +272,31 @@ public class RelevaClient {
                 storage.addMergeProfileId(prevId)
 
                 if config.enableDebugLogging {
-                    print("RelevaSDK: Profile ID changed from '\(prevId)' to '\(profileId)' (merge enabled)")
-                    print("RelevaSDK: Merge profile IDs stored: \(mergeProfileIds)")
+                    relevaLog("RelevaSDK: Profile ID changed from '\(prevId)' to '\(profileId)' (merge enabled)")
+                    relevaLog("RelevaSDK: Merge profile IDs stored: \(mergeProfileIds)")
                 }
             } else if config.enableDebugLogging {
-                print("RelevaSDK: Profile ID changed to '\(profileId)' (previous profile already in merge list)")
+                relevaLog("RelevaSDK: Profile ID changed to '\(profileId)' (previous profile already in merge list)")
             }
         } else if config.enableDebugLogging {
-            print("RelevaSDK: Profile ID set to '\(profileId)' (first time, no merge needed)")
+            relevaLog("RelevaSDK: Profile ID set to '\(profileId)' (first time, no merge needed)")
         }
 
         self.profileId = profileId
         self.profileChanged = (previousId != nil && previousId != profileId)
 
         storage.saveProfileId(profileId)
+
+        // Keep the inbox on the same user; it clears its cache and refetches on a real change.
+        if InboxService.shared.isInitialized {
+            InboxService.shared.updateProfileId(profileId)
+        }
+
+        // Re-bind the push token to the new profile. `refreshPushToken` is a no-op without a
+        // provider, and its throttle lets a profile change through (see completePushTokenRefresh).
+        if self.profileChanged && pushTokenProvider != nil {
+            refreshPushToken()
+        }
     }
 
     /// Get current profile ID
@@ -223,7 +317,7 @@ public class RelevaClient {
     public func setAppVersion(_ version: String) {
         self.appVersion = version
         if config.enableDebugLogging {
-            print("RelevaSDK: App version set to '\(version)'")
+            relevaLog("RelevaSDK: App version set to '\(version)'")
         }
     }
 
@@ -255,9 +349,17 @@ public class RelevaClient {
             bannerManager?.onCartChanged()
             storyManager?.onCartChanged()
         }
+        // The same change, expressed as the event actions the backend will derive from it,
+        // feeds the NPS trigger and cancel list (see `cartEventActions`). Skipped on the
+        // first restore, which the sync below skips as well.
+        if !isFirstInitialization && cartChanged {
+            for action in Self.cartEventActions(from: previousCart, to: cart) {
+                npsManager?.trackEvent(action)
+            }
+        }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Cart updated with \(cart.products.count) products (changed: \(cartChanged))")
+            relevaLog("RelevaSDK: Cart updated with \(cart.products.count) products (changed: \(cartChanged))")
         }
 
         // Automatically sync cart changes to backend (skip on first initialization).
@@ -280,11 +382,11 @@ public class RelevaClient {
                 do {
                     _ = try await self.send(prepared)
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Cart changes synced to backend")
+                        relevaLog("RelevaSDK: Cart changes synced to backend")
                     }
                 } catch {
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Failed to sync cart changes - \(error)")
+                        relevaLog("RelevaSDK: Failed to sync cart changes - \(error)")
                     }
                 }
             }
@@ -304,7 +406,7 @@ public class RelevaClient {
         storage.clearCart()
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Cart storage cleared")
+            relevaLog("RelevaSDK: Cart storage cleared")
         }
     }
 
@@ -331,9 +433,14 @@ public class RelevaClient {
             bannerManager?.onWishlistChanged()
             storyManager?.onWishlistChanged()
         }
+        if !isFirstInitialization && wishlistChanged {
+            for action in Self.wishlistEventActions(from: previousWishlist ?? [], to: products) {
+                npsManager?.trackEvent(action)
+            }
+        }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Wishlist updated with \(products.count) products (changed: \(wishlistChanged))")
+            relevaLog("RelevaSDK: Wishlist updated with \(products.count) products (changed: \(wishlistChanged))")
         }
 
         // Automatically sync wishlist changes to backend (skip on first initialization).
@@ -348,11 +455,11 @@ public class RelevaClient {
                 do {
                     _ = try await self.send(prepared)
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Wishlist changes synced to backend")
+                        relevaLog("RelevaSDK: Wishlist changes synced to backend")
                     }
                 } catch {
                     if self.config.enableDebugLogging {
-                        print("RelevaSDK: Failed to sync wishlist changes - \(error)")
+                        relevaLog("RelevaSDK: Failed to sync wishlist changes - \(error)")
                     }
                 }
             }
@@ -372,7 +479,7 @@ public class RelevaClient {
         storage.clearWishlist()
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Wishlist storage cleared")
+            relevaLog("RelevaSDK: Wishlist storage cleared")
         }
     }
 
@@ -396,6 +503,10 @@ public class RelevaClient {
     /// Cart and wishlist auto-syncs use `incrementViews: false` to avoid inflating
     /// the page-view count with non-navigation push calls.
     private func push(_ request: any PushRequestConvertible, incrementViews: Bool) async throws -> RelevaResponse {
+        // Each request type carries its own rules (an empty search query, an unpaid or empty
+        // checkout cart, a negative cart price). Validation runs before any payload is built, so a
+        // bad request throws with no network traffic.
+        try request.validate()
         guard let prepared = preparePush(request, incrementViews: incrementViews) else {
             return RelevaResponse.empty()
         }
@@ -418,13 +529,37 @@ public class RelevaClient {
 
         // Ensure lifecycle-based session tracking is initialized
         SessionService.shared.initialize(storage: storage, npsManager: npsManager)
+        // `initialize` no-ops past the first ever call, so a replacement client's own manager
+        // still needs pointing at explicitly — otherwise it stays on whatever `shutdown()` last
+        // rebound it to (`nil`, or a previous client's manager).
+        SessionService.shared.rebind(npsManager: npsManager)
 
         let pushRequest = request.pushRequest
+        let payload = pushRequest.toDict()
+
+        // A push naming a *different* page is a new screen, so the previous screen's offset must
+        // not be replayed onto this screen's banners. The test is the token, not its presence:
+        // `forCustomEvent`/`forSearch`/`forProductView`/`forCheckoutSuccess` set `page.token` too
+        // and are issued from the screen the user is already on. Resetting at issue rather than on
+        // the response path keeps a `reportScrollPercentage` that lands while the request is in
+        // flight — the case the replay in `send` exists for. A push with no token leaves the value
+        // alone, so a screen that never names one still replays the previous screen's offset;
+        // closing that needs per-screen observer lifecycle, which this change does not add.
+        if let pageToken = Self.pageToken(in: payload), pageToken != lastScrollPageToken {
+            lastScrollPageToken = pageToken
+            lastScrollPercentage = 0
+        }
 
         return PreparedPush(
-            payload: pushRequest.toDict(),
+            payload: payload,
             context: buildContext(for: pushRequest, incrementViews: incrementViews)
         )
+    }
+
+    /// The `page.token` a built payload carries, if any. Two decisions read it — the scroll
+    /// scoping in `preparePush` and `clearsWhenAbsent` in `send` — and they must not drift.
+    private static func pageToken(in payload: [String: Any]) -> String? {
+        (payload["page"] as? [String: Any])?["token"] as? String
     }
 
     /// The asynchronous half of `push`: the transfer, plus the main-actor bookkeeping that
@@ -438,16 +573,49 @@ public class RelevaClient {
         // Reset change flags after successful request
         resetChangeFlags()
 
+        if config.enableDebugLogging {
+            let banners = response.banners.map { banner -> String in
+                let threshold = banner.scrollPercentage.map { " \($0)%" } ?? ""
+                let delay = banner.delaySeconds.map { $0 > 0 ? " \($0)s" : "" } ?? ""
+                return "\(banner.token.prefix(8)) \(banner.displayType ?? "?")/\(banner.trigger ?? "?")\(threshold)\(delay)"
+            }
+            // The NPS part names the survey and its trigger, so the log tells a survey waiting for
+            // a custom event from one that was not returned.
+            let nps: String
+            if let survey = response.nps {
+                let triggers = survey.triggers.isEmpty
+                    ? "server-side trigger"
+                    : survey.triggers.map { "\($0.type)\($0.eventName.map { " \($0)" } ?? "")" }.joined(separator: "/")
+                let cancels = survey.cancelOnEvents.isEmpty ? "" : ", cancel on \(survey.cancelOnEvents.joined(separator: ","))"
+                nps = "yes (\(survey.token.prefix(8)) \(triggers), delay \(survey.triggerDelaySeconds)s\(cancels))"
+            } else {
+                nps = "no"
+            }
+            relevaLog("RelevaSDK: Response: \(response.banners.count) banner(s) [\(banners.joined(separator: ", "))], \(response.stories.count) story(ies), nps \(nps)")
+        }
+
+        // Whether this push named a page is what tells `NpsManagerService` whether `nps: null`
+        // means "no survey for this screen" (clear) or "this request carries no page context" (a
+        // cart/wishlist sync, a bare custom event — hold whatever was already armed).
+        let hasPageContext = Self.pageToken(in: prepared.payload) != nil
         // Initialize banners from response
         if !response.banners.isEmpty {
             bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
+            // `initialize` re-arms every trigger from scratch; without replaying the last known
+            // offset, a `scrollPercentage` banner for a screen the user already scrolled past
+            // stays pending until the next offset change, which may never come.
+            if lastScrollPercentage > 0 {
+                bannerManager?.onScroll(percentage: lastScrollPercentage)
+            }
         }
         // Initialize stories from response
         if !response.stories.isEmpty {
             storyManager?.initialize(newStories: response.stories, scrollPercentageProvider: nil)
+            if lastScrollPercentage > 0 {
+                storyManager?.onScroll(percentage: lastScrollPercentage)
+            }
         }
-        // Initialize NPS from response
-        npsManager?.initialize(response.nps)
+        npsManager?.initialize(response.nps, clearsWhenAbsent: hasPageContext)
 
         return response
     }
@@ -543,7 +711,10 @@ public class RelevaClient {
         _ event: CustomEvent,
         screenToken: String? = nil
     ) async throws -> RelevaResponse {
-        try await push(PushRequest.forCustomEvent(event, screenToken: screenToken))
+        // A tracked custom event is also an NPS event: the admin's Custom Event trigger and cancel
+        // list pick from the event actions the app tracks.
+        npsManager?.trackEvent(event.action)
+        return try await push(PushRequest.forCustomEvent(event, screenToken: screenToken))
     }
 
     // MARK: - Banner Tracking
@@ -569,11 +740,11 @@ public class RelevaClient {
             do {
                 try await self.networkService.sendBannerImpression(payload)
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Banner impression tracked for \(banner.token)")
+                    relevaLog("RelevaSDK: Banner impression tracked for \(banner.token)")
                 }
             } catch {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Failed to track banner impression: \(error)")
+                    relevaLog("RelevaSDK: Failed to track banner impression: \(error)")
                 }
             }
         }
@@ -600,11 +771,11 @@ public class RelevaClient {
             do {
                 try await self.networkService.sendBannerAction(payload)
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Banner action '\(action)' tracked for \(banner.token)")
+                    relevaLog("RelevaSDK: Banner action '\(action)' tracked for \(banner.token)")
                 }
             } catch {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Failed to track banner action: \(error)")
+                    relevaLog("RelevaSDK: Failed to track banner action: \(error)")
                 }
             }
         }
@@ -620,12 +791,12 @@ public class RelevaClient {
     ///   - token: FCM token
     ///   - deviceType: Device type (defaults to current)
     public func registerPushToken(_ token: String, deviceType: DeviceType = .current) async throws {
-        guard config.enablePushNotifications else { return }
+        guard config.enablePushNotifications, !isShutDown else { return }
 
         // Ensure deviceId is set before registering
         guard let deviceId = self.deviceId else {
             if config.enableDebugLogging {
-                print("RelevaSDK: ERROR - Cannot register push token without deviceId. Call setDeviceId() first.")
+                relevaLog("RelevaSDK: ERROR - Cannot register push token without deviceId. Call setDeviceId() first.")
             }
             throw RelevaError.missingRequiredField("deviceId must be set before registering push token")
         }
@@ -635,7 +806,7 @@ public class RelevaClient {
         lastPushTokenDeviceType = deviceType
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Registering push token for \(deviceType.rawValue)...")
+            relevaLog("RelevaSDK: Registering push token for \(deviceType.rawValue)...")
         }
 
         // Register with backend
@@ -648,15 +819,16 @@ public class RelevaClient {
             )
         } catch {
             if config.enableDebugLogging {
-                print("RelevaSDK: ✗ Failed to register push token: \(error.localizedDescription)")
+                relevaLog("RelevaSDK: ✗ Failed to register push token: \(error.localizedDescription)")
             }
             throw error
         }
 
         storage.savePushTokenUploadedAt(Date())
+        storage.savePushTokenProfileId(profileId)
 
         if config.enableDebugLogging {
-            print("RelevaSDK: ✓ Successfully registered push token for \(deviceType.rawValue)")
+            relevaLog("RelevaSDK: ✓ Successfully registered push token for \(deviceType.rawValue)")
         }
     }
 
@@ -670,17 +842,17 @@ public class RelevaClient {
     /// 24 hours ago. Safe to call anytime; no-ops if the provider isn't set or the
     /// provider returns nil. Called automatically on app launch and on foreground.
     public func refreshPushToken() {
-        guard config.enablePushNotifications else { return }
+        guard config.enablePushNotifications, !isShutDown else { return }
         guard let provider = pushTokenProvider else {
             if config.enableDebugLogging {
-                print("RelevaSDK: refreshPushToken skipped - pushTokenProvider not set")
+                relevaLog("RelevaSDK: refreshPushToken skipped - pushTokenProvider not set")
             }
             return
         }
 
         guard !isRefreshingPushToken else {
             if config.enableDebugLogging {
-                print("RelevaSDK: refreshPushToken skipped - refresh already in flight")
+                relevaLog("RelevaSDK: refreshPushToken skipped - refresh already in flight")
             }
             return
         }
@@ -701,9 +873,15 @@ public class RelevaClient {
     private func completePushTokenRefresh(_ token: String?) async {
         defer { isRefreshingPushToken = false }
 
+        // The provider call that led here is asynchronous, so `shutdown()` can land while it is
+        // in flight; re-checking here (not just in `refreshPushToken`) is what keeps a
+        // shut-down instance from re-binding the token to its old profile once the provider
+        // finally answers.
+        guard !isShutDown else { return }
+
         guard let token = token, !token.isEmpty else {
             if config.enableDebugLogging {
-                print("RelevaSDK: refreshPushToken - provider returned empty token")
+                relevaLog("RelevaSDK: refreshPushToken - provider returned empty token")
             }
             return
         }
@@ -717,18 +895,52 @@ public class RelevaClient {
         let tokenChanged = (stored?.token != token)
         let lastUpload = storage.getPushTokenUploadedAt()
         let isStale = lastUpload.map { Date().timeIntervalSince($0) > RelevaClient.pushTokenRefreshInterval } ?? true
+        // The backend binds the token to (deviceId, profileId); a profile change since the last
+        // upload needs a new upload even when the token is unchanged and recent.
+        let profileChangedSinceUpload = (storage.getPushTokenProfileId() != profileId)
 
-        guard tokenChanged || isStale else {
+        guard tokenChanged || isStale || profileChangedSinceUpload else {
             if config.enableDebugLogging {
-                print("RelevaSDK: refreshPushToken - token unchanged and uploaded recently, skipping")
+                relevaLog("RelevaSDK: refreshPushToken - token unchanged, same profile and uploaded recently, skipping")
             }
             return
+        }
+        if profileChangedSinceUpload && !tokenChanged && !isStale && config.enableDebugLogging {
+            relevaLog("RelevaSDK: refreshPushToken - profile changed since the last upload, re-registering")
         }
 
         // Failures are already logged by `registerPushToken`; a background refresh has
         // nobody to report to, so it is swallowed here exactly as it was in 4.x.
         try? await registerPushToken(token, deviceType: deviceType)
     }
+
+    // MARK: - Scroll Triggers
+
+    /// Report how far the current screen is scrolled, 0–100. Banners and stories whose trigger
+    /// is `scrollPercentage` show once the reported value reaches their threshold. Call it from
+    /// the screen's scroll view whenever the offset changes (see the example app's HomeView).
+    ///
+    /// Requires `enablePushNotifications` — `bannerManager`/`storyManager` are only created by
+    /// `enablePushEngagementTracking()`, which returns early without it — so on a client built
+    /// without push this call is a silent no-op.
+    public func reportScrollPercentage(_ percentage: Int) {
+        lastScrollPercentage = max(0, min(100, percentage))
+        bannerManager?.onScroll(percentage: lastScrollPercentage)
+        storyManager?.onScroll(percentage: lastScrollPercentage)
+    }
+
+    /// The last value `reportScrollPercentage` recorded, replayed after `send` re-initializes
+    /// the managers so a `scrollPercentage` banner or story returned for a screen the user has
+    /// already scrolled past its threshold on fires immediately rather than waiting for the next
+    /// scroll offset change, which may never come (e.g. the user is already at the bottom).
+    ///
+    /// Scoped to a screen by `preparePush`, which clears it when a push names a page token other
+    /// than `lastScrollPageToken`.
+    private var lastScrollPercentage = 0
+
+    /// The `page.token` of the most recent push that carried one; `preparePush` compares against
+    /// it so a push issued from the current screen keeps that screen's reported offset.
+    private var lastScrollPageToken: String?
 
     /// Subscribe to `didBecomeActive` so that every app launch / foreground triggers
     /// `refreshPushToken()`. The first emission happens once the app finishes launching,
@@ -780,8 +992,17 @@ public class RelevaClient {
         }
 
         if config.enableDebugLogging {
-            print("RelevaSDK: Push engagement tracking enabled")
+            relevaLog("RelevaSDK: Push engagement tracking enabled")
         }
+    }
+
+    /// The navigation request from the most recent notification tap that the app has not handled
+    /// yet, cleared on return. The SDK posts `RelevaNavigateToScreen` / `RelevaNavigateToURL` /
+    /// `RelevaNavigateToInbox` at tap time; on a cold launch that post can precede the app's
+    /// observers, so call this once navigation is set up and handle the result the same way.
+    @discardableResult
+    public func consumePendingNavigation() -> NotificationService.PendingNavigation? {
+        notificationService?.consumePendingNavigation()
     }
 
     /// Track engagement from push notification
@@ -888,11 +1109,11 @@ public class RelevaClient {
             do {
                 try await self.networkService.sendPushEvent(payload)
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Story action '\(action)' tracked for \(story.token)")
+                    relevaLog("RelevaSDK: Story action '\(action)' tracked for \(story.token)")
                 }
             } catch {
                 if self.config.enableDebugLogging {
-                    print("RelevaSDK: Failed to track story action: \(error)")
+                    relevaLog("RelevaSDK: Failed to track story action: \(error)")
                 }
             }
         }

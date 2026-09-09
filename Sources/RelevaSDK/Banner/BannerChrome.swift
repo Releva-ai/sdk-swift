@@ -16,15 +16,26 @@ import SwiftUI
 enum BannerChrome {
     // MARK: - Popup Banner
 
+    /// A centred card sized from the design's body values as the web SDK draws it: `popupWidth`
+    /// (default 600 px, capped to the screen width minus 16 pt each side), `borderRadius`,
+    /// `popupBackgroundColor`, `popupOverlay_backgroundColor`. Height follows the content and
+    /// scrolls inside the card when taller than the safe area; a `popupHeight` in `vh` units forces
+    /// the full-height card. The close button sits inside the top-right corner with a 44 pt hit
+    /// target.
     @ViewBuilder
     static func popup(
         _ banner: BannerResponse,
         viewModel: BannerDisplayViewModel,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
+        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
         let overlayColor = getOverlayColor(banner)
         let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
+        let designWidth = DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"]) ?? 600
+        let cardWidth = min(designWidth, screenWidth - 32)
+        let cornerRadius = DesignRenderer.parseDimensionRaw(bodyValues["borderRadius"]) ?? 10
+        let cardBackground = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"]) ?? .white
+        let wantsFullHeight = (bodyValues["popupHeight"]?.stringValue ?? "").hasSuffix("vh")
 
         ZStack {
             // Overlay
@@ -34,113 +45,156 @@ enum BannerChrome {
                     viewModel.dismissPopup(banner)
                 }
 
-            // Full-screen popup
             GeometryReader { geometry in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        if let design = banner.design {
-                            DesignRenderer.render(
-                                design: design,
-                                maxWidth: screenWidth
-                            ) { url in
-                                viewModel.dismissPopup(banner, track: false)
-                                viewModel.trackClick(banner)
-                                onLinkTap(url)
-                            }
-                        }
-                    }
-                    .frame(minHeight: geometry.size.height)
-                }
-            }
-            .frame(width: screenWidth, height: screenHeight)
-            .edgesIgnoringSafeArea(.all)
+                let maxHeight = max(geometry.size.height - 32, 120)
 
-            // Close button overlaid at top-right
-            VStack {
-                HStack {
-                    Spacer()
+                ZStack(alignment: .topTrailing) {
+                    popupContent(
+                        banner,
+                        viewModel: viewModel,
+                        width: cardWidth,
+                        maxHeight: maxHeight,
+                        fullHeight: wantsFullHeight,
+                        dismissForLink: { viewModel.dismissPopup(banner, track: false) },
+                        onLinkTap: onLinkTap
+                    )
+
                     closeButton(for: banner, size: 32) {
                         viewModel.dismissPopup(banner)
                     }
                     .padding(8)
                 }
-                Spacer()
+                .frame(width: cardWidth)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .shadow(color: Color.black.opacity(0.25), radius: 24, y: 8)
+                // Centre the card inside the safe area.
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
         }
     }
 
+    /// The rendered design inside a popup card: sized to its content when it fits, otherwise
+    /// a scrolling area of `maxHeight`. `fullHeight` forces the scrolling area.
+    @ViewBuilder
+    // swiftlint:disable:next function_parameter_count
+    private static func popupContent(
+        _ banner: BannerResponse,
+        viewModel: BannerDisplayViewModel,
+        width: CGFloat,
+        maxHeight: CGFloat,
+        fullHeight: Bool,
+        bottomInset: CGFloat = 0,
+        topBleedColor: Color? = nil,
+        dismissForLink: @escaping () -> Void,
+        onLinkTap: @escaping (String) -> Void
+    ) -> some View {
+        let rendered = Group {
+            if let design = banner.design {
+                DesignRenderer.render(design: design, maxWidth: width) { url in
+                    dismissForLink()
+                    viewModel.trackClick(banner)
+                    onLinkTap(url)
+                }
+            }
+        }
+        .frame(width: width)
+
+        CappedHeightContent(maxHeight: maxHeight, forceScroll: fullHeight, bottomInset: bottomInset, topBleedColor: topBleedColor) { rendered }
+    }
+
     // MARK: - Flyout Banner
 
+    /// The mobile flyout: a drawer flush with the left or right screen edge, from the top of the
+    /// safe area to the screen bottom, no corner radius, width hugging the design's content (an
+    /// image-only design gets its image width plus padding) and capped to 72 % of the screen,
+    /// scrolling when the content is taller. A deliberate deviation from the web flyout (`bottom:
+    /// 0; left/right: 20px; width: auto`), which reads as a popup on a phone. The close button sits
+    /// inside the panel's top-right corner; there is no dimmed overlay and the page around the
+    /// panel stays usable.
     @ViewBuilder
     static func flyout(
         _ banner: BannerResponse,
         viewModel: BannerDisplayViewModel,
+        bottomInset: CGFloat = 0,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
         let bodyValues = DesignRenderer.getDesignBodyValues(banner)
         let bgImageMap = bodyValues["backgroundImage"]
         let hasBodyBgImage = !(bgImageMap?["url"]?.stringValue ?? "").isEmpty
-        let overlayColor = getOverlayColor(banner)
         let isLeft = banner.displayPosition == "left"
-        let flyoutWidth = UIScreen.main.bounds.width * 0.8
+        let designWidth = banner.design.flatMap { DesignRenderer.intrinsicImageWidth(in: $0) }
+            ?? DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"])
+            ?? DesignRenderer.parseDimensionRaw(bodyValues["contentWidth"])
+            ?? 360
+        // Colours for the parts of the drawer the content does not cover: the first row's above
+        // it, the last row's below it.
+        let rows = banner.design?["body"]?["rows"]?.arrayValue?.compactMap { $0.objectValue } ?? []
+        let fallback = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
+            ?? DesignRenderer.parseColor(bodyValues["backgroundColor"])
+            ?? Color.white
+        let topColor = rowColor(rows.first) ?? fallback
+        let bottomColor = rowColor(rows.last) ?? fallback
 
-        ZStack {
-            // Overlay
-            overlayColor
-                .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
+        // `geometry` spans from the top of the safe area to the bottom of the screen. The drawer
+        // fills it: content at the top, scrolling when taller, the design's colours filling the
+        // rest.
+        GeometryReader { geometry in
+            let width = max(160, min(designWidth, geometry.size.width * 0.72))
+            let maxHeight = max(160, geometry.size.height - bottomInset)
+
+            ZStack(alignment: .topTrailing) {
+                popupContent(
+                    banner,
+                    viewModel: viewModel,
+                    width: width,
+                    maxHeight: maxHeight,
+                    fullHeight: false,
+                    bottomInset: bottomInset,
+                    topBleedColor: topColor,
+                    dismissForLink: { viewModel.dismissFlyout(banner, track: false) },
+                    onLinkTap: onLinkTap
+                )
+
+                closeButton(for: banner, size: 32) {
                     viewModel.dismissFlyout(banner)
                 }
-
-            HStack(spacing: 0) {
-                if !isLeft { Spacer() }
-
-                VStack(spacing: 0) {
-                    // Close button on outer edge
-                    HStack {
-                        if isLeft { Spacer() }
-                        closeButton(for: banner, size: 32) {
-                            viewModel.dismissFlyout(banner)
-                        }
-                        .padding(8)
-                        if !isLeft { Spacer() }
-                    }
-
-                    // Scrollable content
-                    ScrollView {
-                        if let design = banner.design {
-                            DesignRenderer.render(
-                                design: design,
-                                maxWidth: flyoutWidth,
-                                transparentBody: hasBodyBgImage
-                            ) { url in
-                                viewModel.dismissFlyout(banner, track: false)
-                                viewModel.trackClick(banner)
-                                onLinkTap(url)
+                .padding(8)
+            }
+            .frame(width: width, height: geometry.size.height, alignment: .top)
+            .background(
+                Group {
+                    if hasBodyBgImage, let bgInfo = DesignRenderer.parseBackgroundImage(bgImageMap, forceCover: true) {
+                        CachedRemoteImage(url: bgInfo.url) { phase in
+                            if case .success(let image) = phase {
+                                image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
                             }
                         }
+                    } else {
+                        bottomColor
                     }
                 }
-                .frame(width: flyoutWidth)
-                .background(
-                    Group {
-                        if hasBodyBgImage, let bgInfo = DesignRenderer.parseBackgroundImage(bgImageMap, forceCover: true) {
-                            AsyncImage(url: bgInfo.url) { phase in
-                                if case .success(let image) = phase {
-                                    image.resizable().aspectRatio(contentMode: bgInfo.contentMode)
-                                }
-                            }
-                        } else {
-                            Color.white
-                        }
-                    }
-                )
-                .shadow(radius: 10)
-
-                if isLeft { Spacer() }
-            }
-            .edgesIgnoringSafeArea(.all)
+            )
+            .clipped()
+            .shadow(color: Color.black.opacity(0.25), radius: 16, x: isLeft ? 4 : -4, y: 0)
+            .reportBannerFrame()
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height,
+                alignment: isLeft ? .bottomLeading : .bottomTrailing
+            )
         }
+    }
+
+    /// A row's visible colour: its own background, its columns' background, or the first
+    /// column's; nil when the row has none.
+    private static func rowColor(_ row: [String: JSONValue]?) -> Color? {
+        guard let row = row else { return nil }
+        let values = row["values"]?.objectValue ?? [:]
+        let firstColumn = row["columns"]?.arrayValue?.first?["values"]?.objectValue ?? [:]
+        return DesignRenderer.parseColor(values["backgroundColor"])
+            ?? DesignRenderer.parseColor(values["columnsBackgroundColor"])
+            ?? DesignRenderer.parseColor(firstColumn["backgroundColor"])
     }
 
     // MARK: - Bar Banner
@@ -148,39 +202,73 @@ enum BannerChrome {
     /// The bar itself, without the positioning that puts it at the top or bottom of the
     /// screen: the SwiftUI modifier pins it with a `GeometryReader` and `Spacer`, while
     /// `BannerPresenter` pins it with layout constraints on a child view controller.
+    ///
+    /// The bar as the web SDK draws it: a full-width strip at the screen edge, no dimmed overlay,
+    /// the design edge to edge, the body colour as the strip's background, the close button inside
+    /// the top-right corner. A tap on the strip outside the design closes the bar; the page around
+    /// it stays usable.
     /// - Parameter safeAreaInset: extra padding on the screen-edge side. The modifier reads
     ///   this off its `GeometryReader` because it draws past the safe area; a presenter that
-    ///   constrains to the safe area passes `0`.
+    ///   constrains to the safe area passes `0`. For a top bar the key window's own inset is the
+    ///   floor, because a `GeometryReader` that ignores the safe area can report `0`.
     @ViewBuilder
     static func bar(
         _ banner: BannerResponse,
         viewModel: BannerDisplayViewModel,
         isBottom: Bool,
         safeAreaInset: CGFloat,
+        width: CGFloat? = nil,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
+        // The strip behind the design: the first row's colour, else the first column's, else the
+        // system background. Unlayer's default body colour (#F7F8F9) is not used; it reads as a
+        // white strip over a dark app.
+        let firstRow = banner.design?["body"]?["rows"]?.arrayValue?.first?.objectValue ?? [:]
+        let firstRowValues = firstRow["values"]?.objectValue ?? [:]
+        let firstColumnValues = firstRow["columns"]?.arrayValue?.first?["values"]?.objectValue ?? [:]
+        let barBackground = DesignRenderer.parseColor(firstRowValues["backgroundColor"])
+            ?? DesignRenderer.parseColor(firstRowValues["columnsBackgroundColor"])
+            ?? DesignRenderer.parseColor(firstColumnValues["backgroundColor"])
+            ?? Color(UIColor.systemBackground)
+        let edgeInset = isBottom ? safeAreaInset : max(safeAreaInset, keyWindowSafeAreaInsets.top)
+
         ZStack(alignment: .topTrailing) {
             if let design = banner.design {
+                // `width` is the container's real width; `UIScreen` is a fallback that is wrong
+                // when the window is not the screen (iPad split view, the snapshot test's window).
                 DesignRenderer.render(
                     design: design,
-                    maxWidth: UIScreen.main.bounds.width - 32
+                    maxWidth: width ?? UIScreen.main.bounds.width
                 ) { url in
                     viewModel.trackClick(banner)
                     onLinkTap(url)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .padding(isBottom ? .bottom : .top, safeAreaInset)
+                .frame(maxWidth: .infinity)
+                .padding(isBottom ? .bottom : .top, edgeInset)
             }
 
-            closeButton(for: banner, size: 24) {
+            closeButton(for: banner, size: 32) {
                 viewModel.dismissBar(banner)
             }
-            .offset(x: 4, y: -4)
-            .padding(isBottom ? .bottom : .top, safeAreaInset)
+            .padding(.top, (isBottom ? 0 : edgeInset) + 8)
+            .padding(.trailing, 8)
         }
-        .background(Color.white)
-        .shadow(radius: 5)
+        .frame(maxWidth: .infinity)
+        .background(
+            barBackground
+                .contentShape(Rectangle())
+                .onTapGesture { viewModel.dismissBar(banner) }
+        )
+        .shadow(color: Color.black.opacity(0.2), radius: 6, y: isBottom ? -2 : 2)
+    }
+
+    /// The key window's safe-area insets, used as a floor for a top bar's status-bar padding.
+    private static var keyWindowSafeAreaInsets: UIEdgeInsets {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets ?? .zero
     }
 
     // MARK: - Close Button
@@ -202,17 +290,26 @@ enum BannerChrome {
         let borderColor = DesignRenderer.parseColor(banner.cssStyles["closeButtonBorder"])
             ?? Color(white: 0.8)
 
+        // The visible circle is `size` points; the tappable area is padded out to at least
+        // 44 points (Apple's minimum touch target) so a 24–36 pt glyph is still easy to hit.
+        let hitPadding = max(0, (44 - size) / 2)
+
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.system(size: size * 0.4, weight: .medium))
+                .font(.system(size: size * 0.4, weight: .semibold))
                 .foregroundColor(iconColor)
                 .frame(width: size, height: size)
                 .background(
                     Circle()
                         .fill(bgColor)
                         .overlay(Circle().stroke(borderColor, lineWidth: 1))
+                        .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
                 )
+                .padding(hitPadding)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Close")
     }
 
     // MARK: - Helpers
@@ -222,5 +319,58 @@ enum BannerChrome {
         if let color = DesignRenderer.parseColor(bodyValues["popupOverlay_backgroundColor"]) { return color }
         if let color = DesignRenderer.parseColor(banner.cssStyles["overlayColor"]) { return color }
         return Color.black.opacity(0.5)
+    }
+}
+
+// MARK: - Capped height
+
+private struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// Shows `content` at its own height, or inside a scroll view of `maxHeight` when taller (or when
+/// `forceScroll` is set). The content is measured once; `ViewThatFits` compares against the offered
+/// height, which in the overlay window is the whole safe area.
+struct CappedHeightContent<Content: View>: View {
+    let maxHeight: CGFloat
+    let forceScroll: Bool
+    /// Space to keep clear below the content (the home indicator when the container reaches
+    /// the screen bottom). Added as padding when the content is shown as is; when it scrolls,
+    /// the scroll view is given the extra height and its content is inset by the same amount,
+    /// so the last line stops above the indicator while the panel colour fills the strip.
+    var bottomInset: CGFloat = 0
+    /// Drawn above the content inside the scroll view so a bounce at the top shows this colour
+    /// instead of the container's background.
+    var topBleedColor: Color?
+    @ViewBuilder let content: () -> Content
+
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        let measured = content()
+            .background(
+                GeometryReader { geometry in
+                    Color.clear.preference(key: ContentHeightKey.self, value: geometry.size.height)
+                }
+            )
+
+        Group {
+            if forceScroll || contentHeight > maxHeight {
+                ScrollView {
+                    measured
+                        .padding(.bottom, bottomInset)
+                        .background(alignment: .top) {
+                            if let color = topBleedColor {
+                                color.frame(height: 2000).offset(y: -2000)
+                            }
+                        }
+                }
+                .frame(height: maxHeight + bottomInset)
+            } else {
+                measured.padding(.bottom, bottomInset)
+            }
+        }
+        .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
     }
 }

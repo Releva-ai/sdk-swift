@@ -48,7 +48,9 @@ public class InboxService: ObservableObject {
 
         if initialized {
             if profileChanged {
-                restoreCachedState()
+                // The cache is one set of UserDefaults keys, not per profile; restoring it here
+                // would hand the new profile the previous user's messages. Start empty and fetch.
+                resetForProfileChange()
             }
             return
         }
@@ -68,9 +70,24 @@ public class InboxService: ObservableObject {
         restoreCachedState()
     }
 
-    /// Update the profile ID (e.g. after login/logout)
+    /// Update the profile ID (e.g. after login/logout). A different profile clears the cached
+    /// inbox and fetches the new user's messages; the same profile is a no-op.
     public func updateProfileId(_ profileId: String?) {
+        let changed = self.profileId != profileId
         self.profileId = profileId
+        if initialized && changed {
+            resetForProfileChange()
+        }
+    }
+
+    /// Whether `initialize(...)` has run. Lets `RelevaClient.setProfileId` forward profile
+    /// changes without starting the service for apps that do not use the inbox.
+    public var isInitialized: Bool { initialized }
+
+    private func resetForProfileChange() {
+        state = InboxState()
+        storage?.clearInboxCache()
+        refresh()
     }
 
     // Every mutating method below runs its whole body in a `Task { @MainActor ... }`. That
@@ -298,6 +315,7 @@ public class InboxService: ObservableObject {
 
         storage.saveInboxUnreadCount(state.unreadCount)
         storage.saveInboxNextCursor(state.nextCursor)
+        storage.saveInboxCacheProfileId(profileId)
         if let lastFetch = state.lastFetchTime {
             storage.saveInboxLastFetch(lastFetch.timeIntervalSince1970)
         }
@@ -305,6 +323,16 @@ public class InboxService: ObservableObject {
 
     private func restoreCachedState() {
         guard let storage = storage else { return }
+
+        // The owner key distinguishes "written anonymously" (`""`) from "written for a
+        // profile" (the profile id) from "written before this key existed" (`nil`,
+        // pre-5.1) — only an exact match on the current identity (`""` for anonymous)
+        // is ours; a missing key or a mismatched owner (including anonymous cache vs.
+        // a now-identified profile) is foreign.
+        guard let owner = storage.getInboxCacheProfileId(), owner == (profileId ?? "") else {
+            storage.clearInboxCache()
+            return
+        }
 
         guard let messagesJson = storage.getInboxMessages(),
               let data = messagesJson.data(using: .utf8),

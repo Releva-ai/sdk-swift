@@ -26,11 +26,14 @@ public struct StoryDisplayModifier: ViewModifier {
                     client: client,
                     onLinkTap: onLinkTap
                 ) {
-                    viewModel.activeStory = nil
+                    viewModel.storyClosed()
                 }
+                // Fires once the cover has left the screen; the next queued story is presented
+                // from here, never while this one is still animating out.
+                .onDisappear { viewModel.coverDidDisappear() }
             }
             .onAppear {
-                viewModel.start(client: client)
+                viewModel.start(tracker: client)
             }
     }
 }
@@ -53,6 +56,17 @@ extension View {
     }
 }
 
+// MARK: - Tracking Seam
+
+/// The part of `RelevaClient` that story display uses; a test substitutes a spy so that no
+/// real network I/O happens (see `BannerTracker`).
+@MainActor
+protocol StoryTracker: AnyObject {
+    func storyImpression(_ story: StoryResponse)
+}
+
+extension RelevaClient: StoryTracker {}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -61,41 +75,67 @@ class StoryDisplayViewModel: ObservableObject {
 
     private var storyQueue: [StoryResponse] = []
     private var cancellable: AnyCancellable?
-    private var client: RelevaClient?
-    private var storyCancellable: AnyCancellable?
+    private var tracker: StoryTracker?
 
-    func start(client: RelevaClient) {
-        self.client = client
+    /// `true` from the moment a story is handed to the cover until the cover reports that it has
+    /// disappeared. `activeStory` is `nil` while the dismissal animates, and a story presented in
+    /// that window is counted but never shown.
+    private(set) var coverOnScreen = false
+
+    /// If the cover never reports its disappearance, the queue resumes after this long.
+    static let dismissalFallback: TimeInterval = 1.5
+    private var fallbackTask: Task<Void, Never>?
+
+    func start(tracker: StoryTracker) {
+        self.tracker = tracker
 
         cancellable = StoryDisplayController.shared.storyPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] story in
                 self?.enqueue(story)
             }
+    }
 
-        // Watch for activeStory becoming nil (story dismissed) to process queue
-        storyCancellable = $activeStory
-            .dropFirst()
-            .filter { $0 == nil }
-            .sink { [weak self] _ in
-                self?.processQueue()
-            }
+    /// The viewer asked to be taken off screen (close, or end behaviour "dismiss").
+    func storyClosed() {
+        activeStory = nil
+        fallbackTask?.cancel()
+        fallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.dismissalFallback * 1_000_000_000))
+            guard !Task.isCancelled, let self = self, self.activeStory == nil else { return }
+            self.coverDidDisappear()
+        }
+    }
+
+    /// The cover's content left the screen. A story presented before this point is dropped by
+    /// SwiftUI: counted, never seen.
+    func coverDidDisappear() {
+        // `onDisappear` can also fire while the story is still up (e.g. a re-parented view);
+        // only a closed story frees the cover.
+        guard activeStory == nil else { return }
+        fallbackTask?.cancel()
+        fallbackTask = nil
+        coverOnScreen = false
+        processQueue()
     }
 
     private func enqueue(_ story: StoryResponse) {
         guard !story.slides.isEmpty else { return }
+        // Several screen views in quick succession return the same story; keep one copy so a close
+        // does not fire a storyImpression with nothing new on screen.
+        guard activeStory?.story.token != story.token,
+              !storyQueue.contains(where: { $0.token == story.token }) else { return }
         storyQueue.append(story)
-        if activeStory == nil {
-            processQueue()
-        }
+        processQueue()
     }
 
     private func processQueue() {
-        guard activeStory == nil, !storyQueue.isEmpty else { return }
+        guard activeStory == nil, !coverOnScreen, !storyQueue.isEmpty else { return }
         let story = storyQueue.removeFirst()
 
+        coverOnScreen = true
         // Track impression
-        client?.storyImpression(story)
+        tracker?.storyImpression(story)
 
         activeStory = IdentifiableStory(story: story)
     }

@@ -99,18 +99,24 @@ public struct StoryViewerView: View {
                                 ) { url in
                                     trackSlideClick()
                                     onLinkTap(url)
+                                    leaveForLink()
                                 }
                             }
+                            // Each slide is its own view, so the next slide starts scrolled to the
+                            // top.
+                            .id(currentSlideIndex)
                         }
 
-                        // Navigation tap areas
+                        // The outer thirds step back/forward; the middle third is not hit-tested
+                        // so links and buttons inside the slide design reach `onLinkTap`.
                         HStack(spacing: 0) {
-                            // Left half - previous
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture { goToPreviousSlide() }
 
-                            // Right half - next
+                            Color.clear
+                                .allowsHitTesting(false)
+
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture { goToNextSlide() }
@@ -225,15 +231,30 @@ public struct StoryViewerView: View {
         onClose()
     }
 
+    /// A link was followed: take the viewer down so the destination is visible. As on the web, no
+    /// storyClose is sent; the storySlideClick already suppresses the story.
+    private func leaveForLink() {
+        timer?.invalidate()
+        onClose()
+    }
+
     private func handleSlideAction() {
         trackSlideClick()
-        if let url = currentSlide.actionUrl, !url.isEmpty {
+        // An action button renders whenever `actionType != "none"` and `actionLabel` is
+        // non-empty — it does not require a URL. `actionType: "dismiss"` with no `actionUrl`
+        // is the natural admin setup for a "Close" button, and it still has to take the story
+        // down; only a non-dismiss button with no URL genuinely has nothing to do.
+        guard let url = currentSlide.actionUrl, !url.isEmpty else {
             if currentSlide.actionType == "dismiss" {
-                onLinkTap(url)
                 close()
-            } else {
-                onLinkTap(url)
             }
+            return
+        }
+        onLinkTap(url)
+        if currentSlide.actionType == "dismiss" {
+            close()
+        } else {
+            leaveForLink()
         }
     }
 
