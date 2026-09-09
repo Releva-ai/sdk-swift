@@ -324,8 +324,12 @@ public class InboxService: ObservableObject {
     private func restoreCachedState() {
         guard let storage = storage else { return }
 
-        // A cache written for another profile (or before the owner key existed) is not ours.
-        if let owner = storage.getInboxCacheProfileId(), owner != profileId {
+        // The owner key distinguishes "written anonymously" (`""`) from "written for a
+        // profile" (the profile id) from "written before this key existed" (`nil`,
+        // pre-5.1) — only an exact match on the current identity (`""` for anonymous)
+        // is ours; a missing key or a mismatched owner (including anonymous cache vs.
+        // a now-identified profile) is foreign.
+        guard let owner = storage.getInboxCacheProfileId(), owner == (profileId ?? "") else {
             storage.clearInboxCache()
             return
         }

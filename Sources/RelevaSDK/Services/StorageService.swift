@@ -348,17 +348,16 @@ public class StorageService {
         userDefaults.set(timestamp, forKey: StorageKey.inboxLastFetch.rawValue)
     }
 
-    /// The profile the cached inbox belongs to (nil for caches written before this key existed).
+    /// The profile the cached inbox belongs to: `""` for a cache written anonymously, a
+    /// profile id for one written while identified, `nil` only for a cache written before
+    /// this key existed (pre-5.1) — the three are distinguished so an anonymous cache is
+    /// never mistaken for an identified one's on the anonymous→identified transition.
     public func getInboxCacheProfileId() -> String? {
         userDefaults.string(forKey: StorageKey.inboxCacheProfileId.rawValue)
     }
 
     public func saveInboxCacheProfileId(_ profileId: String?) {
-        if let profileId = profileId {
-            userDefaults.set(profileId, forKey: StorageKey.inboxCacheProfileId.rawValue)
-        } else {
-            userDefaults.removeObject(forKey: StorageKey.inboxCacheProfileId.rawValue)
-        }
+        userDefaults.set(profileId ?? "", forKey: StorageKey.inboxCacheProfileId.rawValue)
     }
 
     /// Drop the cached inbox (messages, unread count, cursor, fetch time, owner).
@@ -380,6 +379,7 @@ public class StorageService {
         userDefaults.removeObject(forKey: StorageKey.inboxUnreadCount.rawValue)
         userDefaults.removeObject(forKey: StorageKey.inboxNextCursor.rawValue)
         userDefaults.removeObject(forKey: StorageKey.inboxLastFetch.rawValue)
+        userDefaults.removeObject(forKey: StorageKey.inboxCacheProfileId.rawValue)
     }
 
     // MARK: - Device Analytics

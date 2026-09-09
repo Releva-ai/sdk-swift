@@ -41,6 +41,13 @@ final class BannerImageCache {
         let pending = urls.filter { images[$0] == nil }
         guard !pending.isEmpty else { return }
 
+        // `loader` is unstructured on purpose: it must keep running past the timeout so the
+        // image still lands in `images` once it arrives, even though `prefetch` itself has to
+        // return on time. A `withTaskGroup` awaiting `loader.value` cannot do that — cancelling
+        // the group's child that awaits a `Task<_, Never>` does not cancel `loader`, and the
+        // group still blocks on every child (including that one) before returning — so this
+        // races a plain continuation instead, resumed once by whichever of "loader finished" /
+        // "timeout elapsed" comes first.
         let loader = Task { @MainActor in
             await withTaskGroup(of: Void.self) { group in
                 for url in pending {
@@ -48,11 +55,21 @@ final class BannerImageCache {
                 }
             }
         }
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await loader.value }
-            group.addTask { try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000)) }
-            await group.next()
-            group.cancelAll()
+        var resumed = false
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let finish = { @MainActor in
+                guard !resumed else { return }
+                resumed = true
+                continuation.resume()
+            }
+            Task { @MainActor in
+                await loader.value
+                finish()
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                finish()
+            }
         }
     }
 

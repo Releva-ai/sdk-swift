@@ -240,13 +240,21 @@ public struct StoryViewerView: View {
 
     private func handleSlideAction() {
         trackSlideClick()
-        if let url = currentSlide.actionUrl, !url.isEmpty {
-            onLinkTap(url)
+        // An action button renders whenever `actionType != "none"` and `actionLabel` is
+        // non-empty — it does not require a URL. `actionType: "dismiss"` with no `actionUrl`
+        // is the natural admin setup for a "Close" button, and it still has to take the story
+        // down; only a non-dismiss button with no URL genuinely has nothing to do.
+        guard let url = currentSlide.actionUrl, !url.isEmpty else {
             if currentSlide.actionType == "dismiss" {
                 close()
-            } else {
-                leaveForLink()
             }
+            return
+        }
+        onLinkTap(url)
+        if currentSlide.actionType == "dismiss" {
+            close()
+        } else {
+            leaveForLink()
         }
     }
 

@@ -14,6 +14,10 @@ public class NotificationService: NSObject {
     /// Notification center
     private let notificationCenter = UNUserNotificationCenter.current()
 
+    /// Whatever delegate the host app (or another SDK) had installed before `initialize()`
+    /// overwrote it, so `shutdown()` can hand it back instead of leaving the slot `nil`.
+    private weak var previousDelegate: UNUserNotificationCenterDelegate?
+
     /// Callback for notification taps
     public var onNotificationTapped: ((UNNotificationResponse) -> Void)?
 
@@ -62,6 +66,7 @@ public class NotificationService: NSObject {
         if config.enableDebugLogging {
             relevaLog("RelevaSDK: Setting notification center delegate...")
         }
+        previousDelegate = notificationCenter.delegate
         notificationCenter.delegate = self
 
         // Verify delegate was set
@@ -88,6 +93,14 @@ public class NotificationService: NSObject {
         if config.enableDebugLogging {
             relevaLog("RelevaSDK: Notification service initialized")
         }
+    }
+
+    /// Hands the notification-centre delegate back to whatever it was before `initialize()`,
+    /// if this instance is still the one installed (a later `RelevaClient` may already have
+    /// replaced it). Called from `RelevaClient.shutdown()`.
+    func restorePreviousDelegate() {
+        guard notificationCenter.delegate === self else { return }
+        notificationCenter.delegate = previousDelegate
     }
 
     /// Request notification authorization
@@ -696,4 +709,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     }
 }
 
+// `userInfo: [String: Any]` isn't provably `Sendable`, but every read and write of a
+// `PendingNavigation` happens on the main thread (`postNavigation` runs there, and so does
+// every UIKit/push delivery path that constructs one), so `@unchecked` is safe in practice.
 extension NotificationService.PendingNavigation: @unchecked Sendable {}

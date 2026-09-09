@@ -198,8 +198,9 @@ public class RelevaClient {
     /// under its previous profile.
     ///
     /// Removes the lifecycle observer, stops engagement batching, disposes the banner, story and
-    /// NPS managers, hands the notification-centre delegate back if it is ours, and clears the
-    /// shared slot. The inbox is a process-wide singleton the replacement re-initialises.
+    /// NPS managers, resets the process-wide session tracker so the replacement gets its own,
+    /// hands the notification-centre delegate back if it is ours, and clears the shared slot.
+    /// The inbox is a process-wide singleton the replacement re-initialises.
     public func shutdown() {
         guard !isShutDown else { return }
         isShutDown = true
@@ -212,10 +213,13 @@ public class RelevaClient {
         bannerManager?.dispose()
         storyManager?.dispose()
         npsManager?.dispose()
-        if let service = notificationService,
-           UNUserNotificationCenter.current().delegate === service {
-            UNUserNotificationCenter.current().delegate = nil
-        }
+        // `SessionService` is a process-wide singleton that binds to whichever `npsManager` was
+        // live when `preparePush` first initialized it (`initialize` is `if initialized { return
+        // }`), so without this the replacement client's first push finds it already
+        // initialized and never rebinds — the old, now-disposed `npsManager` keeps getting
+        // `startNewSession()` for the rest of the process.
+        SessionService.shared.dispose()
+        notificationService?.restorePreviousDelegate()
         if RelevaClient.shared === self {
             RelevaClient.shared = nil
         }
@@ -568,13 +572,22 @@ public class RelevaClient {
         // Initialize banners from response
         if !response.banners.isEmpty {
             bannerManager?.initialize(newBanners: response.banners, scrollPercentageProvider: nil)
+            // `initialize` re-arms every trigger from scratch; without replaying the last known
+            // offset, a `scrollPercentage` banner for a screen the user already scrolled past
+            // stays pending until the next offset change, which may never come.
+            bannerManager?.onScroll(percentage: lastScrollPercentage)
         }
         // Initialize stories from response
         if !response.stories.isEmpty {
             storyManager?.initialize(newStories: response.stories, scrollPercentageProvider: nil)
+            storyManager?.onScroll(percentage: lastScrollPercentage)
         }
-        // Initialize NPS from response
-        npsManager?.initialize(response.nps)
+        // Initialize NPS from response. Whether this push named a page is what tells
+        // `NpsManagerService` whether `nps: null` means "no survey for this screen" (clear) or
+        // "this request carries no page context" (a cart/wishlist sync, a bare custom event —
+        // hold whatever was already armed).
+        let hasPageContext = (prepared.payload["page"] as? [String: Any])?["token"] != nil
+        npsManager?.initialize(response.nps, clearsWhenAbsent: hasPageContext)
 
         return response
     }
@@ -750,7 +763,7 @@ public class RelevaClient {
     ///   - token: FCM token
     ///   - deviceType: Device type (defaults to current)
     public func registerPushToken(_ token: String, deviceType: DeviceType = .current) async throws {
-        guard config.enablePushNotifications else { return }
+        guard config.enablePushNotifications, !isShutDown else { return }
 
         // Ensure deviceId is set before registering
         guard let deviceId = self.deviceId else {
@@ -832,6 +845,12 @@ public class RelevaClient {
     private func completePushTokenRefresh(_ token: String?) async {
         defer { isRefreshingPushToken = false }
 
+        // The provider call that led here is asynchronous, so `shutdown()` can land while it is
+        // in flight; re-checking here (not just in `refreshPushToken`) is what keeps a
+        // shut-down instance from re-binding the token to its old profile once the provider
+        // finally answers.
+        guard !isShutDown else { return }
+
         guard let token = token, !token.isEmpty else {
             if config.enableDebugLogging {
                 relevaLog("RelevaSDK: refreshPushToken - provider returned empty token")
@@ -872,11 +891,21 @@ public class RelevaClient {
     /// Report how far the current screen is scrolled, 0–100. Banners and stories whose trigger
     /// is `scrollPercentage` show once the reported value reaches their threshold. Call it from
     /// the screen's scroll view whenever the offset changes (see the example app's HomeView).
+    ///
+    /// Requires `enablePushNotifications` — `bannerManager`/`storyManager` are only created by
+    /// `enablePushEngagementTracking()`, which returns early without it — so on a client built
+    /// without push this call is a silent no-op.
     public func reportScrollPercentage(_ percentage: Int) {
-        let clamped = max(0, min(100, percentage))
-        bannerManager?.onScroll(percentage: clamped)
-        storyManager?.onScroll(percentage: clamped)
+        lastScrollPercentage = max(0, min(100, percentage))
+        bannerManager?.onScroll(percentage: lastScrollPercentage)
+        storyManager?.onScroll(percentage: lastScrollPercentage)
     }
+
+    /// The last value `reportScrollPercentage` recorded, replayed after `send` re-initializes
+    /// the managers so a `scrollPercentage` banner or story returned for a screen the user has
+    /// already scrolled past its threshold on fires immediately rather than waiting for the next
+    /// scroll offset change, which may never come (e.g. the user is already at the bottom).
+    private var lastScrollPercentage = 0
 
     /// Subscribe to `didBecomeActive` so that every app launch / foreground triggers
     /// `refreshPushToken()`. The first emission happens once the app finishes launching,

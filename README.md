@@ -586,7 +586,7 @@ If your app builds a new `RelevaClient` on login or logout instead of keeping on
 
 ```swift
 AppDelegate.relevaClient?.shutdown()
-AppDelegate.relevaClient = RelevaClient(config: config)
+AppDelegate.relevaClient = RelevaClient(realm: realm, accessToken: accessToken, config: config)
 ```
 
 `shutdown()` stops engagement tracking and turns `refreshPushToken()` into a no-op on that instance. Without it the replaced client stays alive and keeps re-registering the push token under the previous profile on every foreground. Keeping a single client and calling `setProfileId` on it does not need this.
@@ -995,18 +995,18 @@ Banners are configured with triggers in the Releva dashboard:
 - **wishlistChanged** — Shows when wishlist is modified
 - **leaveIntent** — Not supported on mobile (web-only feature)
 
-For `scrollPercentage` attach the `relevaScrollTracking()` modifier to the scroll view of the screen; it observes the underlying `UIScrollView` and reports the position to the client. A UIKit host, or a view that scrolls in some other way, calls `client.reportScrollPercentage(_:)` itself with a value from 0 to 100:
+For `scrollPercentage` attach the `relevaScrollTracking(_:)` modifier to the **content** of the scroll view, not the `ScrollView` itself — it walks upward looking for the enclosing `UIScrollView`, and from outside the `ScrollView` there is nothing to find. A UIKit host, or a view that scrolls in some other way, calls `client.reportScrollPercentage(_:)` itself with a value from 0 to 100:
 
 ```swift
 ScrollView {
     content
+        .relevaScrollTracking(client)    // SwiftUI: attach to the content, not the ScrollView
 }
-.relevaScrollTracking()          // SwiftUI
 
 client.reportScrollPercentage(percent)   // UIKit / manual
 ```
 
-Stories with a scroll trigger use the same report.
+Stories with a scroll trigger use the same report. Both `reportScrollPercentage(_:)` and `relevaScrollTracking(_:)` require `enablePushNotifications`: that is what creates the banner and story managers, so on a client built without push this is a silent no-op.
 
 ### Banner Types
 

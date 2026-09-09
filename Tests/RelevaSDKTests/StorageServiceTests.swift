@@ -292,6 +292,7 @@ final class StorageServiceTests: XCTestCase {
         storage.saveInboxUnreadCount(3)
         storage.saveInboxNextCursor("cursor-1")
         storage.saveInboxLastFetch(1_700_000_000)
+        storage.saveInboxCacheProfileId("user-A")
 
         storage.clearInboxData()
 
@@ -299,6 +300,21 @@ final class StorageServiceTests: XCTestCase {
         XCTAssertEqual(storage.getInboxUnreadCount(), 0)
         XCTAssertNil(storage.getInboxNextCursor())
         XCTAssertNil(storage.getInboxLastFetch())
+        XCTAssertNil(storage.getInboxCacheProfileId())
+    }
+
+    /// An anonymous cache must be distinguishable from both a profile's cache and a
+    /// never-written key, otherwise `InboxService.restoreCachedState` cannot tell
+    /// "written anonymously" from "written before this key existed" and hands the
+    /// anonymous cache to whoever logs in next.
+    func testInboxCacheProfileIdDistinguishesAnonymousFromNeverWritten() {
+        XCTAssertNil(storage.getInboxCacheProfileId(), "never written reads as nil")
+
+        storage.saveInboxCacheProfileId(nil)
+        XCTAssertEqual(storage.getInboxCacheProfileId(), "", "anonymous is stored as a sentinel, not removed")
+
+        storage.saveInboxCacheProfileId("user-A")
+        XCTAssertEqual(storage.getInboxCacheProfileId(), "user-A")
     }
 
     // MARK: - Device analytics

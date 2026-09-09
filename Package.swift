@@ -59,6 +59,14 @@ let package = Package(
             name: "RelevaSDKTests",
             dependencies: ["RelevaSDK"],
             path: "Tests/RelevaSDKTests"
+        ),
+        // The transcode branch itself needs a device (`UNNotificationServiceExtension` has no
+        // host to run in under `swift test`), but `fileExtension(for:)` and `typeHint(for:)` are
+        // pure and need nothing but the module.
+        .testTarget(
+            name: "RelevaNotificationExtensionTests",
+            dependencies: ["RelevaNotificationExtension"],
+            path: "Tests/RelevaNotificationExtensionTests"
         )
     ],
     swiftLanguageVersions: [.v5]

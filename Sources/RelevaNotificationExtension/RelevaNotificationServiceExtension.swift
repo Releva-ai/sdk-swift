@@ -1,5 +1,6 @@
 import UserNotifications
 import UIKit
+import ImageIO
 import FirebaseMessaging
 
 /// Notification Service Extension for rich push notifications
@@ -8,69 +9,54 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
     open var contentHandler: ((UNNotificationContent) -> Void)?
     open var bestAttemptContent: UNMutableNotificationContent?
 
+    /// Set once `reply(_:)` has called `contentHandler`, so a second reply — the classic race
+    /// between an in-flight image download and `serviceExtensionTimeWillExpire` — is dropped
+    /// instead of triggering "Ignoring additional replacement content replies".
+    private var hasReplied = false
+
+    /// Delivers `content` through `contentHandler` exactly once. `contentHandler` and
+    /// `bestAttemptContent` are `open`, so a subclass that replies through them directly
+    /// rather than through this method can still double-reply.
+    private func reply(_ content: UNNotificationContent) {
+        guard !hasReplied, let handler = contentHandler else { return }
+        hasReplied = true
+        contentHandler = nil
+        handler(content)
+    }
+
     open override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         self.contentHandler = contentHandler
         bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
 
         guard let bestAttemptContent = bestAttemptContent else {
-            contentHandler(request.content)
+            reply(request.content)
             return
         }
 
-        // Firebase attaches `fcm_options.image` and calls the handler it is given. Only a
-        // non-Releva push lets that reply reach the system; a Releva push is completed once,
-        // below.
-        let isRelevaPush = Self.isRelevaMessage(bestAttemptContent.userInfo)
-        if !isRelevaPush {
-            Messaging.serviceExtension().populateNotificationContent(
-                bestAttemptContent,
-                withContentHandler: contentHandler
-            )
+        // Firebase attaches `fcm_options.image` and calls the handler it is given — wrapped so
+        // that reply also only ever lands once.
+        guard Self.isRelevaMessage(bestAttemptContent.userInfo) else {
+            Messaging.serviceExtension().populateNotificationContent(bestAttemptContent) { [weak self] content in
+                self?.reply(content)
+            }
             return
         }
 
-        // Check if this is a Releva notification
-        // Firebase iOS puts custom data at root level, not in "data" wrapper
-        var relevaData: [String: Any]?
-        var isReleva = false
-
-        // Check root level first (iOS format)
-        if let clickAction = bestAttemptContent.userInfo["click_action"] as? String,
-           clickAction == "RELEVA_NOTIFICATION_CLICK" {
-            // Convert userInfo to String dictionary
-            var data: [String: Any] = [:]
-            for (key, value) in bestAttemptContent.userInfo {
-                if let stringKey = key as? String {
-                    data[stringKey] = value
-                }
-            }
-            relevaData = data
-            isReleva = true
-        }
-        // Also check "data" wrapper (cross-platform format)
-        else if let data = bestAttemptContent.userInfo["data"] as? [String: Any],
-                let clickAction = data["click_action"] as? String,
-                clickAction == "RELEVA_NOTIFICATION_CLICK" {
-            relevaData = data
-            isReleva = true
+        guard let data = Self.extractRelevaData(bestAttemptContent.userInfo) else {
+            reply(bestAttemptContent)
+            return
         }
 
-        if isReleva, let data = relevaData {
-            // Process Releva notification
-            processRelevaNotification(bestAttemptContent, data: data) { processedContent in
-                contentHandler(processedContent)
-            }
-        } else {
-            // Not a Releva notification, deliver as-is
-            contentHandler(bestAttemptContent)
+        processRelevaNotification(bestAttemptContent, data: data) { [weak self] processedContent in
+            self?.reply(processedContent)
         }
     }
 
     open override func serviceExtensionTimeWillExpire() {
         // Called just before the extension will be terminated by the system.
         // Use this as an opportunity to deliver your "best attempt" at modified content.
-        if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
-            contentHandler(bestAttemptContent)
+        if let bestAttemptContent = bestAttemptContent {
+            reply(bestAttemptContent)
         }
     }
 
@@ -145,7 +131,7 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
             var fileExtension = url.pathExtension
             if fileExtension.isEmpty {
                 if let mimeType = (response as? HTTPURLResponse)?.mimeType {
-                    fileExtension = self.fileExtension(for: mimeType)
+                    fileExtension = Self.fileExtension(for: mimeType)
                 } else {
                     fileExtension = "jpg"
                 }
@@ -153,18 +139,29 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
 
             // UNNotificationAttachment displays only JPEG, PNG and GIF; WebP and HEIC are
             // transcoded to JPEG.
+            fileExtension = fileExtension.lowercased()
             var tempUrl = URL(fileURLWithPath: NSTemporaryDirectory())
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension(fileExtension)
             let nativeFormats: Set<String> = ["jpg", "jpeg", "png", "gif"]
 
             do {
-                if nativeFormats.contains(fileExtension.lowercased()) {
+                if nativeFormats.contains(fileExtension) {
                     try FileManager.default.moveItem(at: localUrl, to: tempUrl)
                 } else {
-                    let data = try Data(contentsOf: localUrl)
-                    guard let image = UIImage(data: data),
-                          let jpeg = image.jpegData(compressionQuality: 0.9) else {
+                    // A notification service extension gets roughly 24 MB total. Decoding a
+                    // camera-resolution HEIC/WebP as a full `UIImage` can materialise a ~48 MB
+                    // bitmap on its own and get the extension jetsammed — losing the whole
+                    // enrichment, on exactly the formats this branch exists for. A bounded
+                    // ImageIO thumbnail never holds the full-size decode; the attachment is
+                    // only ever displayed at a few hundred points anyway.
+                    guard let source = CGImageSourceCreateWithURL(localUrl as CFURL, nil),
+                          let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                              kCGImageSourceCreateThumbnailFromImageAlways: true,
+                              kCGImageSourceThumbnailMaxPixelSize: 2048,
+                              kCGImageSourceCreateThumbnailWithTransform: true
+                          ] as CFDictionary),
+                          let jpeg = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.9) else {
                         relevaLog("RelevaSDK: Image format '\(fileExtension)' could not be decoded, delivering without attachment")
                         completion(content)
                         return
@@ -179,7 +176,7 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
                     identifier: "image",
                     url: tempUrl,
                     options: [
-                        UNNotificationAttachmentOptionsTypeHintKey: self.typeHint(for: fileExtension),
+                        UNNotificationAttachmentOptionsTypeHintKey: Self.typeHint(for: fileExtension),
                         UNNotificationAttachmentOptionsThumbnailHiddenKey: false
                     ]
                 )
@@ -187,6 +184,10 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
                 content.attachments = [attachment]
             } catch {
                 relevaLog("RelevaSDK: Failed to attach image: \(error)")
+                // The success path hands `tempUrl` to the attachment, which owns it from then
+                // on; a thrown error here means nothing ever will, and it would otherwise be
+                // left behind in `NSTemporaryDirectory()`.
+                try? FileManager.default.removeItem(at: tempUrl)
             }
 
             completion(content)
@@ -196,7 +197,7 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
     }
 
     /// Get file extension for MIME type
-    private func fileExtension(for mimeType: String) -> String {
+    static func fileExtension(for mimeType: String) -> String {
         switch mimeType.lowercased() {
         case "image/jpeg", "image/jpg":
             return "jpg"
@@ -216,7 +217,7 @@ open class RelevaNotificationServiceExtension: UNNotificationServiceExtension {
     }
 
     /// Get type hint for file extension
-    private func typeHint(for fileExtension: String) -> String {
+    static func typeHint(for fileExtension: String) -> String {
         switch fileExtension.lowercased() {
         case "jpg", "jpeg":
             return "public.jpeg"

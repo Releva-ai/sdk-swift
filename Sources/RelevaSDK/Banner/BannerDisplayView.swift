@@ -158,15 +158,21 @@ class BannerDisplayViewModel: ObservableObject {
     func stop() {
         cancellable?.cancel()
         cancellable = nil
-        prefetchTasks.forEach { $0.cancel() }
+        prefetchTasks.values.forEach { $0.cancel() }
         prefetchTasks.removeAll()
+        // Same release the cancelled-prefetch path needs above: a queued banner never ran
+        // `show(_:)`, so nothing else would ever clear it from `displayedBanners`.
+        queuedPopups.forEach { displayedBanners.remove($0.token) }
+        queuedFlyouts.forEach { displayedBanners.remove($0.token) }
         queuedPopups.removeAll()
         queuedFlyouts.removeAll()
     }
 
     /// How long an overlay banner waits for its images before it is shown anyway.
     static let imagePrefetchTimeout: TimeInterval = 1.5
-    private var prefetchTasks: [Task<Void, Never>] = []
+    /// Keyed by a per-task id (`Task` itself is not `Equatable`) so a finished task can prune
+    /// itself instead of this accumulating one entry per overlay banner for the view model's life.
+    private var prefetchTasks: [UUID: Task<Void, Never>] = [:]
 
     private func handleBanner(_ banner: BannerResponse) {
         guard shouldDisplay(banner) else { return }
@@ -179,12 +185,23 @@ class BannerDisplayViewModel: ObservableObject {
            let design = banner.design {
             let urls = BannerImageCache.imageURLs(in: design)
             if !urls.isEmpty {
+                let taskId = UUID()
                 let task = Task { @MainActor [weak self] in
                     await BannerImageCache.shared.prefetch(urls, timeout: Self.imagePrefetchTimeout)
-                    guard !Task.isCancelled, let self = self else { return }
+                    guard let self = self else { return }
+                    defer { self.prefetchTasks.removeValue(forKey: taskId) }
+                    // `stop()` cancels this task and clears the queues but has no reference to
+                    // `banner.token` to release from `displayedBanners` — do it here, or a
+                    // banner whose prefetch loses the race with a tab switch could never be
+                    // shown again for the life of this view model (`initialize` re-arms and
+                    // re-triggers it, but the guard on `displayedBanners` above drops it).
+                    guard !Task.isCancelled else {
+                        self.displayedBanners.remove(banner.token)
+                        return
+                    }
                     self.show(banner)
                 }
-                prefetchTasks.append(task)
+                prefetchTasks[taskId] = task
                 return
             }
         }

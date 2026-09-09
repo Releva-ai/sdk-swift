@@ -26,20 +26,34 @@ public class NpsManagerService {
 
     private var delayTimer: Timer?
 
+    /// Set by `dispose()`. Checked at the top of every method that can queue work, so a call
+    /// already in flight when `shutdown()` runs — or queued behind it — cannot arm a timer or
+    /// show a survey afterwards; invalidating `delayTimer` alone only stops a timer that had
+    /// already been scheduled.
+    private var disposed = false
+
     /// Called on every push response with the server's NPS config (or nil).
     ///
     /// If the server returned a config, a server-side trigger has already fired.
     /// The SDK will:
     /// - Start the `triggerDelaySeconds` timer immediately if there are no `customEvent` triggers.
     /// - Otherwise hold the config and wait for a matching `trackEvent` call.
-    public func initialize(_ config: NpsConfig?) {
+    ///
+    /// - Parameter clearsWhenAbsent: `true` for a push that named a page (`trackScreenView` and
+    ///   friends): `nps: null` there means "this screen has no survey", so a held config must be
+    ///   dropped or it can fire on a screen the admin never targeted. `false` (the default) for a
+    ///   push with no page context (a cart/wishlist sync, a bare custom event): there `nps: null`
+    ///   only means "this request doesn't carry page-level targeting", and an armed
+    ///   `customEvent` trigger or its cancel event must survive it. The web SDK ignores a null
+    ///   NPS field the same way for that case; only `startNewSession` forgets a config other than
+    ///   through this path.
+    public func initialize(_ config: NpsConfig?, clearsWhenAbsent: Bool = false) {
         queue.async { [weak self] in
-            guard let self = self else { return }
-            // A response with no survey does not forget the one already held: cart syncs and
-            // custom-event pushes carry no page context and come back with `nps: null`, and an
-            // armed custom-event trigger or its cancel event must survive them. The web SDK
-            // ignores a null NPS field the same way; only `startNewSession` forgets a config.
-            guard let config = config else { return }
+            guard let self = self, !self.disposed else { return }
+            guard let config = config else {
+                if clearsWhenAbsent { self.config = nil }
+                return
+            }
             self.config = config
 
             guard !self.suppressedThisSession else { return }
@@ -56,7 +70,7 @@ public class NpsManagerService {
     /// Called by `RelevaClient.trackEvent`. Evaluates `customEvent` triggers and cancel events.
     public func trackEvent(_ eventName: String) {
         queue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, !self.disposed else { return }
             guard let config = self.config, !self.suppressedThisSession else { return }
 
             // Cancel events take priority
@@ -86,7 +100,7 @@ public class NpsManagerService {
         let delay = config?.triggerDelaySeconds ?? 0
 
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, !self.disposed else { return }
             self.delayTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(delay), repeats: false) { [weak self] _ in
                 self?.queue.async {
                     self?.showNps()
@@ -97,7 +111,7 @@ public class NpsManagerService {
 
     /// Must be called on `queue`.
     private func showNps() {
-        guard !suppressedThisSession, let config = config else { return }
+        guard !disposed, !suppressedThisSession, let config = config else { return }
         suppressedThisSession = true
         DispatchQueue.main.async {
             NpsDisplayController.shared.showNps(config)
@@ -121,6 +135,8 @@ public class NpsManagerService {
     public func dispose() {
         queue.async { [weak self] in
             guard let self = self else { return }
+            self.disposed = true
+            self.config = nil
             DispatchQueue.main.async {
                 self.delayTimer?.invalidate()
                 self.delayTimer = nil
