@@ -57,9 +57,10 @@ jobs:
             - .github/workflows/ci.yml runs SwiftLint on every PR and .swiftlint.yml sets
               `strict: true`, so a violation is a red CI run rather than a matter of taste.
               This repo does have a linter - do not report otherwise. Name the rule each
-              lint finding violates, and check that name against the `disabled_rules` list
-              in .swiftlint.yml, which is checked out beside the code: a rule on that list
-              cannot fail CI, so a remark about one of those is a NIT.
+              lint finding violates. A rule on the `disabled_rules` list in .swiftlint.yml,
+              or a finding about a Swift file outside `included: Sources, Tests` in
+              .swiftlint.yml, cannot fail CI - either one is a NIT regardless of the
+              first-match order below.
             - This SDK has a sibling Android SDK, sdk-kotlin, that it is meant to behave
               identically to. sdk-kotlin is NOT in this checkout and you cannot read it, so
               raise a parity concern as something to check against sdk-kotlin, never as an
@@ -84,8 +85,10 @@ jobs:
             concurrency, cancellation or retry, UI work done off the main actor, a SwiftLint
             violation, a non-breaking change to a public API or to an on-the-wire request or
             response payload that integrators would have to adapt to and that the PR does
-            not call out, or a behavioural divergence from sdk-kotlin, which is a defect in
-            its own right even where the Swift side is defensible alone.
+            not call out, or a behavioural divergence from sdk-kotlin that this checkout
+            evidences - the diff, the PR description or a CHANGELOG entry citing the Android
+            behaviour - which is a defect in its own right even where the Swift side is
+            defensible alone. A parity question you cannot substantiate here is a NIT.
 
             NIT (optional, no change required) - everything else: naming, style, comment
             wording, formatting, test-name preferences, and suggestions that are matters of
