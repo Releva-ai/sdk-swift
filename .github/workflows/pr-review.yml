@@ -67,20 +67,30 @@ jobs:
             written off the actor or queue that owns it, or `@unchecked Sendable` added
             without a stated reason.
 
-            A SwiftLint violation is BLOCKING as well, not a nit: .github/workflows/ci.yml
-            runs SwiftLint and .swiftlint.yml sets `strict: true`, so any violation is a red
-            CI run. This repo does have a linter - do not report otherwise.
+            A SwiftLint violation of a rule this repo has enabled is BLOCKING as well, not
+            a nit: .github/workflows/ci.yml runs SwiftLint and .swiftlint.yml sets
+            `strict: true`, so any such violation is a red CI run. This repo does have a
+            linter - do not report otherwise. But .swiftlint.yml disables `line_length`,
+            `identifier_name`, `type_body_length`, `file_length`, `function_body_length`
+            and `cyclomatic_complexity`, so a long line, a short or unconventional name, or
+            a large type/file/function is not a violation here and must not be reported at
+            any severity. Cite the specific rule a SwiftLint finding violates; a finding
+            that names one of the six disabled rules above is not a valid finding.
 
             MAJOR - the change works but has a real defect a maintainer would want fixed
             before merge: an unhandled error path that can occur in production, a performance
             problem with a concrete mechanism you can name, a genuine correctness risk under
-            concurrency, cancellation or retry, UI work done off the main actor, or a change
-            to a public API or to an on-the-wire request or response payload that integrators
-            would have to adapt to and that the PR does not call out.
+            concurrency, cancellation or retry, UI work done off the main actor, or a
+            non-breaking change to a public API or to an on-the-wire request or response
+            payload that integrators would have to adapt to and that the PR does not call
+            out.
 
-            NIT (optional, no change required) - everything else: naming, style, comment
-            wording, formatting, test-name preferences, and suggestions that are matters of
-            taste. Say "NIT (optional, no change required)" verbatim so a future filter in
+            NIT (optional, no change required) - everything else not already covered above:
+            comment wording, test-name preferences, and suggestions that are matters of
+            taste, plus a long line, an unconventional name, or a large type/file/function -
+            the six things the disabled SwiftLint rules above would have flagged, which are
+            not CI failures here but a reviewer may still note as a style preference. Say
+            "NIT (optional, no change required)" verbatim so a future filter in
             apply-fixes.yml can classify it.
 
             This SDK has a sibling Android SDK, sdk-kotlin, that it is meant to behave
