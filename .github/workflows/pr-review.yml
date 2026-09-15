@@ -86,12 +86,13 @@ jobs:
             out.
 
             NIT (optional, no change required) - everything else not already covered above:
-            comment wording, test-name preferences, and suggestions that are matters of
-            taste, plus a long line, an unconventional name, or a large type/file/function -
-            the six things the disabled SwiftLint rules above would have flagged, which are
-            not CI failures here but a reviewer may still note as a style preference. Say
-            "NIT (optional, no change required)" verbatim so a future filter in
-            apply-fixes.yml can classify it.
+            comment wording, test-name preferences, and other suggestions that are matters
+            of taste. The six disabled SwiftLint rules named above are not a valid finding
+            at this severity either - "not a violation here and must not be reported at any
+            severity" above means any severity, including NIT, because /fix applies every
+            comment it finds, NITs included, and a suppressed-by-design style rule must
+            never turn into an applied code change. Say "NIT (optional, no change required)"
+            verbatim so a future filter in apply-fixes.yml can classify it.
 
             This SDK has a sibling Android SDK, sdk-kotlin, that it is meant to behave
             identically to, so a divergence from sdk-kotlin is a defect in its own right,
