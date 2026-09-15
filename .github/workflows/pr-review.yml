@@ -55,19 +55,19 @@ jobs:
 
             Two things about this repo that the diff alone does not show you:
             - .github/workflows/ci.yml runs SwiftLint on every PR and .swiftlint.yml sets
-              `strict: true`, so a violation of an enabled rule is a red CI run. This repo
-              does have a linter - do not report otherwise. But most SwiftLint rules are off
-              by default and this repo disables several more, so read .swiftlint.yml, which
-              is checked out beside the code: a lint finding must name its rule, and that
-              rule must be under `opt_in_rules` or be a default rule absent from
-              `disabled_rules`. If you cannot confirm that, do not report it at any severity.
+              `strict: true`, so a violation is a red CI run rather than a matter of taste.
+              This repo does have a linter - do not report otherwise. But most SwiftLint
+              rules are off by default, and .swiftlint.yml - checked out beside the code -
+              is the only account of the ones this repo runs: a lint finding must name its
+              rule and the line of .swiftlint.yml that enables or configures that rule.
+              Without such a line it is not a lint finding, and is a NIT at most.
             - This SDK has a sibling Android SDK, sdk-kotlin, that it is meant to behave
               identically to. sdk-kotlin is NOT in this checkout and you cannot read it, so
               raise a parity concern as something to check against sdk-kotlin, never as an
               assertion about what the Android SDK does.
 
             Every finding MUST be labelled with exactly one severity, as the first thing in
-            the finding:
+            the finding. Where more than one of these fits, use the first that applies:
 
             BLOCKING - the change is incorrect or unsafe to merge: a logic error, a security
             vulnerability, a data-loss or data-corruption risk, a retain cycle or a view
@@ -76,23 +76,22 @@ jobs:
             the app is backgrounded, a force unwrap or `try!`, a breaking public API change
             without a bump to `SDKVersion.current` and a matching CHANGELOG entry with a
             migration note, a failing or missing test for a code path this PR changes,
-            state that is read or written off the actor or queue that owns it, a SwiftLint
-            violation of a rule you have confirmed is enabled, or `@unchecked Sendable`
-            added without a stated reason.
+            state that is read or written off the actor or queue that owns it, or
+            `@unchecked Sendable` added without a stated reason.
 
             MAJOR - the change works but has a real defect a maintainer would want fixed
             before merge: an unhandled error path that can occur in production, a performance
             problem with a concrete mechanism you can name, a genuine correctness risk under
-            concurrency, cancellation or retry, UI work done off the main actor, a
-            non-breaking change to a public API or to an on-the-wire request or response
-            payload that integrators would have to adapt to and that the PR does not call
-            out, or a behavioural divergence from sdk-kotlin, which is a defect in its own
-            right even where the Swift side is defensible alone.
+            concurrency, cancellation or retry, UI work done off the main actor, a SwiftLint
+            violation, a non-breaking change to a public API or to an on-the-wire request or
+            response payload that integrators would have to adapt to and that the PR does
+            not call out, or a behavioural divergence from sdk-kotlin, which is a defect in
+            its own right even where the Swift side is defensible alone.
 
-            NIT (optional, no change required) - everything else not already covered above:
-            comment wording, test-name preferences, and other suggestions that are matters
-            of taste. Say "NIT (optional, no change required)" verbatim so a future filter
-            in apply-fixes.yml can classify it.
+            NIT (optional, no change required) - everything else: naming, style, comment
+            wording, formatting, test-name preferences, and suggestions that are matters of
+            taste. Say "NIT (optional, no change required)" verbatim so a future filter in
+            apply-fixes.yml can classify it.
 
             Calibration rules:
             - Do not invent BLOCKING or MAJOR findings to seem thorough. If the diff is
