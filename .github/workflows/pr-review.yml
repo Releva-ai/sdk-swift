@@ -57,10 +57,11 @@ jobs:
             - .github/workflows/ci.yml runs SwiftLint on every PR and .swiftlint.yml sets
               `strict: true`, so a violation is a red CI run rather than a matter of taste.
               This repo does have a linter - do not report otherwise. Name the rule each
-              lint finding violates. A rule on the `disabled_rules` list in .swiftlint.yml,
-              or a finding about a Swift file outside `included: Sources, Tests` in
-              .swiftlint.yml, cannot fail CI - either one is a NIT regardless of the
-              first-match order below.
+              lint finding violates. A lint finding naming a rule on the `disabled_rules`
+              list in .swiftlint.yml, or a lint finding about a Swift file outside
+              `included: Sources, Tests`, cannot fail CI - either one is a NIT regardless
+              of the first-match order below. That caps lint findings only: a non-lint
+              defect in a file outside those trees keeps the severity it earns.
             - This SDK has a sibling Android SDK, sdk-kotlin, that it is meant to behave
               identically to. sdk-kotlin is NOT in this checkout and you cannot read it, so
               raise a parity concern as something to check against sdk-kotlin, never as an
