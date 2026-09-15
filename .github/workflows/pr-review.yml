@@ -56,11 +56,11 @@ jobs:
             Two things about this repo that the diff alone does not show you:
             - .github/workflows/ci.yml runs SwiftLint on every PR and .swiftlint.yml sets
               `strict: true`, so a violation of an enabled rule is a red CI run. This repo
-              does have a linter - do not report otherwise. That file also disables
-              `line_length`, `identifier_name`, `type_body_length`, `file_length`,
-              `function_body_length` and `cyclomatic_complexity`: a finding whose basis is
-              one of those six rules is not a finding here at any severity. Name the rule a
-              SwiftLint finding violates.
+              does have a linter - do not report otherwise. But most SwiftLint rules are off
+              by default and this repo disables several more, so read .swiftlint.yml, which
+              is checked out beside the code: a lint finding must name its rule, and that
+              rule must be under `opt_in_rules` or be a default rule absent from
+              `disabled_rules`. If you cannot confirm that, do not report it at any severity.
             - This SDK has a sibling Android SDK, sdk-kotlin, that it is meant to behave
               identically to. sdk-kotlin is NOT in this checkout and you cannot read it, so
               raise a parity concern as something to check against sdk-kotlin, never as an
@@ -73,12 +73,12 @@ jobs:
             vulnerability, a data-loss or data-corruption risk, a retain cycle or a view
             controller that is never released, blocking the main thread, work that keeps
             running after the object that owns it is deinitialised, state that is lost when
-            the app is backgrounded, a crash on a force unwrap or `try!`, a breaking public
-            API change without a bump to `SDKVersion.current` and a matching CHANGELOG entry
-            with a migration note, a failing or missing test for a code path this PR changes,
+            the app is backgrounded, a force unwrap or `try!`, a breaking public API change
+            without a bump to `SDKVersion.current` and a matching CHANGELOG entry with a
+            migration note, a failing or missing test for a code path this PR changes,
             state that is read or written off the actor or queue that owns it, a SwiftLint
-            violation of an enabled rule, or `@unchecked Sendable` added without a stated
-            reason.
+            violation of a rule you have confirmed is enabled, or `@unchecked Sendable`
+            added without a stated reason.
 
             MAJOR - the change works but has a real defect a maintainer would want fixed
             before merge: an unhandled error path that can occur in production, a performance
