@@ -3,24 +3,28 @@ name: PR Review with Progress Tracking
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-  pull_request_target:
-    types: [opened, synchronize, ready_for_review, reopened]
 
 # A new push supersedes the review of the previous head, so cancel the in-flight one
-# rather than paying for both. event_name is in the group because every PR event fires
-# both triggers below and the job-level `if` skips one of them - `if` is evaluated
-# after concurrency, so a shared group would let the skipped run cancel the real review.
+# rather than paying for both.
 concurrency:
-  group: pr-review-${{ github.event_name }}-${{ github.event.pull_request.number }}
+  group: pr-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   review-with-tracking:
     runs-on: ubuntu-latest
-    # For pull_request_target, only run for dependabot (which can't access secrets via pull_request)
-    if: |
-      (github.event_name == 'pull_request' && github.actor != 'dependabot[bot]') ||
-      (github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]')
+    # Review only branches pushed to this repository, never a pull request opened from a
+    # fork. Pushing a branch here requires write access, so this is the check for "opened
+    # by someone on the team" - and it is the reliable one: author_association reports a
+    # member whose organization membership is private as CONTRIBUTOR, which would lock out
+    # our own people. On a public repository it also makes a stranger's pull request skip
+    # cleanly instead of failing red.
+    #
+    # Dependabot no longer needs its own trigger here. The separate one existed only to
+    # reach secrets, which a Dependabot-triggered run cannot see. Federation needs no
+    # secret - only id-token: write - and Dependabot pushes its branches to this
+    # repository, so it passes the gate on the ordinary pull_request path.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       pull-requests: write
@@ -30,7 +34,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # For pull_request_target, explicitly checkout the PR head commit
+          # Check out the PR head commit itself rather than the merge commit
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
 
@@ -40,7 +44,14 @@ jobs:
         # Bumping the action version should be a deliberate commit.
         uses: anthropics/claude-code-action@v1.0.183
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Workload identity federation: the action exchanges this run's GitHub OIDC
+          # token (hence id-token: write above) for a short-lived Claude token, so no
+          # Anthropic credential is stored on this repository. The two ids are not
+          # themselves credentials - the federation rule only accepts a token whose claims
+          # match it - so they are organization variables, and this block is identical in
+          # every repository.
+          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_bots: dependabot
           track_progress: true
