@@ -41,9 +41,14 @@ jobs:
         # with nobody left to act on it. Skip only when a completed, successful run of
         # this workflow already exists for this exact head SHA: toggling draft state on a
         # head that no review ever attached to is the manual way to force one, and must
-        # still review. status=success excludes both the in-flight current run and the
-        # skipped twin that every pull request event produces from the other trigger. A
-        # failed lookup falls through to reviewing - never skip a review on a guess.
+        # still review. status=success matches the conclusion, so it excludes both the
+        # in-flight current run and any run that skipped instead of reviewing - here, the
+        # ones the fork gate on the job produces. A failed lookup falls through to
+        # reviewing and its error is left in the log: never skip a review on a guess, and
+        # never hide the only evidence that the gate has quietly stopped working. The
+        # workflow filename below is hardcoded because there is no built-in for it -
+        # github.workflow is the display name - so a rename 404s and the gate becomes a
+        # no-op, which is the safe direction to fail and is what that error would show.
         if: github.event.action == 'ready_for_review' || github.event.action == 'reopened'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -51,11 +56,12 @@ jobs:
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           runs="repos/$REPO/actions/workflows/pr-review.yml/runs?head_sha=$SHA&status=success&per_page=1"
-          n=$(gh api "$runs" --jq .total_count 2>/dev/null || echo 0)
+          n=$(gh api "$runs" --jq .total_count || echo 0)
           case "$n" in '' | *[!0-9]*) n=0 ;; esac
           echo "reviewed=$([ "$n" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
+        if: steps.gate.outputs.reviewed != 'true'
         uses: actions/checkout@v4
         with:
           # Check out the PR head commit itself rather than the merge commit
