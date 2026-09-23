@@ -31,7 +31,43 @@ jobs:
       id-token: write
       actions: read
     steps:
+      - name: Skip a repeat review of an already-reviewed commit
+        id: gate
+        # ready_for_review fires when a draft is published and reopened when a closed
+        # pull request comes back; both can land on a head that was already reviewed.
+        # The review loop opens its pull requests as drafts and publishes them only once
+        # the review has converged, so without this the publish pays for a second review
+        # of the commit that was just reviewed - and posts it after the loop has exited,
+        # with nobody left to act on it. Skip only when a completed, successful run of
+        # this workflow already exists for this exact head SHA: toggling draft state on a
+        # head that no review ever attached to is the manual way to force one, and must
+        # still review.
+        if: github.event.action == 'ready_for_review' || github.event.action == 'reopened'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # status=success excludes the in-flight current run and the skipped-conclusion
+          # runs the fork gate on this job produces. It does match a run this gate itself
+          # short-circuited - that skips steps, not the job, so the run still concludes
+          # success - and that is what makes a second publish of the same head skip again
+          # rather than buy the review the first one declined. A review that errored
+          # concludes failure, is not matched, and is retried. The filename is hardcoded
+          # because there is no built-in for it - github.workflow is the display name - so
+          # a rename 404s and the gate becomes a no-op: the safe direction to fail, and
+          # legible in the log rather than silent.
+          runs="repos/$REPO/actions/workflows/pr-review.yml/runs?head_sha=$SHA&status=success&per_page=1"
+          # Never skip a review on a guess. A lookup that fails, or answers with anything
+          # that is not a count, reviews - and gh's own error stays in the log, so a gate
+          # that has quietly stopped working reads as broken rather than as a head nobody
+          # reviewed.
+          n=$(gh api "$runs" --jq .total_count || echo 0)
+          case "$n" in '' | *[!0-9]*) n=0 ;; esac
+          echo "reviewed=$([ "$n" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
+        if: steps.gate.outputs.reviewed != 'true'
         uses: actions/checkout@v4
         with:
           # Check out the PR head commit itself rather than the merge commit
@@ -39,6 +75,7 @@ jobs:
           fetch-depth: 1
 
       - name: PR Review with Progress Tracking
+        if: steps.gate.outputs.reviewed != 'true'
         # Pinned because @v1 floats and the bundled CLI - including its default model - floats with it.
         # The CLI version is pinned here; the model is pinned explicitly via --model on the claude_args below.
         # Bumping the action version should be a deliberate commit.
