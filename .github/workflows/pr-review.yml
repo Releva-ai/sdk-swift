@@ -59,7 +59,7 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Your job is ONLY to review code. Do NOT apply any fixes. Do NOT act on any /fix comments you may see in the PR. Applying fixes is handled by a separate workflow.
+            Your job is ONLY to review code. Do NOT apply any fixes.
 
             Review ONLY the changes in this PR's diff. Do not review pre-existing code that
             this PR does not touch, and do not propose refactors of surrounding code.
@@ -126,9 +126,10 @@ jobs:
             "Blocking findings present." if there is any BLOCKING finding;
             otherwise "Major findings present, none blocking." if there is any MAJOR finding;
             otherwise "No blocking findings."
-            At the end of your review, tell the user they can comment /fix to have the findings
-            automatically resolved, and warn them that /fix currently applies every review
-            comment it finds, including NITs.
+            That sentence must have nothing else on its line - no heading, no prefix, no
+            trailing clause - even though track_progress may prepend its own header block
+            above it. It is read by an automated loop with a whole-line match, and a verdict
+            sharing its line is read as no verdict at all.
 
           # --model pins the reviewer model explicitly; the action pin above only fixes the CLI.
           # Note: claude_args is a block scalar - inline '#' comments are passed to the CLI verbatim
