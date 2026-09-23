@@ -31,6 +31,30 @@ jobs:
       id-token: write
       actions: read
     steps:
+      - name: Skip a repeat review of an already-reviewed commit
+        id: gate
+        # ready_for_review fires when a draft is published and reopened when a closed
+        # pull request comes back; both can land on a head that was already reviewed.
+        # The review loop opens its pull requests as drafts and publishes them only once
+        # the review has converged, so without this the publish pays for a second review
+        # of the commit that was just reviewed - and posts it after the loop has exited,
+        # with nobody left to act on it. Skip only when a completed, successful run of
+        # this workflow already exists for this exact head SHA: toggling draft state on a
+        # head that no review ever attached to is the manual way to force one, and must
+        # still review. status=success excludes both the in-flight current run and the
+        # skipped twin that every pull request event produces from the other trigger. A
+        # failed lookup falls through to reviewing - never skip a review on a guess.
+        if: github.event.action == 'ready_for_review' || github.event.action == 'reopened'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          runs="repos/$REPO/actions/workflows/pr-review.yml/runs?head_sha=$SHA&status=success&per_page=1"
+          n=$(gh api "$runs" --jq .total_count 2>/dev/null || echo 0)
+          case "$n" in '' | *[!0-9]*) n=0 ;; esac
+          echo "reviewed=$([ "$n" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -39,6 +63,7 @@ jobs:
           fetch-depth: 1
 
       - name: PR Review with Progress Tracking
+        if: steps.gate.outputs.reviewed != 'true'
         # Pinned because @v1 floats and the bundled CLI - including its default model - floats with it.
         # The CLI version is pinned here; the model is pinned explicitly via --model on the claude_args below.
         # Bumping the action version should be a deliberate commit.
