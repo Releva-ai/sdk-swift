@@ -148,7 +148,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
                 displayType: "popup",
                 design: design(rowColor: "#3A3FE0", extraBody: ["popupWidth": "200px"])
             )
-        } check: { host, window in
+        } check: { host, _ in
             guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
                 return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
             }
