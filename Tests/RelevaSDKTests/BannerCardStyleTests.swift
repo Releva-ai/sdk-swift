@@ -145,6 +145,14 @@ final class BannerCardStyleTests: XCTestCase {
         XCTAssertEqual(style(["cardWidth": "1000px"]).cardWidth(availableWidth: 393), 393 - 32, "still capped to the container")
     }
 
+    /// `availableWidth` now comes from a `GeometryReader`, which — unlike the `UIScreen` read it
+    /// replaces — can report a narrow or zero size during an intermediate layout pass; floored
+    /// the same way `cardHeight`'s `maxHeight` is, so that pass cannot produce a negative width.
+    func testCardWidthHasAFloorLikeCardHeightsMaxHeightDoes() {
+        XCTAssertEqual(style([:]).cardWidth(availableWidth: 0), 120)
+        XCTAssertEqual(style([:]).cardWidth(availableWidth: 20), 120)
+    }
+
     /// At the default, `cardHeight` is `nil` — the card sizes to its content, exactly as before
     /// this key existed.
     func testCardHeightAtItsDefaultIsNil() {

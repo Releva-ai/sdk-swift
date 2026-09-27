@@ -130,8 +130,13 @@ struct BannerCardStyle {
     /// `availableWidth` must be the container the card is actually laid out in — the safe
     /// area's own width, not `UIScreen.main.bounds.width`, which is wrong whenever the window
     /// is narrower than the physical screen (iPad split view, a test window).
+    ///
+    /// Floored the same way `cardHeight`'s `maxHeight` is: `UIScreen.main.bounds.width` (what
+    /// `availableWidth` replaces) could never be small enough for `availableWidth - 32` to go
+    /// non-positive, but a `GeometryReader` reporting a narrow or zero size during an
+    /// intermediate layout pass now can.
     func cardWidth(availableWidth: CGFloat) -> CGFloat {
-        min(width?.resolved(in: availableWidth) ?? 600, availableWidth - 32)
+        max(min(width?.resolved(in: availableWidth) ?? 600, availableWidth - 32), 120)
     }
 
     /// The popup card's fixed height when `cardHeight` is authored, clamped to `maxHeight` so
@@ -144,7 +149,7 @@ struct BannerCardStyle {
 
     /// The value of `key` when the author changed it, else `nil`.
     private static func authored(_ styles: [String: JSONValue], _ key: String, default fallback: String) -> String? {
-        let value = (styles[key]?.stringValue ?? fallback).trimmingCharacters(in: .whitespaces)
+        let value = (styles[key]?.stringValue ?? fallback).trimmingCharacters(in: .whitespacesAndNewlines)
         guard value.caseInsensitiveCompare(fallback) != .orderedSame else { return nil }
         return value
     }

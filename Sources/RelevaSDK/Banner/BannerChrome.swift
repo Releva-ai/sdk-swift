@@ -150,13 +150,24 @@ enum BannerChrome {
         let hasBodyBgImage = !(bgImageMap?["url"]?.stringValue ?? "").isEmpty
         let legacySide: BannerCardStyle.HorizontalPlacement = banner.displayPosition == "left" ? .left : .right
         let side = style.positionHorizontal ?? legacySide
+        // `popupWidth` stays as the *default* branch `cardWidth` falls back to (not read
+        // directly any more, only through `style.width` below): at `cardWidth`'s default this
+        // is exactly today's pre-cap width source, so a design without an authored width still
+        // renders identically on a container wide enough for the cap not to dominate (see
+        // `BannerCardStyle.swift`'s `cardWidth`/`length` doc comments for the same pattern).
         let contentWidth = banner.design.flatMap { DesignRenderer.intrinsicImageWidth(in: $0) }
+            ?? DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"])
             ?? DesignRenderer.parseDimensionRaw(bodyValues["contentWidth"])
             ?? 360
         // Colours for the parts of the drawer the content does not cover: the first row's above
         // it, the last row's below it.
         let rows = banner.design?["body"]?["rows"]?.arrayValue?.compactMap { $0.objectValue } ?? []
+        // Same pattern as the width above: `popupBackgroundColor` is the default branch
+        // `cardBackgroundColor` falls back to, not read directly, so a design with no first/last
+        // row colour and no authored `cardBackgroundColor` still bleeds today's white rather than
+        // the body `backgroundColor`.
         let fallback = style.backgroundColor
+            ?? DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
             ?? DesignRenderer.parseColor(bodyValues["backgroundColor"])
             ?? Color.white
         let topColor = rowColor(rows.first) ?? fallback

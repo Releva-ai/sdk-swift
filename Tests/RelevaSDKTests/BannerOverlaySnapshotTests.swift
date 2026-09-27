@@ -280,6 +280,11 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     /// in production today. Compared as laid-out geometry rather than as pixels, so the
     /// assertion says which number moved when it goes red. With `RLV_SNAPSHOT_DIR` set the two
     /// PNGs are written side by side for eyes as well.
+    ///
+    /// Both arms run on this code, so this cannot by itself catch a drift between master and
+    /// this branch — only that the two arms agree with each other on whatever this branch does.
+    /// What pins the actual numbers master drew (600, the 32 pt cap, the 10 pt radius) is
+    /// `BannerCardStyleTests` and `testPopupSnapshot`'s width assertion.
     @MainActor
     func testDefaultedKeysLayOutExactlyLikeNoKeysAtAll() throws {
         for displayType in ["popup", "flyout", "bar"] {
@@ -325,6 +330,73 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
             XCTAssertEqual(panel.minX, 0, accuracy: 0.5, "the authored key overrides the absent displayPosition, which would dock right")
             XCTAssertEqual(panel.width, 200, accuracy: 0.5, "cardWidth sizes the drawer instead of the design's content width")
+        }
+    }
+
+    /// The popup is where eight of the nine keys actually reach a layout call
+    /// (`BannerChrome.popup`), but until now only the no-keys/defaults case was observed. An
+    /// authored position must reach the card the same way it does for a bar or a flyout: a
+    /// left/bottom card lands at the safe area's leading/bottom edge rather than at the 16 pt
+    /// the centred default implies.
+    @MainActor
+    func testAnAuthoredPositionMovesAPopupToAnEdge() throws {
+        try snapshot(named: "popup_left_bottom_authored") { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup", displayType: "popup",
+                cssStyles: ["cardPositionHorizontal": "left", "cardPositionVertical": "bottom"],
+                design: design(rowColor: "#3A3FE0")
+            )
+        } check: { host, window in
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(card.minX, 0, accuracy: 0.5, "cardPositionHorizontal: left reaches the card, not just centring")
+            XCTAssertEqual(
+                card.maxY, window.bounds.height - host.safeAreaInsets.bottom, accuracy: 1,
+                "cardPositionVertical: bottom reaches the card, not just centring"
+            )
+        }
+    }
+
+    /// `.offset(...)` is applied outside `.reportBannerFrame()`'s `GeometryReader` in the popup's
+    /// modifier chain (`BannerChrome.swift`), which only reflects the offset if SwiftUI resolves
+    /// the offset before laying out that background — this snapshot is the only thing that
+    /// answers that question for this codebase rather than leaving it asserted by a comment.
+    @MainActor
+    func testAnAuthoredOffsetShiftsThePopupCardsReportedFrame() throws {
+        try snapshot(named: "popup_offset_authored") { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup", displayType: "popup",
+                cssStyles: ["cardOffsetHorizontal": "-20px"],
+                design: design(rowColor: "#3A3FE0")
+            )
+        } check: { host, window in
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(
+                card.midX, window.bounds.width / 2 - 20, accuracy: 0.5,
+                "the reported frame moves with the offset instead of staying at the pre-offset centre"
+            )
+        }
+    }
+
+    /// `.frame(height:alignment:)` with a `nil` height — every default banner's case — is the
+    /// identity; an authored `cardHeight` is what exercises the non-`nil` branch that makes
+    /// `contentVerticalAlign` mean anything at all.
+    @MainActor
+    func testAnAuthoredHeightFixesThePopupCardsSize() throws {
+        try snapshot(named: "popup_height_authored") { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup", displayType: "popup",
+                cssStyles: ["cardHeight": "300px", "contentVerticalAlign": "bottom"],
+                design: design(rowColor: "#3A3FE0")
+            )
+        } check: { host, _ in
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(card.height, 300, accuracy: 0.5, "cardHeight fixes the card instead of it hugging the (much shorter) design")
         }
     }
 }
