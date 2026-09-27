@@ -131,22 +131,28 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     /// `popupBackgroundColor` body-value reads: with none of the nine new `cssStyles` keys
     /// authored, a design whose body values differ from this SDK's own 600/10/white literals
     /// must still lay out off the body values, exactly as it did before this change. Width is
-    /// the one of the three with a geometry consequence this harness can observe directly;
-    /// `BannerCardStyleTests` covers the corner-radius and background-colour branches of the
-    /// same fallback at the unit level, since neither has a frame this window can measure.
+    /// the one of the three with a geometry consequence this harness can observe directly; the
+    /// authored value must land strictly between `cardWidth`'s 120 pt floor and this window's
+    /// `393 - 32 = 361` pt cap, or the cap would produce the same frame with or without the
+    /// fallback and the assertion below would pass either way. `BannerCardStyleTests` covers the
+    /// corner-radius branch of the same fallback at the unit level
+    /// (`testTheDefaultBorderRadiusFallsBackToTheCallersLegacyDefaultNotItsOwnTenPoints`); the
+    /// background-colour branch lives inline in `BannerChrome.popup`
+    /// (`cardBackground = style.backgroundColor ?? DesignRenderer.parseColor(...) ?? .white`)
+    /// rather than in `BannerCardStyle`, and has no coverage at either level today.
     @MainActor
     func testPopupWithNoChromeKeysStillFallsBackToTheDesignsBodyValues() throws {
         try snapshot(named: "popup_body_value_fallback") { vm in
             vm.popupBanner = BannerResponse(
                 token: "popup",
                 displayType: "popup",
-                design: design(rowColor: "#3A3FE0", extraBody: ["popupWidth": "500px"])
+                design: design(rowColor: "#3A3FE0", extraBody: ["popupWidth": "200px"])
             )
         } check: { host, window in
             guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
                 return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
             }
-            XCTAssertEqual(card.width, min(500, window.bounds.width - 32), accuracy: 0.5, "the design's own popupWidth, not the SDK's 600 pt literal")
+            XCTAssertEqual(card.width, 200, accuracy: 0.5, "the design's own popupWidth, not the SDK's 600 pt literal")
         }
     }
 
