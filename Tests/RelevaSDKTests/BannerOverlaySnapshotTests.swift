@@ -254,6 +254,66 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             XCTAssertLessThan(bar.height, window.bounds.height / 2)
         }
     }
+
+    // MARK: - Card chrome and position keys
+
+    /// Every `cssStyles` chrome and position key written out at the value the API documents as
+    /// its default.
+    private let documentedDefaults: [String: JSONValue] = [
+        "cardBackgroundColor": "#fefefe", "cardWidth": "auto", "cardHeight": "auto",
+        "cardBorderRadius": "0", "contentVerticalAlign": "top",
+        "cardPositionVertical": "auto", "cardPositionHorizontal": "auto",
+        "cardOffsetVertical": "auto", "cardOffsetHorizontal": "auto"
+    ]
+
+    /// The regression guard for the whole adoption: a banner carrying all nine keys at their
+    /// documented defaults must lay out exactly like one carrying none — which is every banner
+    /// in production today. Compared as laid-out geometry rather than as pixels, so the
+    /// assertion says which number moved when it goes red. With `RLV_SNAPSHOT_DIR` set the two
+    /// PNGs are written side by side for eyes as well.
+    @MainActor
+    func testDefaultedKeysLayOutExactlyLikeNoKeysAtAll() throws {
+        for displayType in ["flyout", "bar"] {
+            var laidOut: [[CGRect]] = []
+            for (suffix, cssStyles) in [("no_keys", [:] as [String: JSONValue]), ("defaults", documentedDefaults)] {
+                try snapshot(named: "\(displayType)_\(suffix)") { vm in
+                    let banner = BannerResponse(token: displayType, displayType: displayType, cssStyles: cssStyles, design: design(rowColor: "#3A3FE0"))
+                    if displayType == "bar" { vm.barBanners = [banner] } else { vm.flyoutBanner = banner }
+                } check: { host, _ in
+                    laidOut.append(host.interactiveFrames)
+                }
+            }
+            XCTAssertFalse(laidOut[0].isEmpty, "\(displayType): nothing was laid out, so nothing is being compared")
+            XCTAssertEqual(laidOut[0], laidOut[1], "\(displayType): the nine keys at their defaults moved something")
+        }
+    }
+
+    /// A bar with no `displayPosition` has always gone to the top edge; an authored
+    /// `cardPositionVertical` is what now decides it.
+    @MainActor
+    func testAnAuthoredVerticalPositionSendsABarToTheBottomEdge() throws {
+        try snapshot(named: "bar_bottom_authored") { vm in
+            vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", cssStyles: ["cardPositionVertical": "bottom"], design: design(rowColor: "#3A3FE0"))]
+        } check: { host, window in
+            guard let bar = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one bar frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(bar.maxY, window.bounds.height, accuracy: 0.5, "the authored key overrides the absent displayPosition")
+            XCTAssertLessThan(bar.height, window.bounds.height / 2, "a short design stays a strip")
+        }
+    }
+
+    /// The same for the axis a flyout docks to, plus the width key reaching the layout call.
+    @MainActor
+    func testAnAuthoredHorizontalPositionAndWidthMoveAndSizeAFlyout() throws {
+        try snapshot(named: "flyout_left_authored") { vm in
+            vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", cssStyles: ["cardPositionHorizontal": "left", "cardWidth": "200px"], design: design(rowColor: "#3A3FE0"))
+        } check: { host, _ in
+            guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
+            XCTAssertEqual(panel.minX, 0, accuracy: 0.5, "the authored key overrides the absent displayPosition, which would dock right")
+            XCTAssertEqual(panel.width, 200, accuracy: 0.5, "cardWidth sizes the drawer instead of the design's content width")
+        }
+    }
 }
 
 private struct FakeApp: View {
