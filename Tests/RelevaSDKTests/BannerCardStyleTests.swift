@@ -7,18 +7,9 @@ import XCTest
 /// changes nothing on this platform", so most of what is pinned here is what the type reports for
 /// a default: nothing authored, and the call site left as it was.
 final class BannerCardStyleTests: XCTestCase {
-    /// Every key written out at the value the API documents as its default.
-    private let documentedDefaults: [String: JSONValue] = [
-        "cardBackgroundColor": "#fefefe",
-        "cardWidth": "auto",
-        "cardHeight": "auto",
-        "cardBorderRadius": "0",
-        "contentVerticalAlign": "top",
-        "cardPositionVertical": "auto",
-        "cardPositionHorizontal": "auto",
-        "cardOffsetVertical": "auto",
-        "cardOffsetHorizontal": "auto"
-    ]
+    /// Every key written out at the value the API documents as its default. Shared with
+    /// `BannerOverlaySnapshotTests` — see `documentedBannerCardStyleDefaults`.
+    private let documentedDefaults = documentedBannerCardStyleDefaults
 
     private func style(_ cssStyles: [String: JSONValue]) -> BannerCardStyle {
         BannerCardStyle(BannerResponse(token: "t", cssStyles: cssStyles))
@@ -63,6 +54,16 @@ final class BannerCardStyleTests: XCTestCase {
         XCTAssertEqual(style(["cardBorderRadius": "0.0"]).cornerRadius, 10)
         XCTAssertEqual(style(["cardBorderRadius": "00"]).cornerRadius, 10)
         XCTAssertEqual(style(["cardBorderRadius": " 0 "]).cornerRadius, 10)
+    }
+
+    /// The popup call site passes its own `borderRadius` body-value read as `init`'s
+    /// `legacyDefault` — kept as the branch the key's own default falls through to, per the
+    /// compatibility rule — rather than `BannerCardStyle` assuming its own 10 pt literal. An
+    /// authored radius still wins over it, exactly as it wins over the 10 pt literal.
+    func testTheDefaultBorderRadiusFallsBackToTheCallersLegacyDefaultNotItsOwnTenPoints() {
+        XCTAssertEqual(BannerCardStyle(BannerResponse(token: "t", cssStyles: [:]), legacyDefault: 20).cornerRadius, 20)
+        XCTAssertEqual(BannerCardStyle(BannerResponse(token: "t", cssStyles: ["cardBorderRadius": "0"]), legacyDefault: 20).cornerRadius, 20)
+        XCTAssertEqual(BannerCardStyle(BannerResponse(token: "t", cssStyles: ["cardBorderRadius": "24"]), legacyDefault: 20).cornerRadius, 24)
     }
 
     /// The schema documents `cardBorderRadius` as a string, but `stringValue` alone returns
@@ -151,6 +152,16 @@ final class BannerCardStyleTests: XCTestCase {
     func testCardWidthHasAFloorLikeCardHeightsMaxHeightDoes() {
         XCTAssertEqual(style([:]).cardWidth(availableWidth: 0), 120)
         XCTAssertEqual(style([:]).cardWidth(availableWidth: 20), 120)
+    }
+
+    /// The popup call site passes its own `popupWidth` body-value read as `legacyDefault` —
+    /// kept as the branch `cardWidth`'s own default falls through to, per the compatibility
+    /// rule — rather than `BannerCardStyle` assuming its own 600 pt literal. This method only
+    /// has to honour whatever `legacyDefault` it is given; the container cap still applies to it.
+    func testCardWidthAtItsDefaultFallsBackToTheCallersLegacyDefaultNotItsOwn600() {
+        XCTAssertEqual(style([:]).cardWidth(availableWidth: 1200, legacyDefault: 500), 500)
+        XCTAssertEqual(style([:]).cardWidth(availableWidth: 393, legacyDefault: 500), min(500, 393 - 32), "still capped")
+        XCTAssertEqual(style(["cardWidth": "300px"]).cardWidth(availableWidth: 393, legacyDefault: 500), 300, "an authored width still wins over legacyDefault")
     }
 
     /// At the default, `cardHeight` is `nil` — the card sizes to its content, exactly as before

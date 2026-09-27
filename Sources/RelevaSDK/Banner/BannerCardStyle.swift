@@ -69,7 +69,10 @@ struct BannerCardStyle {
     let height: Length?
     /// `cardBorderRadius`, already mapped to this SDK's own default. The key's documented
     /// default is `0`, but an iOS popup card has always been drawn with a 10 pt radius, and a
-    /// default must not change anything — mapping it to `0` would square off every popup.
+    /// default must not change anything — mapping it to `0` would square off every popup. The
+    /// radius that default maps to is `init`'s `legacyDefault` — the popup call site's own
+    /// `borderRadius` body-value read, which is `10` for every real banner today but keeps the
+    /// same code path running unchanged, per the compatibility rule, rather than assuming that.
     let cornerRadius: CGFloat
     /// `contentVerticalAlign`: where the design sits in a card taller than it is. `top`, its
     /// default, is where a card that hugs its content puts it anyway.
@@ -82,7 +85,11 @@ struct BannerCardStyle {
     let offsetVertical: Length?
     let offsetHorizontal: Length?
 
-    init(_ banner: BannerResponse) {
+    /// - Parameter legacyDefault: what `cornerRadius` resolves to when `cardBorderRadius` is
+    ///   unauthored. Defaults to `10`, the radius this SDK's popup has always drawn, but the
+    ///   popup call site passes its own `borderRadius` body-value read instead — see
+    ///   `cornerRadius`'s doc comment.
+    init(_ banner: BannerResponse, legacyDefault: CGFloat = 10) {
         let styles = banner.cssStyles
         backgroundColor = DesignRenderer.parseColor(css: Self.authored(styles, "cardBackgroundColor", default: "#fefefe"))
         width = Self.length(Self.authored(styles, "cardWidth", default: "auto"), isOffset: false)
@@ -99,7 +106,7 @@ struct BannerCardStyle {
         if let parsed = radius, parsed.isFinite, parsed > 0 {
             cornerRadius = CGFloat(parsed)
         } else {
-            cornerRadius = 10
+            cornerRadius = legacyDefault
         }
         contentVerticalAlign = Self.authored(styles, "contentVerticalAlign", default: "top").flatMap { VerticalPlacement(rawValue: $0.lowercased()) } ?? .top
         positionVertical = Self.authored(styles, "cardPositionVertical", default: "auto").flatMap { VerticalPlacement(rawValue: $0.lowercased()) }
@@ -124,8 +131,9 @@ struct BannerCardStyle {
     }
 
     /// The popup card's width for a container `availableWidth` pt wide: the resolved
-    /// `cardWidth` at its authored value, or this SDK's own default of 600, capped so the card
-    /// never exceeds the container minus 16 pt each side.
+    /// `cardWidth` at its authored value, or `legacyDefault` (this SDK's own default of 600
+    /// unless the call site passes its own `popupWidth` body-value read — see the popup call
+    /// site), capped so the card never exceeds the container minus 16 pt each side.
     ///
     /// `availableWidth` must be the container the card is actually laid out in — the safe
     /// area's own width, not `UIScreen.main.bounds.width`, which is wrong whenever the window
@@ -135,8 +143,8 @@ struct BannerCardStyle {
     /// `availableWidth` replaces) could never be small enough for `availableWidth - 32` to go
     /// non-positive, but a `GeometryReader` reporting a narrow or zero size during an
     /// intermediate layout pass now can.
-    func cardWidth(availableWidth: CGFloat) -> CGFloat {
-        max(min(width?.resolved(in: availableWidth) ?? 600, availableWidth - 32), 120)
+    func cardWidth(availableWidth: CGFloat, legacyDefault: CGFloat = 600) -> CGFloat {
+        max(min(width?.resolved(in: availableWidth) ?? legacyDefault, availableWidth - 32), 120)
     }
 
     /// The popup card's fixed height when `cardHeight` is authored, clamped to `maxHeight` so

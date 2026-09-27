@@ -127,6 +127,29 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         }
     }
 
+    /// Regression guard for the popup's own pre-existing `popupWidth`/`borderRadius`/
+    /// `popupBackgroundColor` body-value reads: with none of the nine new `cssStyles` keys
+    /// authored, a design whose body values differ from this SDK's own 600/10/white literals
+    /// must still lay out off the body values, exactly as it did before this change. Width is
+    /// the one of the three with a geometry consequence this harness can observe directly;
+    /// `BannerCardStyleTests` covers the corner-radius and background-colour branches of the
+    /// same fallback at the unit level, since neither has a frame this window can measure.
+    @MainActor
+    func testPopupWithNoChromeKeysStillFallsBackToTheDesignsBodyValues() throws {
+        try snapshot(named: "popup_body_value_fallback") { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup",
+                displayType: "popup",
+                design: design(rowColor: "#3A3FE0", extraBody: ["popupWidth": "500px"])
+            )
+        } check: { host, window in
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(card.width, min(500, window.bounds.width - 32), accuracy: 0.5, "the design's own popupWidth, not the SDK's 600 pt literal")
+        }
+    }
+
     /// Bar contract: one full-width strip touching the screen edge it is pinned to, reported as
     /// the only touch-claiming frame so the rest of the app stays usable.
     @MainActor
@@ -267,13 +290,8 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     // MARK: - Card chrome and position keys
 
     /// Every `cssStyles` chrome and position key written out at the value the API documents as
-    /// its default.
-    private let documentedDefaults: [String: JSONValue] = [
-        "cardBackgroundColor": "#fefefe", "cardWidth": "auto", "cardHeight": "auto",
-        "cardBorderRadius": "0", "contentVerticalAlign": "top",
-        "cardPositionVertical": "auto", "cardPositionHorizontal": "auto",
-        "cardOffsetVertical": "auto", "cardOffsetHorizontal": "auto"
-    ]
+    /// its default. Shared with `BannerCardStyleTests` — see `documentedBannerCardStyleDefaults`.
+    private let documentedDefaults = documentedBannerCardStyleDefaults
 
     /// The regression guard for the whole adoption: a banner carrying all nine keys at their
     /// documented defaults must lay out exactly like one carrying none — which is every banner
@@ -342,7 +360,8 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     func testAnAuthoredPositionMovesAPopupToAnEdge() throws {
         try snapshot(named: "popup_left_bottom_authored") { vm in
             vm.popupBanner = BannerResponse(
-                token: "popup", displayType: "popup",
+                token: "popup",
+                displayType: "popup",
                 cssStyles: ["cardPositionHorizontal": "left", "cardPositionVertical": "bottom"],
                 design: design(rowColor: "#3A3FE0")
             )
@@ -352,7 +371,9 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             }
             XCTAssertEqual(card.minX, 0, accuracy: 0.5, "cardPositionHorizontal: left reaches the card, not just centring")
             XCTAssertEqual(
-                card.maxY, window.bounds.height - host.safeAreaInsets.bottom, accuracy: 1,
+                card.maxY,
+                window.bounds.height - host.safeAreaInsets.bottom,
+                accuracy: 1,
                 "cardPositionVertical: bottom reaches the card, not just centring"
             )
         }
@@ -366,7 +387,8 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     func testAnAuthoredOffsetShiftsThePopupCardsReportedFrame() throws {
         try snapshot(named: "popup_offset_authored") { vm in
             vm.popupBanner = BannerResponse(
-                token: "popup", displayType: "popup",
+                token: "popup",
+                displayType: "popup",
                 cssStyles: ["cardOffsetHorizontal": "-20px"],
                 design: design(rowColor: "#3A3FE0")
             )
@@ -375,7 +397,9 @@ final class BannerOverlaySnapshotTests: XCTestCase {
                 return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
             }
             XCTAssertEqual(
-                card.midX, window.bounds.width / 2 - 20, accuracy: 0.5,
+                card.midX,
+                window.bounds.width / 2 - 20,
+                accuracy: 0.5,
                 "the reported frame moves with the offset instead of staying at the pre-offset centre"
             )
         }
@@ -388,7 +412,8 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     func testAnAuthoredHeightFixesThePopupCardsSize() throws {
         try snapshot(named: "popup_height_authored") { vm in
             vm.popupBanner = BannerResponse(
-                token: "popup", displayType: "popup",
+                token: "popup",
+                displayType: "popup",
                 cssStyles: ["cardHeight": "300px", "contentVerticalAlign": "bottom"],
                 design: design(rowColor: "#3A3FE0")
             )

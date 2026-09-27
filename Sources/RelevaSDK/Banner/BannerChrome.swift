@@ -17,10 +17,10 @@ enum BannerChrome {
     // MARK: - Popup Banner
 
     /// A card holding the design, sized and placed from the banner's chrome keys
-    /// (`BannerCardStyle`) over what this SDK has always drawn: 600 pt wide capped to the
-    /// available width minus 16 pt each side, a 10 pt corner radius, a white card, centred
-    /// inside the safe area, with the design's `popupOverlay_backgroundColor` dimming the rest
-    /// of the screen.
+    /// (`BannerCardStyle`) over what this SDK has always drawn: `popupWidth` capped to the
+    /// available width minus 16 pt each side (default 600), `borderRadius` (default 10),
+    /// `popupBackgroundColor` (default white), centred inside the safe area, with the design's
+    /// `popupOverlay_backgroundColor` dimming the rest of the screen.
     /// Height follows the content and scrolls inside the card when taller than the safe area,
     /// unless `cardHeight` fixes it, in which case `contentVerticalAlign` places the design in
     /// the card. The close button sits inside the top-right corner with a 44 pt hit target.
@@ -30,9 +30,19 @@ enum BannerChrome {
         viewModel: BannerDisplayViewModel,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
-        let style = BannerCardStyle(banner)
+        // These three are the popup's own pre-existing reads of the design's body values — kept
+        // as the default branch each new key falls through to (the same pattern the flyout below
+        // already uses for `popupWidth`/`popupBackgroundColor`), so a key at its default still
+        // runs exactly today's code path per the compatibility rule, rather than a hardcoded
+        // literal standing in for a measurement of production data that could go stale.
+        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
+        let legacyCardWidth = DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"]) ?? 600
+        let legacyCornerRadius = DesignRenderer.parseDimensionRaw(bodyValues["borderRadius"]) ?? 10
+        let style = BannerCardStyle(banner, legacyDefault: legacyCornerRadius)
         let overlayColor = getOverlayColor(banner)
-        let cardBackground = style.backgroundColor ?? .white
+        let cardBackground = style.backgroundColor
+            ?? DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
+            ?? .white
 
         ZStack {
             // Overlay
@@ -46,7 +56,7 @@ enum BannerChrome {
                 // The container's own width, not `UIScreen.main.bounds.width`: only this is
                 // right when the window is narrower than the physical screen (iPad split view,
                 // the snapshot test's window).
-                let cardWidth = style.cardWidth(availableWidth: geometry.size.width)
+                let cardWidth = style.cardWidth(availableWidth: geometry.size.width, legacyDefault: legacyCardWidth)
                 let maxHeight = max(geometry.size.height - 32, 120)
                 // An authored height still stays inside the safe area, as the measured one does.
                 let cardHeight = style.cardHeight(availableHeight: geometry.size.height, maxHeight: maxHeight)
