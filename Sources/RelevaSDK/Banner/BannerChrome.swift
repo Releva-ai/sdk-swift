@@ -17,9 +17,10 @@ enum BannerChrome {
     // MARK: - Popup Banner
 
     /// A card holding the design, sized and placed from the banner's chrome keys
-    /// (`BannerCardStyle`) over what this SDK has always drawn: 600 pt wide capped to the screen
-    /// width minus 16 pt each side, a 10 pt corner radius, a white card, centred inside the safe
-    /// area, with the design's `popupOverlay_backgroundColor` dimming the rest of the screen.
+    /// (`BannerCardStyle`) over what this SDK has always drawn: 600 pt wide capped to the
+    /// available width minus 16 pt each side, a 10 pt corner radius, a white card, centred
+    /// inside the safe area, with the design's `popupOverlay_backgroundColor` dimming the rest
+    /// of the screen.
     /// Height follows the content and scrolls inside the card when taller than the safe area,
     /// unless `cardHeight` fixes it, in which case `contentVerticalAlign` places the design in
     /// the card. The close button sits inside the top-right corner with a 44 pt hit target.
@@ -31,8 +32,6 @@ enum BannerChrome {
     ) -> some View {
         let style = BannerCardStyle(banner)
         let overlayColor = getOverlayColor(banner)
-        let screenWidth = UIScreen.main.bounds.width
-        let cardWidth = min(style.width?.resolved(in: screenWidth) ?? 600, screenWidth - 32)
         let cardBackground = style.backgroundColor ?? .white
 
         ZStack {
@@ -44,9 +43,13 @@ enum BannerChrome {
                 }
 
             GeometryReader { geometry in
+                // The container's own width, not `UIScreen.main.bounds.width`: only this is
+                // right when the window is narrower than the physical screen (iPad split view,
+                // the snapshot test's window).
+                let cardWidth = style.cardWidth(availableWidth: geometry.size.width)
                 let maxHeight = max(geometry.size.height - 32, 120)
                 // An authored height still stays inside the safe area, as the measured one does.
-                let cardHeight = style.height.map { min($0.resolved(in: geometry.size.height), maxHeight) }
+                let cardHeight = style.cardHeight(availableHeight: geometry.size.height, maxHeight: maxHeight)
 
                 ZStack(alignment: .topTrailing) {
                     popupContent(
@@ -71,6 +74,13 @@ enum BannerChrome {
                 .background(cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
                 .shadow(color: Color.black.opacity(0.25), radius: 24, y: 8)
+                // Reports the card's own on-screen frame, so a snapshot test can observe its
+                // width and position the same way it already does for a bar or a flyout: the
+                // placement and offset modifiers below still apply to this view and its
+                // background together, exactly as they do for the bar's `VStack`. `coversScreen`
+                // is what actually gates touch pass-through for a popup, so this does not change
+                // hit-testing.
+                .reportBannerFrame()
                 // Place the card inside the safe area: centred unless the position keys say
                 // otherwise, then moved by the offset keys.
                 .frame(

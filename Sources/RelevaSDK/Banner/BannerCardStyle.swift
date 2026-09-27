@@ -87,9 +87,17 @@ struct BannerCardStyle {
         backgroundColor = DesignRenderer.parseColor(css: Self.authored(styles, "cardBackgroundColor", default: "#fefefe"))
         width = Self.length(Self.authored(styles, "cardWidth", default: "auto"), isOffset: false)
         height = Self.length(Self.authored(styles, "cardHeight", default: "auto"), isOffset: false)
-        let radius = Self.authored(styles, "cardBorderRadius", default: "0").flatMap { Double($0) }
-        if let radius = radius, radius.isFinite, radius >= 0 {
-            cornerRadius = CGFloat(radius)
+        // Compared as a parsed number rather than through `authored`'s string equality: the
+        // default is documented as `0`, but a server that ever spells it `0.0` or `00` must
+        // still read as "unchanged" — the string comparison alone would read that spelling as
+        // authored and square every popup, which is the one regression this design exists to
+        // prevent. `doubleValue` is tried first so a JSON number (`cardBorderRadius: 24`) is
+        // read too, not just its string spelling — `stringValue` alone returns `nil` for a
+        // `.int`/`.double` and would silently fall back to the default.
+        let radiusValue = styles["cardBorderRadius"]
+        let radius = radiusValue?.doubleValue ?? Double((radiusValue?.stringValue ?? "0").trimmingCharacters(in: .whitespaces))
+        if let parsed = radius, parsed.isFinite, parsed > 0 {
+            cornerRadius = CGFloat(parsed)
         } else {
             cornerRadius = 10
         }
@@ -103,9 +111,35 @@ struct BannerCardStyle {
     /// Which screen edge a bar banner belongs to: the authored `cardPositionVertical` when there
     /// is one, else `displayPosition` as before. `center` is not an edge, so it groups with the
     /// top, the side a bar without a `displayPosition` has always gone to.
+    ///
+    /// Resolves just this one key rather than building a whole `BannerCardStyle` — this runs
+    /// twice per bar per layout pass (`BannerOverlayContent.topBars`/`bottomBars` and
+    /// `BannerBarStackView.banners`, both computed inside `body`), and the other eight keys
+    /// would go unused.
     static func isBottomEdge(_ banner: BannerResponse) -> Bool {
-        if let vertical = BannerCardStyle(banner).positionVertical { return vertical == .bottom }
+        let vertical = Self.authored(banner.cssStyles, "cardPositionVertical", default: "auto")
+            .flatMap { VerticalPlacement(rawValue: $0.lowercased()) }
+        if let vertical = vertical { return vertical == .bottom }
         return banner.displayPosition == "bottom"
+    }
+
+    /// The popup card's width for a container `availableWidth` pt wide: the resolved
+    /// `cardWidth` at its authored value, or this SDK's own default of 600, capped so the card
+    /// never exceeds the container minus 16 pt each side.
+    ///
+    /// `availableWidth` must be the container the card is actually laid out in — the safe
+    /// area's own width, not `UIScreen.main.bounds.width`, which is wrong whenever the window
+    /// is narrower than the physical screen (iPad split view, a test window).
+    func cardWidth(availableWidth: CGFloat) -> CGFloat {
+        min(width?.resolved(in: availableWidth) ?? 600, availableWidth - 32)
+    }
+
+    /// The popup card's fixed height when `cardHeight` is authored, clamped to `maxHeight` so
+    /// an authored height still stays inside the safe area exactly as the content-hugging
+    /// height does. `nil` at `cardHeight`'s default, where the card sizes to its content
+    /// instead.
+    func cardHeight(availableHeight: CGFloat, maxHeight: CGFloat) -> CGFloat? {
+        height.map { min($0.resolved(in: availableHeight), maxHeight) }
     }
 
     /// The value of `key` when the author changed it, else `nil`.

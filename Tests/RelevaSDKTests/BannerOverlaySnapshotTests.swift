@@ -107,14 +107,23 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     }
 
     /// Popup contract: a dim over the whole screen, and a card that is as tall as its design —
-    /// a short design must not become a screen-high card — sitting inside the safe area.
+    /// a short design must not become a screen-high card — sitting inside the safe area, sized
+    /// and centred the way `BannerCardStyle.cardWidth` says: 600 pt capped to the window's own
+    /// width minus 16 pt each side (here `min(600, 393 - 32) = 361`), not to `UIScreen`.
     @MainActor
     func testPopupSnapshot() throws {
         try snapshot(named: "popup") { vm in
             vm.popupBanner = BannerResponse(token: "popup", displayType: "popup", design: design(rowColor: "#3A3FE0"))
-        } check: { host, _ in
+        } check: { host, window in
             XCTAssertTrue(host.coversScreen, "a popup owns every touch")
-            XCTAssertTrue(host.interactiveFrames.isEmpty, "a popup reports no pass-through frames")
+            // `coversScreen`, not this frame, is what gates touch pass-through for a popup; the
+            // card still reports its own frame — the same mechanism a bar or a flyout uses — so
+            // its geometry is observable here.
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(card.width, min(600, window.bounds.width - 32), accuracy: 0.5)
+            XCTAssertEqual(card.midX, window.bounds.width / 2, accuracy: 0.5, "centred with no position keys authored")
         }
     }
 
@@ -273,12 +282,16 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     /// PNGs are written side by side for eyes as well.
     @MainActor
     func testDefaultedKeysLayOutExactlyLikeNoKeysAtAll() throws {
-        for displayType in ["flyout", "bar"] {
+        for displayType in ["popup", "flyout", "bar"] {
             var laidOut: [[CGRect]] = []
             for (suffix, cssStyles) in [("no_keys", [:] as [String: JSONValue]), ("defaults", documentedDefaults)] {
                 try snapshot(named: "\(displayType)_\(suffix)") { vm in
                     let banner = BannerResponse(token: displayType, displayType: displayType, cssStyles: cssStyles, design: design(rowColor: "#3A3FE0"))
-                    if displayType == "bar" { vm.barBanners = [banner] } else { vm.flyoutBanner = banner }
+                    switch displayType {
+                    case "bar": vm.barBanners = [banner]
+                    case "popup": vm.popupBanner = banner
+                    default: vm.flyoutBanner = banner
+                    }
                 } check: { host, _ in
                     laidOut.append(host.interactiveFrames)
                 }

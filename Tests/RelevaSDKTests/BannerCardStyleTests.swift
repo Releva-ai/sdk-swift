@@ -56,6 +56,24 @@ final class BannerCardStyleTests: XCTestCase {
         XCTAssertEqual(style(["cardBorderRadius": "-4"]).cornerRadius, 10, "a negative radius is not a radius")
     }
 
+    /// The default is documented as the literal `0`, but it is compared as a parsed number, not
+    /// as a string: a server that ever spells its own default `0.0` or `00` must still read as
+    /// "unchanged", or the popup this key is meant to leave alone gets squared off instead.
+    func testABorderRadiusOfZeroStaysTheDefaultHoweverItIsSpelled() {
+        XCTAssertEqual(style(["cardBorderRadius": "0.0"]).cornerRadius, 10)
+        XCTAssertEqual(style(["cardBorderRadius": "00"]).cornerRadius, 10)
+        XCTAssertEqual(style(["cardBorderRadius": " 0 "]).cornerRadius, 10)
+    }
+
+    /// The schema documents `cardBorderRadius` as a string, but `stringValue` alone returns
+    /// `nil` for a JSON number, so a server that ever sends the unitless number as a `.int` or
+    /// `.double` rather than its string spelling must still be read, not silently dropped to
+    /// the default.
+    func testABorderRadiusSentAsAJsonNumberIsStillRead() {
+        XCTAssertEqual(style(["cardBorderRadius": 24]).cornerRadius, 24)
+        XCTAssertEqual(style(["cardBorderRadius": 0]).cornerRadius, 10)
+    }
+
     /// The default literals are produced in another repo, so a case or whitespace near-miss must
     /// read as "unchanged" rather than as author intent.
     func testADefaultIsRecognisedWhateverItsCaseOrSurroundingWhitespace() {
@@ -106,6 +124,38 @@ final class BannerCardStyleTests: XCTestCase {
         for value in ["80vw", "calc(100% - 2rem)", "", "20"] {
             XCTAssertNil(style(["cardOffsetHorizontal": .string(value)]).offsetHorizontal, "\(value) is not an offset")
         }
+    }
+
+    // MARK: - Popup geometry
+
+    /// At the default, `cardWidth` reproduces exactly what the popup has always drawn: 600 pt
+    /// capped to the container minus 16 pt each side — the container, not the physical screen,
+    /// which is the bug this method replaces the inline `UIScreen` read to fix.
+    func testCardWidthAtItsDefaultIsSixHundredCappedToTheContainer() {
+        XCTAssertEqual(style([:]).cardWidth(availableWidth: 393), min(600, 393 - 32))
+        XCTAssertEqual(style([:]).cardWidth(availableWidth: 1200), 600, "on a wide container the 600 pt default wins, not the cap")
+    }
+
+    /// An authored `cardWidth` still goes through the same cap, and a percentage resolves
+    /// against the container passed in — never against a fixed axis, so a width and a height of
+    /// different sizes cannot be swapped without a test noticing.
+    func testCardWidthResolvesAnAuthoredLengthAgainstTheContainerPassedIn() {
+        XCTAssertEqual(style(["cardWidth": "300px"]).cardWidth(availableWidth: 393), 300)
+        XCTAssertEqual(style(["cardWidth": "50%"]).cardWidth(availableWidth: 400), 200)
+        XCTAssertEqual(style(["cardWidth": "1000px"]).cardWidth(availableWidth: 393), 393 - 32, "still capped to the container")
+    }
+
+    /// At the default, `cardHeight` is `nil` — the card sizes to its content, exactly as before
+    /// this key existed.
+    func testCardHeightAtItsDefaultIsNil() {
+        XCTAssertNil(style([:]).cardHeight(availableHeight: 800, maxHeight: 700))
+    }
+
+    /// An authored height resolves against the height passed in, then is clamped to `maxHeight`
+    /// so it still stays inside the safe area exactly as the content-hugging height does.
+    func testCardHeightResolvesAgainstAvailableHeightAndClampsToMaxHeight() {
+        XCTAssertEqual(style(["cardHeight": "70%"]).cardHeight(availableHeight: 800, maxHeight: 700), 560)
+        XCTAssertEqual(style(["cardHeight": "900px"]).cardHeight(availableHeight: 800, maxHeight: 700), 700, "clamped to maxHeight")
     }
 
     // MARK: - Placement
