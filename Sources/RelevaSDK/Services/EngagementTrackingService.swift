@@ -17,7 +17,7 @@ public class EngagementTrackingService {
     private var batchTimer: Timer?
 
     /// Queue for thread safety
-    private let queue = DispatchQueue(label: "com.releva.engagement", qos: .background)
+    private let queue: DispatchQueue
 
     /// Pending events to send
     private var pendingEvents: [EngagementEvent] = []
@@ -32,10 +32,19 @@ public class EngagementTrackingService {
     ///   - storage: Storage service
     ///   - networkService: Network service
     ///   - config: SDK configuration
-    public init(storage: StorageService, networkService: NetworkService, config: RelevaConfig) {
+    ///   - qos: Quality of service of the queue all state is confined to. Defaults to
+    ///     `.background`, which is what the SDK uses; the parameter exists so tests need
+    ///     not assert against the one QoS the scheduler may starve indefinitely.
+    public init(
+        storage: StorageService,
+        networkService: NetworkService,
+        config: RelevaConfig,
+        qos: DispatchQoS = .background
+    ) {
         self.storage = storage
         self.networkService = networkService
         self.config = config
+        self.queue = DispatchQueue(label: "com.releva.engagement", qos: qos)
 
         // Load any pending events from storage
         loadPendingEvents()
