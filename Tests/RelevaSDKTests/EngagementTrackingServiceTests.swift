@@ -23,7 +23,13 @@ final class EngagementTrackingServiceTests: XCTestCase {
         storage = StorageService(userDefaults: defaults)
         session = StubURLProtocol.makeSession()
         networkService = NetworkService(realm: "us", accessToken: "test-token", config: .full(), session: session)
-        service = EngagementTrackingService(storage: storage, networkService: networkService, config: .full())
+        // `.userInitiated` instead of the production default of `.background`: the scheduler
+        // may starve `.background` work for as long as higher-priority work is runnable, and
+        // on a CI box shared with other `xcodebuild` invocations it does —
+        // `testClickedEventSendsImmediatelyAndDrainsTheQueue` failed with the request never
+        // made at all, not merely made late. The service's behaviour is identical either way;
+        // only how promptly the scheduler runs its queue differs.
+        service = EngagementTrackingService(storage: storage, networkService: networkService, config: .full(), qos: .userInitiated)
     }
 
     override func tearDown() {
@@ -185,11 +191,10 @@ final class EngagementTrackingServiceTests: XCTestCase {
 
         // `processBatch` bridges into an unstructured `Task` for the network call, which
         // `getPendingEventCount` cannot wait on directly, so poll rather than asserting on
-        // the very next queue turn. The queue backing `processBatch` runs at `.background`
-        // QoS (`EngagementTrackingService.queue`), which a loaded CI runner can starve for
-        // well over a second behind higher-priority work; observed flaking at 5s on a CI run
-        // sharing the box with other `xcodebuild` invocations pushed this to 10s, still well
-        // under a timeout that would mask a real regression.
+        // the very next queue turn. The timeout bounds a failure, not a pass: `setUpWithError`
+        // builds the service at `.userInitiated`, so what is being waited on is the network
+        // round trip through `StubURLProtocol`, not the scheduler's willingness to run
+        // `.background` work.
         let drained = try await pollUntil(timeout: 10.0) {
             await self.service.getPendingEventCount() == 0
         }
