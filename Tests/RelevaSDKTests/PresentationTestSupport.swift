@@ -2,6 +2,25 @@ import UIKit
 import XCTest
 @testable import RelevaSDK
 
+/// Every `cssStyles` chrome and position key the API documents, written out at its own
+/// documented default.
+///
+/// Shared by `BannerCardStyleTests` and `BannerOverlaySnapshotTests` — both need the same list
+/// (one resolves it against `BannerCardStyle` directly, the other lays a banner carrying it
+/// out) so a single copy is the one that cannot drift into two disagreeing about what "nine
+/// keys at their defaults" means.
+let documentedBannerCardStyleDefaults: [String: JSONValue] = [
+    "cardBackgroundColor": "#fefefe",
+    "cardWidth": "auto",
+    "cardHeight": "auto",
+    "cardBorderRadius": "0",
+    "contentVerticalAlign": "top",
+    "cardPositionVertical": "auto",
+    "cardPositionHorizontal": "auto",
+    "cardOffsetVertical": "auto",
+    "cardOffsetHorizontal": "auto"
+]
+
 /// Stands in for `RelevaClient`, which builds its own `NetworkService` over `URLSession.shared`
 /// and has no injection point — handing a real one to a view model or presenter would make a
 /// test perform network I/O.

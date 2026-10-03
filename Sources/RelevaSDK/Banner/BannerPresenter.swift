@@ -325,7 +325,7 @@ struct BannerBarStackView: View {
     let onLinkTap: (String) -> Void
 
     private var banners: [BannerResponse] {
-        viewModel.barBanners.filter { ($0.displayPosition == "bottom") == isBottom }
+        viewModel.barBanners.filter { BannerCardStyle.isBottomEdge($0) == isBottom }
     }
 
     var body: some View {
