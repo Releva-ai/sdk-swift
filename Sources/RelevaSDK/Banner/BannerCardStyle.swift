@@ -85,6 +85,30 @@ struct BannerCardStyle {
     let offsetVertical: Length?
     let offsetHorizontal: Length?
 
+    /// The translation `cardOffsetHorizontal` actually applies, after the anchor's sign rule.
+    ///
+    /// A positive offset moves the card AWAY FROM THE EDGE IT IS ANCHORED TO, so a `right`
+    /// placement negates it; `left`, `center` and an unauthored axis have no edge to move away
+    /// from on that reading and take it as rightward. The contract is magellan-api
+    /// `constants/banner-chrome-css-styles.md` — "an offset is a gap from an edge and not a
+    /// dimension", `0` is "flush against the edge", and `-20px` "lets a flyout bleed slightly
+    /// past the viewport edge", which only has that meaning if the positive direction is inward.
+    ///
+    /// This SDK translated by the raw authored amount until 2026-10-03, as sdk-react-native did;
+    /// magellan-sdk-js, sdk-kotlin and sdk-flutter negate. The web SDK's own comment asserted
+    /// Swift, React Native and Flutter all "already give this key" the negating sign, which was
+    /// true only of Flutter — which is how two implementations stayed wrong unnoticed.
+    func offsetTranslationX(in width: CGFloat) -> CGFloat {
+        let raw = offsetHorizontal?.resolved(in: width) ?? 0
+        return positionHorizontal == .right ? -raw : raw
+    }
+
+    /// The vertical twin of `offsetTranslationX(in:)`; a `bottom` placement negates.
+    func offsetTranslationY(in height: CGFloat) -> CGFloat {
+        let raw = offsetVertical?.resolved(in: height) ?? 0
+        return positionVertical == .bottom ? -raw : raw
+    }
+
     /// - Parameter legacyDefault: what `cornerRadius` resolves to when `cardBorderRadius` is
     ///   unauthored. Defaults to `10`, the radius this SDK's popup has always drawn, but the
     ///   popup call site passes its own `borderRadius` body-value read instead — see

@@ -102,8 +102,8 @@ enum BannerChrome {
                     )
                 )
                 .offset(
-                    x: style.offsetHorizontal?.resolved(in: geometry.size.width) ?? 0,
-                    y: style.offsetVertical?.resolved(in: geometry.size.height) ?? 0
+                    x: style.offsetTranslationX(in: geometry.size.width),
+                    y: style.offsetTranslationY(in: geometry.size.height)
                 )
             }
         }

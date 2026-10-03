@@ -121,6 +121,43 @@ final class BannerCardStyleTests: XCTestCase {
         XCTAssertEqual(style(["cardOffsetHorizontal": "-5%"]).offsetHorizontal?.resolved(in: 400), -20)
     }
 
+    /// A positive offset is a GAP FROM THE ANCHORED EDGE, so an end-anchored axis negates it.
+    /// magellan-api constants/banner-chrome-css-styles.md is the contract; magellan-sdk-js,
+    /// sdk-kotlin and sdk-flutter already read it this way.
+    func testAPositiveOffsetMovesTheCardAwayFromTheEdgeItIsAnchoredTo() {
+        // Anchored to the bottom / right: positive moves up / left, back into the container.
+        let endAnchored = style([
+            "cardPositionVertical": "bottom", "cardPositionHorizontal": "right",
+            "cardOffsetVertical": "40px", "cardOffsetHorizontal": "16px",
+        ])
+        XCTAssertEqual(endAnchored.offsetTranslationY(in: 800), -40)
+        XCTAssertEqual(endAnchored.offsetTranslationX(in: 400), -16)
+
+        // A negative offset on the same anchor is what lets a card bleed PAST its edge.
+        let bleeding = style([
+            "cardPositionVertical": "bottom", "cardPositionHorizontal": "right",
+            "cardOffsetVertical": "-24px", "cardOffsetHorizontal": "-16px",
+        ])
+        XCTAssertEqual(bleeding.offsetTranslationY(in: 800), 24)
+        XCTAssertEqual(bleeding.offsetTranslationX(in: 400), 16)
+
+        // top / left / center / unauthored have no edge to move away from on that reading, so the
+        // offset is taken as down / right unchanged.
+        for placement in [["cardPositionVertical": "top", "cardPositionHorizontal": "left"],
+                          ["cardPositionVertical": "center", "cardPositionHorizontal": "center"],
+                          [:]] {
+            var css: [String: JSONValue] = ["cardOffsetVertical": "40px", "cardOffsetHorizontal": "16px"]
+            for (k, v) in placement { css[k] = .string(v) }
+            let s = style(css)
+            XCTAssertEqual(s.offsetTranslationY(in: 800), 40, "\(placement)")
+            XCTAssertEqual(s.offsetTranslationX(in: 400), 16, "\(placement)")
+        }
+
+        // A percentage resolves first, then takes the sign rule.
+        let pct = style(["cardPositionHorizontal": "right", "cardOffsetHorizontal": "5%"])
+        XCTAssertEqual(pct.offsetTranslationX(in: 400), -20)
+    }
+
     func testOffsetsRejectTheSameUnitsSizesDo() {
         for value in ["80vw", "calc(100% - 2rem)", "", "20"] {
             XCTAssertNil(style(["cardOffsetHorizontal": .string(value)]).offsetHorizontal, "\(value) is not an offset")
