@@ -128,7 +128,7 @@ final class BannerCardStyleTests: XCTestCase {
         // Anchored to the bottom / right: positive moves up / left, back into the container.
         let endAnchored = style([
             "cardPositionVertical": "bottom", "cardPositionHorizontal": "right",
-            "cardOffsetVertical": "40px", "cardOffsetHorizontal": "16px",
+            "cardOffsetVertical": "40px", "cardOffsetHorizontal": "16px"
         ])
         XCTAssertEqual(endAnchored.offsetTranslationY(in: 800), -40)
         XCTAssertEqual(endAnchored.offsetTranslationX(in: 400), -16)
@@ -136,7 +136,7 @@ final class BannerCardStyleTests: XCTestCase {
         // A negative offset on the same anchor is what lets a card bleed PAST its edge.
         let bleeding = style([
             "cardPositionVertical": "bottom", "cardPositionHorizontal": "right",
-            "cardOffsetVertical": "-24px", "cardOffsetHorizontal": "-16px",
+            "cardOffsetVertical": "-24px", "cardOffsetHorizontal": "-16px"
         ])
         XCTAssertEqual(bleeding.offsetTranslationY(in: 800), 24)
         XCTAssertEqual(bleeding.offsetTranslationX(in: 400), 16)

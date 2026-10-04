@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.2.0] - 2026-10-04
+
+### Added
+
+- **The banner editor's card chrome and position keys are honoured.** A popup or flyout now
+  reads the nine `cssStyles` keys the editor writes — `cardBackgroundColor`, `cardWidth`,
+  `cardHeight`, `cardBorderRadius`, `contentVerticalAlign`, `cardPositionVertical`,
+  `cardPositionHorizontal`, `cardOffsetVertical`, `cardOffsetHorizontal` — so a card the author
+  coloured, rounded, sized, moved or nudged renders that way instead of at the SDK's hard-coded
+  defaults. Every key is resolved against its documented default, compared trimmed and
+  lower-cased, and a key at its default runs the path it ran before.
+- A **bar** reads `cardPositionVertical` for its edge and nothing else. `cardWidth`,
+  `cardPositionHorizontal` and `cardOffsetHorizontal` do not apply to a bar — it spans the
+  viewport, so it has no width of its own, no horizontal axis to place a card on and no
+  horizontal edge to offset it from. The banner editor does not offer them for a bar and strips
+  them on save; see `constants/banner-chrome-css-styles.md` in magellan-api.
+
+### Fixed
+
+- **A positive offset moves a card AWAY from the edge it is anchored to.** `cardOffsetVertical`
+  and `cardOffsetHorizontal` are a gap from an anchored edge, not a translation, so an `end`
+  anchor (`bottom` / `right`) negates: `24px` on a bottom-anchored card lifts it 24 points off
+  the bottom, and a negative value is what lets a card bleed past its edge. This SDK translated
+  the raw value, which moved a bottom-anchored card further down and off screen. The contract is
+  `constants/banner-chrome-css-styles.md`; magellan-sdk-js, sdk-kotlin and sdk-flutter read it
+  this way.
+- **The close control no longer covers the copy.** It is drawn over the content as a `ZStack`
+  sibling rather than beside it in flow, so a design laid out to the full width ran underneath
+  it and the tail of a headline was painted beneath the glyph — sdk-react-native photographed
+  exactly that on 2026-10-03, where a narrow card's copy read `CHR-08 bottom-left offse✕`. Each
+  display type now reserves the 56-point band the control owns: a bar on its trailing edge, a
+  popup and a flyout at the top. The band comes out of the card's own height budget rather than
+  being added to it, so an authored `cardHeight` still reports the size it asked for and
+  `contentVerticalAlign: bottom` copy is not pushed past the card's edge.
+
 ## [5.1.0] - 2026-09-09
 
 Everything here comes from the first pass over the SDK on a physical iPhone (iOS 26) since 1.0.2, run through the example app (`Releva-ai/example-swift`).

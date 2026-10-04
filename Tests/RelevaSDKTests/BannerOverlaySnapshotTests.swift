@@ -174,6 +174,50 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         }
     }
 
+    /// THE CLOSE CONTROL IS DRAWN OVER THE CONTENT, not beside it — it is a `ZStack` sibling
+    /// — so every display type has to reserve the band it owns or the design runs underneath
+    /// it. sdk-react-native photographed that on 2026-10-03, where a narrow card's copy read
+    /// "CHR-08 bottom-left offse✕"; sdk-kotlin and sdk-flutter carry the same reservation.
+    ///
+    /// Measured as frames rather than pixels: the control now has an accessibility identifier,
+    /// so the window can be asked where it is and whether the banner's own frame leaves room
+    /// for it. The assertion is the band, not an overlap test on the rendered glyphs, because
+    /// what regresses is the reservation — a design re-flowed to the full width will overlap
+    /// again the moment its copy is long enough, which a short fixture would not show.
+    @MainActor
+    func testTheCloseControlHasABandOfItsOwnOnABar() throws {
+        try snapshot(named: "bar_close_band") { vm in
+            vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", displayPosition: "top", design: design(rowColor: "#3A3FE0"))]
+        } check: { host, window in
+            guard let bar = host.interactiveFrames.first else {
+                return XCTFail("expected a bar frame, got \(host.interactiveFrames)")
+            }
+            guard let close = self.frame(of: BannerChrome.closeControlIdentifier, in: window) else {
+                return XCTFail("the close control reported no frame")
+            }
+            // The control sits inside the band, hard against the bar's trailing edge.
+            XCTAssertLessThanOrEqual(bar.maxX - close.maxX, BannerChrome.closeControlBand, "the control is inside the band it reserves")
+            XCTAssertGreaterThanOrEqual(close.minX, bar.maxX - BannerChrome.closeControlBand, "the band is no wider than the control needs")
+        }
+    }
+
+    /// The same reservation on the other axis: a popup's control is at the TOP of the card, so
+    /// what it would cover is the design's first line rather than the end of a headline.
+    @MainActor
+    func testTheCloseControlHasABandOfItsOwnOnAPopup() throws {
+        try snapshot(named: "popup_close_band") { vm in
+            vm.popupBanner = BannerResponse(token: "popup", displayType: "popup", design: design(rowColor: "#3A3FE0"))
+        } check: { host, window in
+            guard let card = host.interactiveFrames.first else {
+                return XCTFail("expected a popup card frame, got \(host.interactiveFrames)")
+            }
+            guard let close = self.frame(of: BannerChrome.closeControlIdentifier, in: window) else {
+                return XCTFail("the close control reported no frame")
+            }
+            XCTAssertLessThanOrEqual(close.maxY - card.minY, BannerChrome.closeControlBand, "the control is inside the band at the card's top")
+        }
+    }
+
     /// Flyout contract (mobile spec, deviating from the web's 20 px gap on purpose): one
     /// content-sized sheet flush with its screen edge at the bottom of the safe area, never the
     /// whole screen, and the rest of the screen passes touches through.

@@ -62,14 +62,20 @@ enum BannerChrome {
                 let cardHeight = style.cardHeight(availableHeight: geometry.size.height, maxHeight: maxHeight)
 
                 ZStack(alignment: .topTrailing) {
+                    // The band comes OUT of the card's height, not on top of it: the outer
+                    // `.frame(height: cardHeight)` still reports the size the author asked for,
+                    // and the content gets what is left. Padding without taking it off the
+                    // budget would make an authored card 56pt taller than it asked to be, and
+                    // push `contentVerticalAlign: bottom` copy past the card's own edge.
                     popupContent(
                         banner,
                         viewModel: viewModel,
                         width: cardWidth,
-                        maxHeight: cardHeight ?? maxHeight,
+                        maxHeight: max((cardHeight ?? maxHeight) - closeControlBand, 1),
                         dismissForLink: { viewModel.dismissPopup(banner, track: false) },
                         onLinkTap: onLinkTap
                     )
+                    .padding(.top, closeControlBand)
                     .frame(
                         height: cardHeight,
                         alignment: Alignment(horizontal: .center, vertical: style.contentVerticalAlign.alignment)
@@ -192,16 +198,21 @@ enum BannerChrome {
             let maxHeight = max(160, geometry.size.height - bottomInset)
 
             ZStack(alignment: .topTrailing) {
+                // As the popup above: the control is drawn over this, so the band it owns is
+                // taken off the content's budget and added back as padding. sdk-flutter's
+                // flyout does not need this because its control is the first child of a
+                // `Column`, in flow above the content rather than over it.
                 popupContent(
                     banner,
                     viewModel: viewModel,
                     width: width,
-                    maxHeight: maxHeight,
+                    maxHeight: max(maxHeight - closeControlBand, 1),
                     bottomInset: bottomInset,
                     topBleedColor: topColor,
                     dismissForLink: { viewModel.dismissFlyout(banner, track: false) },
                     onLinkTap: onLinkTap
                 )
+                .padding(.top, closeControlBand)
 
                 closeButton(for: banner, size: 32) {
                     viewModel.dismissFlyout(banner)
@@ -283,14 +294,18 @@ enum BannerChrome {
             if let design = banner.design {
                 // `width` is the container's real width; `UIScreen` is a fallback that is wrong
                 // when the window is not the screen (iPad split view, the snapshot test's window).
+                // Rendered to the width it will actually occupy, not the bar's: the band
+                // below is reserved for the close control, and a design laid out against the
+                // full width would be re-flowed or clipped by it rather than fitting it.
                 DesignRenderer.render(
                     design: design,
-                    maxWidth: width ?? UIScreen.main.bounds.width
+                    maxWidth: max((width ?? UIScreen.main.bounds.width) - closeControlBand, 1)
                 ) { url in
                     viewModel.trackClick(banner)
                     onLinkTap(url)
                 }
                 .frame(maxWidth: .infinity)
+                .padding(.trailing, closeControlBand)
                 .padding(isBottom ? .bottom : .top, edgeInset)
             }
 
@@ -321,6 +336,22 @@ enum BannerChrome {
     // MARK: - Close Button
 
     @ViewBuilder
+    /// The band the close control owns, measured in from the card's edge: its own 8pt inset,
+    /// plus the 44pt tappable box `closeButton` pads a 32pt circle out to, plus 4 of clearance.
+    ///
+    /// The control is drawn OVER the content — it is a `ZStack` sibling, not a view in flow
+    /// beside it — so without this reserved the design runs underneath it and the tail of a
+    /// headline is painted beneath the glyph. sdk-react-native photographed exactly that on
+    /// 2026-10-03, where a narrow card's copy read "CHR-08 bottom-left offse✕"; sdk-kotlin
+    /// reserves a `closeGutter` and sdk-flutter a `_closeControlBand` for the same reason.
+    ///
+    /// Bigger than their 44/48 because this SDK pads the control's hit area out to Apple's
+    /// 44pt minimum, so the box to clear is larger than the circle you can see.
+    static let closeControlBand: CGFloat = 56
+
+    /// Accessibility identifier on the close control, so a test can measure its frame.
+    static let closeControlIdentifier = "releva-banner-close"
+
     private static func closeButton(
         for banner: BannerResponse,
         size: CGFloat,
@@ -357,6 +388,9 @@ enum BannerChrome {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Close")
+        // The snapshot harness finds views by identifier; without one, no test can ask where
+        // this control is relative to the copy it is drawn over.
+        .accessibilityIdentifier(Self.closeControlIdentifier)
     }
 
     // MARK: - Helpers
