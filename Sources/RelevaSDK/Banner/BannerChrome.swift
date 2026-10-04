@@ -213,6 +213,13 @@ enum BannerChrome {
                     onLinkTap: onLinkTap
                 )
                 .padding(.top, closeControlBand)
+                // The reserved band itself sits above the content, over nothing — the `ZStack`'s
+                // own `.background` below is `bottomColor` (the last row's colour), which is
+                // right for the drawer as a whole but wrong for this strip: it should read as a
+                // continuation of the first row, which is what `topColor` is computed for
+                // (`:189`, and already used as `CappedHeightContent`'s scroll-bounce bleed). Paint
+                // the band itself with it rather than leaving it to fall through to the last row.
+                .background(alignment: .top) { topColor.frame(height: closeControlBand) }
 
                 closeButton(for: banner, size: 32) {
                     viewModel.dismissFlyout(banner)

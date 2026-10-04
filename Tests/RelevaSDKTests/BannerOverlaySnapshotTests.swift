@@ -158,6 +158,79 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         }
     }
 
+    /// A design of `rows` identical single-text rows, so two designs that differ only in row
+    /// count give a popup whose content height is exactly `rows * (one row's height)` — no
+    /// heading, button or image whose own height would break that proportionality.
+    @MainActor
+    private func repeatedRowDesign(rows: Int) -> [String: JSONValue] {
+        let row: JSONValue = [
+            "values": ["backgroundColor": "#3A3FE0", "padding": "0px"],
+            "columns": [
+                [
+                    "values": [:],
+                    "contents": [
+                        ["type": "text", "values": ["text": "<p>Row</p>", "fontSize": "18px", "textAlign": "center", "containerPadding": "20px 10px", "color": "#FFFFFF"]]
+                    ]
+                ]
+            ]
+        ]
+        return [
+            "body": [
+                "values": [
+                    "popupWidth": "600px", "borderRadius": "10px", "popupBackgroundColor": "#FFFFFF",
+                    "popupOverlay_backgroundColor": "rgba(0, 0, 0, 0.5)"
+                ],
+                "rows": .array(Array(repeating: row, count: rows))
+            ]
+        ]
+    }
+
+    /// Observes the band actually reaching a layout call, rather than pinning its own
+    /// declaration the way `BannerChromeCloseControlTests` does (and says why that is all it
+    /// can do). `host.interactiveFrames` is the only frame this SDK publishes for a popup — see
+    /// the note above on why there is no `frame(of:)` helper — so this derives the band from two
+    /// cards whose designs differ only by a repeated, identical row, instead of asserting an
+    /// absolute height.
+    ///
+    /// At `cardHeight == nil` (every banner in production today) the reported card height is
+    /// `content height + closeControlBand`: `BannerChrome.popup` takes the band off the
+    /// content's budget (`BannerChrome.swift:74`) and adds it back as top padding (`:78`), and
+    /// `CappedHeightContent` only switches to a clipped `ScrollView` once the content is taller
+    /// than that budget — two or three short text rows stay well under it. So with `oneRow` and
+    /// `twoRows` built from the identical row:
+    ///   `oneRow  == rowHeight + band`
+    ///   `twoRows == 2 * rowHeight + band`
+    /// `twoRows - oneRow` cancels the band and leaves `rowHeight`; subtracting that back out of
+    /// `oneRow` leaves the band. Remove the padding at `:78` (or the budget reduction at `:74`)
+    /// and the derived band drops to 0 here, while the three assertions in
+    /// `BannerChromeCloseControlTests` stay green throughout, because they pin the constant
+    /// against its own definition rather than its use.
+    @MainActor
+    func testTheBandIsReflectedInThePopupsReportedHeight() throws {
+        var heights: [Int: CGFloat] = [:]
+        for rowCount in [1, 2] {
+            try snapshot(named: "popup_band_\(rowCount)_row") { vm in
+                vm.popupBanner = BannerResponse(token: "popup", displayType: "popup", design: repeatedRowDesign(rows: rowCount))
+            } check: { host, _ in
+                guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                    return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+                }
+                heights[rowCount] = card.height
+            }
+        }
+        let oneRow = try XCTUnwrap(heights[1], "no frame recorded for the one-row popup")
+        let twoRows = try XCTUnwrap(heights[2], "no frame recorded for the two-row popup")
+        let rowHeight = twoRows - oneRow
+        XCTAssertGreaterThan(rowHeight, 1, "the second row must add measurable height, or this derivation proves nothing")
+        let derivedBand = oneRow - rowHeight
+        XCTAssertEqual(
+            derivedBand,
+            BannerChrome.closeControlBand,
+            accuracy: 1,
+            "the band BannerChrome.popup reserves via its padding and height budget should show up in the reported frame"
+        )
+    }
+
     /// Bar contract: one full-width strip touching the screen edge it is pinned to, reported as
     /// the only touch-claiming frame so the rest of the app stays usable.
     @MainActor
