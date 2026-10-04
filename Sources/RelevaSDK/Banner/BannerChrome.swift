@@ -333,9 +333,6 @@ enum BannerChrome {
             .safeAreaInsets ?? .zero
     }
 
-    // MARK: - Close Button
-
-    @ViewBuilder
     /// The band the close control owns, measured in from the card's edge: its own 8pt inset,
     /// plus the 44pt tappable box `closeButton` pads a 32pt circle out to, plus 4 of clearance.
     ///
@@ -352,6 +349,9 @@ enum BannerChrome {
     /// Accessibility identifier on the close control, so a test can measure its frame.
     static let closeControlIdentifier = "releva-banner-close"
 
+    // MARK: - Close Button
+
+    @ViewBuilder
     private static func closeButton(
         for banner: BannerResponse,
         size: CGFloat,
