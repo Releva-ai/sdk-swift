@@ -218,12 +218,16 @@ enum BannerChrome {
                 )
                 .padding(.top, closeControlBand)
                 // The reserved band itself sits above the content, over nothing — the `ZStack`'s
-                // own `.background` below is `bottomColor` (the last row's colour), which is
-                // right for the drawer as a whole but wrong for this strip: it should read as a
-                // continuation of the first row, which is what `topColor` is computed for
-                // (`:189`, and already used as `CappedHeightContent`'s scroll-bounce bleed). Paint
-                // the band itself with it rather than leaving it to fall through to the last row.
-                .background(alignment: .top) { topColor.frame(height: closeControlBand) }
+                // own `.background` below (two lines down) is a choice between the body's
+                // `backgroundImage` and `bottomColor` (the last row's colour); only the
+                // `bottomColor` arm was wrong for this strip, which should read as a continuation
+                // of the first row (`topColor`, `:193`, already used as `CappedHeightContent`'s
+                // scroll-bounce bleed). Guard on the same `hasBodyBgImage` that background below
+                // branches on, so an image-backed drawer is left alone — its image already spans
+                // the full drawer height, band included.
+                .background(alignment: .top) {
+                    if !hasBodyBgImage { topColor.frame(height: closeControlBand) }
+                }
 
                 closeButton(for: banner, size: 32) {
                     viewModel.dismissFlyout(banner)

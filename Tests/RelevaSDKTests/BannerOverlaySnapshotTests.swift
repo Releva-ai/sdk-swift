@@ -193,18 +193,19 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     /// absolute height.
     ///
     /// At `cardHeight == nil` (every banner in production today) the reported card height is
-    /// `content height + closeControlBand`: `BannerChrome.popup` takes the band off the
-    /// content's budget (`BannerChrome.swift:74`) and adds it back as top padding (`:78`), and
-    /// `CappedHeightContent` only switches to a clipped `ScrollView` once the content is taller
-    /// than that budget — two or three short text rows stay well under it. So with `oneRow` and
-    /// `twoRows` built from the identical row:
+    /// `content height + closeControlBand`: `BannerChrome.popup` adds the band back as top
+    /// padding (`BannerChrome.swift:82`), and `CappedHeightContent` only switches to a clipped
+    /// `ScrollView` once the content is taller than its budget — two or three short text rows
+    /// stay well under it regardless of whether that budget was reduced by the band
+    /// (`:78`), so this test only guards the padding, not the budget reduction. So with
+    /// `oneRow` and `twoRows` built from the identical row:
     ///   `oneRow  == rowHeight + band`
     ///   `twoRows == 2 * rowHeight + band`
     /// `twoRows - oneRow` cancels the band and leaves `rowHeight`; subtracting that back out of
-    /// `oneRow` leaves the band. Remove the padding at `:78` (or the budget reduction at `:74`)
-    /// and the derived band drops to 0 here, while the three assertions in
-    /// `BannerChromeCloseControlTests` stay green throughout, because they pin the constant
-    /// against its own definition rather than its use.
+    /// `oneRow` leaves the band. Remove the padding at `:82` and the derived band drops to 0
+    /// here, while the three assertions in `BannerChromeCloseControlTests` stay green
+    /// throughout, because they pin the constant against its own definition rather than its
+    /// use.
     @MainActor
     func testTheBandIsReflectedInThePopupsReportedHeight() throws {
         var heights: [Int: CGFloat] = [:]
