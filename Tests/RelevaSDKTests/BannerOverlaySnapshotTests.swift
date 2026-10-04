@@ -94,17 +94,19 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         window.isHidden = true
     }
 
-    /// The window-space frame of the first view whose accessibility identifier is `id`.
-    @MainActor
-    private func frame(of id: String, in window: UIWindow) -> CGRect? {
-        func search(_ view: UIView) -> UIView? {
-            if view.accessibilityIdentifier == id { return view }
-            for sub in view.subviews { if let hit = search(sub) { return hit } }
-            return nil
-        }
-        guard let view = search(window) else { return nil }
-        return view.convert(view.bounds, to: window)
-    }
+    // WHY THERE IS NO `frame(of: identifier:)` HELPER HERE, which this file carried unused
+    // until 2026-10-04 and which does not work: it walked the window's `UIView` tree looking
+    // for `accessibilityIdentifier`, and SwiftUI content does not put one there. A
+    // `.accessibilityIdentifier` on a SwiftUI view sets an accessibility element's identifier,
+    // not a backing view's, and a hosting controller renders most of a view tree into very few
+    // `UIView`s. Adding the modifier to the close control and asking for its frame returned nil
+    // on CI, twice.
+    //
+    // What IS observable is `host.interactiveFrames`, which the SDK itself publishes through
+    // `reportBannerFrame()` for hit-testing — a production mechanism with a production purpose,
+    // not a test hook. Anything a test wants to measure has to be something the SDK already
+    // reports, or it has to be measured somewhere other than the rendered tree. See
+    // `BannerChromeCloseControlTests` for the second of those.
 
     /// Popup contract: a dim over the whole screen, and a card that is as tall as its design —
     /// a short design must not become a screen-high card — sitting inside the safe area, sized
@@ -171,50 +173,6 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             XCTAssertEqual(bar.width, window.bounds.width, accuracy: 0.5, "top bar spans the width")
             XCTAssertGreaterThan(bar.height, 59, "top bar pads for the status bar")
             XCTAssertLessThan(bar.height, window.bounds.height / 2, "a short design stays a strip")
-        }
-    }
-
-    /// THE CLOSE CONTROL IS DRAWN OVER THE CONTENT, not beside it — it is a `ZStack` sibling
-    /// — so every display type has to reserve the band it owns or the design runs underneath
-    /// it. sdk-react-native photographed that on 2026-10-03, where a narrow card's copy read
-    /// "CHR-08 bottom-left offse✕"; sdk-kotlin and sdk-flutter carry the same reservation.
-    ///
-    /// Measured as frames rather than pixels: the control now has an accessibility identifier,
-    /// so the window can be asked where it is and whether the banner's own frame leaves room
-    /// for it. The assertion is the band, not an overlap test on the rendered glyphs, because
-    /// what regresses is the reservation — a design re-flowed to the full width will overlap
-    /// again the moment its copy is long enough, which a short fixture would not show.
-    @MainActor
-    func testTheCloseControlHasABandOfItsOwnOnABar() throws {
-        try snapshot(named: "bar_close_band") { vm in
-            vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", displayPosition: "top", design: design(rowColor: "#3A3FE0"))]
-        } check: { host, window in
-            guard let bar = host.interactiveFrames.first else {
-                return XCTFail("expected a bar frame, got \(host.interactiveFrames)")
-            }
-            guard let close = self.frame(of: BannerChrome.closeControlIdentifier, in: window) else {
-                return XCTFail("the close control reported no frame")
-            }
-            // The control sits inside the band, hard against the bar's trailing edge.
-            XCTAssertLessThanOrEqual(bar.maxX - close.maxX, BannerChrome.closeControlBand, "the control is inside the band it reserves")
-            XCTAssertGreaterThanOrEqual(close.minX, bar.maxX - BannerChrome.closeControlBand, "the band is no wider than the control needs")
-        }
-    }
-
-    /// The same reservation on the other axis: a popup's control is at the TOP of the card, so
-    /// what it would cover is the design's first line rather than the end of a headline.
-    @MainActor
-    func testTheCloseControlHasABandOfItsOwnOnAPopup() throws {
-        try snapshot(named: "popup_close_band") { vm in
-            vm.popupBanner = BannerResponse(token: "popup", displayType: "popup", design: design(rowColor: "#3A3FE0"))
-        } check: { host, window in
-            guard let card = host.interactiveFrames.first else {
-                return XCTFail("expected a popup card frame, got \(host.interactiveFrames)")
-            }
-            guard let close = self.frame(of: BannerChrome.closeControlIdentifier, in: window) else {
-                return XCTFail("the close control reported no frame")
-            }
-            XCTAssertLessThanOrEqual(close.maxY - card.minY, BannerChrome.closeControlBand, "the control is inside the band at the card's top")
         }
     }
 

@@ -84,7 +84,7 @@ enum BannerChrome {
                     closeButton(for: banner, size: 32) {
                         viewModel.dismissPopup(banner)
                     }
-                    .padding(8)
+                    .padding(closeControlInset)
                 }
                 .frame(width: cardWidth)
                 .background(cardBackground)
@@ -217,7 +217,7 @@ enum BannerChrome {
                 closeButton(for: banner, size: 32) {
                     viewModel.dismissFlyout(banner)
                 }
-                .padding(8)
+                .padding(closeControlInset)
             }
             .frame(width: width, height: geometry.size.height, alignment: .top)
             .background(
@@ -312,8 +312,8 @@ enum BannerChrome {
             closeButton(for: banner, size: 32) {
                 viewModel.dismissBar(banner)
             }
-            .padding(.top, (isBottom ? 0 : edgeInset) + 8)
-            .padding(.trailing, 8)
+            .padding(.top, (isBottom ? 0 : edgeInset) + closeControlInset)
+            .padding(.trailing, closeControlInset)
         }
         .frame(maxWidth: .infinity)
         .background(
@@ -342,12 +342,17 @@ enum BannerChrome {
     /// 2026-10-03, where a narrow card's copy read "CHR-08 bottom-left offse✕"; sdk-kotlin
     /// reserves a `closeGutter` and sdk-flutter a `_closeControlBand` for the same reason.
     ///
-    /// Bigger than their 44/48 because this SDK pads the control's hit area out to Apple's
-    /// 44pt minimum, so the box to clear is larger than the circle you can see.
-    static let closeControlBand: CGFloat = 56
+    /// Bigger than the 44/48 those two use because this SDK pads the control's hit area out to
+    /// Apple's 44pt minimum, so the box to clear is larger than the circle you can see.
+    /// DERIVED, not chosen: `closeControlInset + closeControlHitBox` plus 4 of clearance, which
+    /// `BannerChromeCloseControlTests` pins — raise the hit box and the band has to follow.
+    static let closeControlBand: CGFloat = closeControlInset + closeControlHitBox + 4
 
-    /// Accessibility identifier on the close control, so a test can measure its frame.
-    static let closeControlIdentifier = "releva-banner-close"
+    /// How far the control sits in from the card's edge.
+    static let closeControlInset: CGFloat = 8
+
+    /// Apple's minimum touch target, which `closeButton` pads its circle out to.
+    static let closeControlHitBox: CGFloat = 44
 
     // MARK: - Close Button
 
@@ -369,8 +374,9 @@ enum BannerChrome {
             ?? Color(white: 0.8)
 
         // The visible circle is `size` points; the tappable area is padded out to at least
-        // 44 points (Apple's minimum touch target) so a 24–36 pt glyph is still easy to hit.
-        let hitPadding = max(0, (44 - size) / 2)
+        // `closeControlHitBox` (Apple's minimum touch target) so a 24–36 pt glyph is still easy
+        // to hit. Read from the constant the band is derived from, so the two cannot drift.
+        let hitPadding = max(0, (closeControlHitBox - size) / 2)
 
         Button(action: action) {
             Image(systemName: "xmark")
@@ -388,9 +394,6 @@ enum BannerChrome {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Close")
-        // The snapshot harness finds views by identifier; without one, no test can ask where
-        // this control is relative to the copy it is drawn over.
-        .accessibilityIdentifier(Self.closeControlIdentifier)
     }
 
     // MARK: - Helpers
