@@ -62,11 +62,15 @@ enum BannerChrome {
                 let cardHeight = style.cardHeight(availableHeight: geometry.size.height, maxHeight: maxHeight)
 
                 ZStack(alignment: .topTrailing) {
-                    // The band comes OUT of the card's height, not on top of it: the outer
-                    // `.frame(height: cardHeight)` still reports the size the author asked for,
-                    // and the content gets what is left. Padding without taking it off the
+                    // The band comes OUT of an authored card's height, not on top of it: the
+                    // outer `.frame(height: cardHeight)` still reports the size the author asked
+                    // for, and the content gets what is left. Padding without taking it off the
                     // budget would make an authored card 56pt taller than it asked to be, and
-                    // push `contentVerticalAlign: bottom` copy past the card's own edge.
+                    // push `contentVerticalAlign: bottom` copy past the card's own edge. At
+                    // `cardHeight`'s `auto` default (`nil`, every banner today) there is no fixed
+                    // height for the band to come out of, so the card itself is 56pt taller than
+                    // before this band existed — the budget reduction above only keeps the
+                    // *content* from scrolling sooner than it has to.
                     popupContent(
                         banner,
                         viewModel: viewModel,

@@ -33,9 +33,19 @@ All notable changes to this project will be documented in this file.
   it and the tail of a headline was painted beneath the glyph — sdk-react-native photographed
   exactly that on 2026-10-03, where a narrow card's copy read `CHR-08 bottom-left offse✕`. Each
   display type now reserves the 56-point band the control owns: a bar on its trailing edge, a
-  popup and a flyout at the top. The band comes out of the card's own height budget rather than
-  being added to it, so an authored `cardHeight` still reports the size it asked for and
-  `contentVerticalAlign: bottom` copy is not pushed past the card's edge.
+  popup and a flyout at the top. When `cardHeight` is authored, the band comes out of that fixed
+  height's own budget, so the card still reports the size it asked for and `contentVerticalAlign:
+  bottom` copy is not pushed past its edge. At `cardHeight`'s `auto` default — every banner in
+  production today, since this is the first release reading the key at all — there is no fixed
+  height to take the band out of, so the popup and the flyout are 56 pt taller than they were
+  before this fix; the bar's design renders 56 pt narrower and is padded by the same amount on
+  its trailing edge. Both are the unavoidable cost of no longer drawing content under the
+  control, not a side effect of the new chrome keys.
+- **A flyout's reserved band is painted with the first row's colour, not the last.** The strip
+  the band opens above the content sat over the `ZStack`'s own background, which is the colour
+  computed for the bottom of the drawer; a drawer whose first row is dark and whose last row is
+  pale showed a pale strip above a dark first row. It now paints with the colour already computed
+  for the top.
 
 ## [5.1.0] - 2026-09-09
 
