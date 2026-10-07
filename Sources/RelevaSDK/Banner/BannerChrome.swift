@@ -85,7 +85,7 @@ enum BannerChrome {
                         alignment: Alignment(horizontal: .center, vertical: style.contentVerticalAlign.alignment)
                     )
 
-                    closeButton(for: banner, size: 32) {
+                    closeButton(for: banner) {
                         viewModel.dismissPopup(banner)
                     }
                     .padding(closeControlInset)
@@ -229,7 +229,7 @@ enum BannerChrome {
                     if !hasBodyBgImage { topColor.frame(height: closeControlBand) }
                 }
 
-                closeButton(for: banner, size: 32) {
+                closeButton(for: banner) {
                     viewModel.dismissFlyout(banner)
                 }
                 .padding(closeControlInset)
@@ -324,7 +324,7 @@ enum BannerChrome {
                 .padding(isBottom ? .bottom : .top, edgeInset)
             }
 
-            closeButton(for: banner, size: 32) {
+            closeButton(for: banner) {
                 viewModel.dismissBar(banner)
             }
             .padding(.top, (isBottom ? 0 : edgeInset) + closeControlInset)
@@ -349,7 +349,8 @@ enum BannerChrome {
     }
 
     /// The band the close control owns, measured in from the card's edge: its own 8pt inset,
-    /// plus the 44pt tappable box `closeButton` pads a 32pt circle out to, plus 4 of clearance.
+    /// plus the 44pt tappable box `closeButton` pads its 32–44pt visible button out to, plus 4 of
+    /// clearance. `BannerCloseButtonStyle` caps the visible side at 44, so it never outgrows the box.
     ///
     /// The control is drawn OVER the content — it is a `ZStack` sibling, not a view in flow
     /// beside it — so without this reserved the design runs underneath it and the tail of a
@@ -371,37 +372,33 @@ enum BannerChrome {
 
     // MARK: - Close Button
 
+    /// The close control, styled from `cssStyles` alone — see `BannerCloseButtonStyle`.
     @ViewBuilder
     private static func closeButton(
         for banner: BannerResponse,
-        size: CGFloat,
         action: @escaping () -> Void
     ) -> some View {
-        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
+        let style = BannerCloseButtonStyle(banner)
+        let shape = RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
 
-        let bgColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_backgroundColor"])
-            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonBackgroundColor"])
-            ?? .white
-        let iconColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_iconColor"])
-            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonColor"])
-            ?? Color(white: 0.3)
-        let borderColor = DesignRenderer.parseColor(banner.cssStyles["closeButtonBorder"])
-            ?? Color(white: 0.8)
-
-        // The visible circle is `size` points; the tappable area is padded out to at least
-        // `closeControlHitBox` (Apple's minimum touch target) so a 24–36 pt glyph is still easy
-        // to hit. Read from the constant the band is derived from, so the two cannot drift.
-        let hitPadding = max(0, (closeControlHitBox - size) / 2)
+        // The visible button is `style.side` points (32–44); the tappable area is padded out to
+        // `style.hitSide`, at least `closeControlHitBox` (Apple's minimum touch target), centred
+        // on it. Read from the constant the band is derived from, so the two cannot drift.
+        let hitPadding = max(0, (style.hitSide - style.side) / 2)
 
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.system(size: size * 0.4, weight: .semibold))
-                .foregroundColor(iconColor)
-                .frame(width: size, height: size)
+                .font(.system(size: style.fontSize, weight: .semibold))
+                .foregroundColor(style.iconColor)
+                .frame(width: style.side, height: style.side)
                 .background(
-                    Circle()
-                        .fill(bgColor)
-                        .overlay(Circle().stroke(borderColor, lineWidth: 1))
+                    shape
+                        .fill(style.backgroundColor)
+                        .overlay {
+                            if let border = style.border {
+                                shape.strokeBorder(border.color, lineWidth: border.width)
+                            }
+                        }
                         .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
                 )
                 .padding(hitPadding)

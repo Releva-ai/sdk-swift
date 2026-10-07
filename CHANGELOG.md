@@ -46,6 +46,20 @@ All notable changes to this project will be documented in this file.
   computed for the bottom of the drawer; a drawer whose first row is dark and whose last row is
   pale showed a pale strip above a dark first row. It now paints with the colour already computed
   for the top.
+- **The close button is styled from `cssStyles`, the way the web draws it.** `closeButtonColor`
+  and `closeButtonBackgroundColor` now accept every CSS form the editor writes — `#rgb`, `#rgba`,
+  `#rrggbb`, `#rrggbbaa` (alpha last), `rgb()`, `rgba()`, `transparent` — so the admin default
+  `#000` on `#fff` is no longer dropped. `closeButtonBorder` is read as the CSS shorthand
+  (`2px solid #e00000`): its width and colour are drawn as a solid stroke, and an absent, empty,
+  `none` or colourless value draws NO border, replacing the fixed grey ring this SDK drew.
+  `closeFontSize` sizes the glyph (clamped to 8–26 pt; the visible button is
+  `max(32, size + 18)`, so at most 44, and the tap target stays at least 44 pt) and
+  `closeButtonBorderRadius` its corners (capped at half the side, so the default 20 is a circle).
+  The web-only keys (`closeButtonSymbol`, `…Padding`, `…FontWeight`, `…LineHeight`,
+  `…TopPosition`, `…RightPosition`) are ignored, and the design's `popupCloseButton_*` values are
+  no longer read. A banner at the server defaults now shows a BLACK ✕ on a white circle with no
+  ring, where it showed a dark-grey ✕ with a grey ring — intended: it is what the web shows.
+  `DesignRenderer.parseColor(css:)` gained the same colour forms for design colours too.
 
 ## [5.1.0] - 2026-09-09
 
