@@ -221,8 +221,8 @@ private struct BannerOverlayContent: View {
     @ObservedObject var viewModel: BannerDisplayViewModel
     let host: BannerOverlayHost
 
-    private var topBars: [BannerResponse] { viewModel.barBanners.filter { $0.displayPosition != "bottom" } }
-    private var bottomBars: [BannerResponse] { viewModel.barBanners.filter { $0.displayPosition == "bottom" } }
+    private var topBars: [BannerResponse] { viewModel.barBanners.filter { !BannerCardStyle.isBottomEdge($0) } }
+    private var bottomBars: [BannerResponse] { viewModel.barBanners.filter { BannerCardStyle.isBottomEdge($0) } }
 
     var body: some View {
         ZStack {

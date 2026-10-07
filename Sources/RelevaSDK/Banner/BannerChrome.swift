@@ -16,26 +16,33 @@ import SwiftUI
 enum BannerChrome {
     // MARK: - Popup Banner
 
-    /// A centred card sized from the design's body values as the web SDK draws it: `popupWidth`
-    /// (default 600 px, capped to the screen width minus 16 pt each side), `borderRadius`,
-    /// `popupBackgroundColor`, `popupOverlay_backgroundColor`. Height follows the content and
-    /// scrolls inside the card when taller than the safe area; a `popupHeight` in `vh` units forces
-    /// the full-height card. The close button sits inside the top-right corner with a 44 pt hit
-    /// target.
+    /// A card holding the design, sized and placed from the banner's chrome keys
+    /// (`BannerCardStyle`) over what this SDK has always drawn: `popupWidth` capped to the
+    /// available width minus 16 pt each side (default 600), `borderRadius` (default 10),
+    /// `popupBackgroundColor` (default white), centred inside the safe area, with the design's
+    /// `popupOverlay_backgroundColor` dimming the rest of the screen.
+    /// Height follows the content and scrolls inside the card when taller than the safe area,
+    /// unless `cardHeight` fixes it, in which case `contentVerticalAlign` places the design in
+    /// the card. The close button sits inside the top-right corner with a 44 pt hit target.
     @ViewBuilder
     static func popup(
         _ banner: BannerResponse,
         viewModel: BannerDisplayViewModel,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
+        // These three are the popup's own pre-existing reads of the design's body values — kept
+        // as the default branch each new key falls through to (the same pattern the flyout below
+        // already uses for `popupWidth`/`popupBackgroundColor`), so a key at its default still
+        // runs exactly today's code path per the compatibility rule, rather than a hardcoded
+        // literal standing in for a measurement of production data that could go stale.
         let bodyValues = DesignRenderer.getDesignBodyValues(banner)
+        let legacyCardWidth = DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"]) ?? 600
+        let legacyCornerRadius = DesignRenderer.parseDimensionRaw(bodyValues["borderRadius"]) ?? 10
+        let style = BannerCardStyle(banner, legacyDefault: legacyCornerRadius)
         let overlayColor = getOverlayColor(banner)
-        let screenWidth = UIScreen.main.bounds.width
-        let designWidth = DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"]) ?? 600
-        let cardWidth = min(designWidth, screenWidth - 32)
-        let cornerRadius = DesignRenderer.parseDimensionRaw(bodyValues["borderRadius"]) ?? 10
-        let cardBackground = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"]) ?? .white
-        let wantsFullHeight = (bodyValues["popupHeight"]?.stringValue ?? "").hasSuffix("vh")
+        let cardBackground = style.backgroundColor
+            ?? DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
+            ?? .white
 
         ZStack {
             // Overlay
@@ -46,36 +53,74 @@ enum BannerChrome {
                 }
 
             GeometryReader { geometry in
+                // The container's own width, not `UIScreen.main.bounds.width`: only this is
+                // right when the window is narrower than the physical screen (iPad split view,
+                // the snapshot test's window).
+                let cardWidth = style.cardWidth(availableWidth: geometry.size.width, legacyDefault: legacyCardWidth)
                 let maxHeight = max(geometry.size.height - 32, 120)
+                // An authored height still stays inside the safe area, as the measured one does.
+                let cardHeight = style.cardHeight(availableHeight: geometry.size.height, maxHeight: maxHeight)
 
                 ZStack(alignment: .topTrailing) {
+                    // The band comes OUT of an authored card's height, not on top of it: the
+                    // outer `.frame(height: cardHeight)` still reports the size the author asked
+                    // for, and the content gets what is left. Padding without taking it off the
+                    // budget would make an authored card 56pt taller than it asked to be, and
+                    // push `contentVerticalAlign: bottom` copy past the card's own edge. At
+                    // `cardHeight`'s `auto` default (`nil`, every banner today) there is no fixed
+                    // height for the band to come out of, so the card itself is 56pt taller than
+                    // before this band existed — the budget reduction above only keeps the
+                    // *content* from scrolling sooner than it has to.
                     popupContent(
                         banner,
                         viewModel: viewModel,
                         width: cardWidth,
-                        maxHeight: maxHeight,
-                        fullHeight: wantsFullHeight,
+                        maxHeight: max((cardHeight ?? maxHeight) - closeControlBand, 1),
                         dismissForLink: { viewModel.dismissPopup(banner, track: false) },
                         onLinkTap: onLinkTap
                     )
+                    .padding(.top, closeControlBand)
+                    .frame(
+                        height: cardHeight,
+                        alignment: Alignment(horizontal: .center, vertical: style.contentVerticalAlign.alignment)
+                    )
 
-                    closeButton(for: banner, size: 32) {
+                    closeButton(for: banner) {
                         viewModel.dismissPopup(banner)
                     }
-                    .padding(8)
+                    .padding(closeControlInset)
                 }
                 .frame(width: cardWidth)
                 .background(cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
                 .shadow(color: Color.black.opacity(0.25), radius: 24, y: 8)
-                // Centre the card inside the safe area.
-                .frame(width: geometry.size.width, height: geometry.size.height)
+                // Reports the card's own on-screen frame, so a snapshot test can observe its
+                // width and position the same way it already does for a bar or a flyout: the
+                // placement and offset modifiers below still apply to this view and its
+                // background together, exactly as they do for the bar's `VStack`. `coversScreen`
+                // is what actually gates touch pass-through for a popup, so this does not change
+                // hit-testing.
+                .reportBannerFrame()
+                // Place the card inside the safe area: centred unless the position keys say
+                // otherwise, then moved by the offset keys.
+                .frame(
+                    width: geometry.size.width,
+                    height: geometry.size.height,
+                    alignment: Alignment(
+                        horizontal: style.positionHorizontal?.alignment ?? .center,
+                        vertical: style.positionVertical?.alignment ?? .center
+                    )
+                )
+                .offset(
+                    x: style.offsetTranslationX(in: geometry.size.width),
+                    y: style.offsetTranslationY(in: geometry.size.height)
+                )
             }
         }
     }
 
     /// The rendered design inside a popup card: sized to its content when it fits, otherwise
-    /// a scrolling area of `maxHeight`. `fullHeight` forces the scrolling area.
+    /// a scrolling area of `maxHeight`.
     @ViewBuilder
     // swiftlint:disable:next function_parameter_count
     private static func popupContent(
@@ -83,7 +128,6 @@ enum BannerChrome {
         viewModel: BannerDisplayViewModel,
         width: CGFloat,
         maxHeight: CGFloat,
-        fullHeight: Bool,
         bottomInset: CGFloat = 0,
         topBleedColor: Color? = nil,
         dismissForLink: @escaping () -> Void,
@@ -100,18 +144,19 @@ enum BannerChrome {
         }
         .frame(width: width)
 
-        CappedHeightContent(maxHeight: maxHeight, forceScroll: fullHeight, bottomInset: bottomInset, topBleedColor: topBleedColor) { rendered }
+        CappedHeightContent(maxHeight: maxHeight, bottomInset: bottomInset, topBleedColor: topBleedColor) { rendered }
     }
 
     // MARK: - Flyout Banner
 
-    /// The mobile flyout: a drawer flush with the left or right screen edge, from the top of the
-    /// safe area to the screen bottom, no corner radius, width hugging the design's content (an
-    /// image-only design gets its image width plus padding) and capped to 72 % of the screen,
-    /// scrolling when the content is taller. A deliberate deviation from the web flyout (`bottom:
-    /// 0; left/right: 20px; width: auto`), which reads as a popup on a phone. The close button sits
-    /// inside the panel's top-right corner; there is no dimmed overlay and the page around the
-    /// panel stays usable.
+    /// The mobile flyout: a drawer flush with the screen edge `cardPositionHorizontal` names —
+    /// or, at its `auto` default, with the one `displayPosition` names — from the top of the safe
+    /// area to the screen bottom, no corner radius, width hugging the design's content (an
+    /// image-only design gets its image width plus padding) unless `cardWidth` sets it, capped to
+    /// 72 % of the screen either way, scrolling when the content is taller. A deliberate deviation
+    /// from the web flyout (`bottom: 0; left/right: 20px; width: auto`), which reads as a popup on
+    /// a phone. The close button sits inside the panel's top-right corner; there is no dimmed
+    /// overlay and the page around the panel stays usable.
     @ViewBuilder
     static func flyout(
         _ banner: BannerResponse,
@@ -119,18 +164,30 @@ enum BannerChrome {
         bottomInset: CGFloat = 0,
         onLinkTap: @escaping (String) -> Void
     ) -> some View {
+        let style = BannerCardStyle(banner)
         let bodyValues = DesignRenderer.getDesignBodyValues(banner)
         let bgImageMap = bodyValues["backgroundImage"]
         let hasBodyBgImage = !(bgImageMap?["url"]?.stringValue ?? "").isEmpty
-        let isLeft = banner.displayPosition == "left"
-        let designWidth = banner.design.flatMap { DesignRenderer.intrinsicImageWidth(in: $0) }
+        let legacySide: BannerCardStyle.HorizontalPlacement = banner.displayPosition == "left" ? .left : .right
+        let side = style.positionHorizontal ?? legacySide
+        // `popupWidth` stays as the *default* branch `cardWidth` falls back to (not read
+        // directly any more, only through `style.width` below): at `cardWidth`'s default this
+        // is exactly today's pre-cap width source, so a design without an authored width still
+        // renders identically on a container wide enough for the cap not to dominate (see
+        // `BannerCardStyle.swift`'s `cardWidth`/`length` doc comments for the same pattern).
+        let contentWidth = banner.design.flatMap { DesignRenderer.intrinsicImageWidth(in: $0) }
             ?? DesignRenderer.parseDimensionRaw(bodyValues["popupWidth"])
             ?? DesignRenderer.parseDimensionRaw(bodyValues["contentWidth"])
             ?? 360
         // Colours for the parts of the drawer the content does not cover: the first row's above
         // it, the last row's below it.
         let rows = banner.design?["body"]?["rows"]?.arrayValue?.compactMap { $0.objectValue } ?? []
-        let fallback = DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
+        // Same pattern as the width above: `popupBackgroundColor` is the default branch
+        // `cardBackgroundColor` falls back to, not read directly, so a design with no first/last
+        // row colour and no authored `cardBackgroundColor` still bleeds today's white rather than
+        // the body `backgroundColor`.
+        let fallback = style.backgroundColor
+            ?? DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
             ?? DesignRenderer.parseColor(bodyValues["backgroundColor"])
             ?? Color.white
         let topColor = rowColor(rows.first) ?? fallback
@@ -140,26 +197,42 @@ enum BannerChrome {
         // fills it: content at the top, scrolling when taller, the design's colours filling the
         // rest.
         GeometryReader { geometry in
+            let designWidth = style.width?.resolved(in: geometry.size.width) ?? contentWidth
             let width = max(160, min(designWidth, geometry.size.width * 0.72))
             let maxHeight = max(160, geometry.size.height - bottomInset)
 
             ZStack(alignment: .topTrailing) {
+                // As the popup above: the control is drawn over this, so the band it owns is
+                // taken off the content's budget and added back as padding. sdk-flutter's
+                // flyout does not need this because its control is the first child of a
+                // `Column`, in flow above the content rather than over it.
                 popupContent(
                     banner,
                     viewModel: viewModel,
                     width: width,
-                    maxHeight: maxHeight,
-                    fullHeight: false,
+                    maxHeight: max(maxHeight - closeControlBand, 1),
                     bottomInset: bottomInset,
                     topBleedColor: topColor,
                     dismissForLink: { viewModel.dismissFlyout(banner, track: false) },
                     onLinkTap: onLinkTap
                 )
+                .padding(.top, closeControlBand)
+                // The reserved band itself sits above the content, over nothing — the `ZStack`'s
+                // own `.background` below (two lines down) is a choice between the body's
+                // `backgroundImage` and `bottomColor` (the last row's colour); only the
+                // `bottomColor` arm was wrong for this strip, which should read as a continuation
+                // of the first row (`topColor`, `:193`, already used as `CappedHeightContent`'s
+                // scroll-bounce bleed). Guard on the same `hasBodyBgImage` that background below
+                // branches on, so an image-backed drawer is left alone — its image already spans
+                // the full drawer height, band included.
+                .background(alignment: .top) {
+                    if !hasBodyBgImage { topColor.frame(height: closeControlBand) }
+                }
 
-                closeButton(for: banner, size: 32) {
+                closeButton(for: banner) {
                     viewModel.dismissFlyout(banner)
                 }
-                .padding(8)
+                .padding(closeControlInset)
             }
             .frame(width: width, height: geometry.size.height, alignment: .top)
             .background(
@@ -176,12 +249,12 @@ enum BannerChrome {
                 }
             )
             .clipped()
-            .shadow(color: Color.black.opacity(0.25), radius: 16, x: isLeft ? 4 : -4, y: 0)
+            .shadow(color: Color.black.opacity(0.25), radius: 16, x: side.shadowDirection * 4, y: 0)
             .reportBannerFrame()
             .frame(
                 width: geometry.size.width,
                 height: geometry.size.height,
-                alignment: isLeft ? .bottomLeading : .bottomTrailing
+                alignment: Alignment(horizontal: side.alignment, vertical: .bottom)
             )
         }
     }
@@ -236,22 +309,26 @@ enum BannerChrome {
             if let design = banner.design {
                 // `width` is the container's real width; `UIScreen` is a fallback that is wrong
                 // when the window is not the screen (iPad split view, the snapshot test's window).
+                // Rendered to the width it will actually occupy, not the bar's: the band
+                // below is reserved for the close control, and a design laid out against the
+                // full width would be re-flowed or clipped by it rather than fitting it.
                 DesignRenderer.render(
                     design: design,
-                    maxWidth: width ?? UIScreen.main.bounds.width
+                    maxWidth: max((width ?? UIScreen.main.bounds.width) - closeControlBand, 1)
                 ) { url in
                     viewModel.trackClick(banner)
                     onLinkTap(url)
                 }
                 .frame(maxWidth: .infinity)
+                .padding(.trailing, closeControlBand)
                 .padding(isBottom ? .bottom : .top, edgeInset)
             }
 
-            closeButton(for: banner, size: 32) {
+            closeButton(for: banner) {
                 viewModel.dismissBar(banner)
             }
-            .padding(.top, (isBottom ? 0 : edgeInset) + 8)
-            .padding(.trailing, 8)
+            .padding(.top, (isBottom ? 0 : edgeInset) + closeControlInset)
+            .padding(.trailing, closeControlInset)
         }
         .frame(maxWidth: .infinity)
         .background(
@@ -271,38 +348,57 @@ enum BannerChrome {
             .safeAreaInsets ?? .zero
     }
 
+    /// The band the close control owns, measured in from the card's edge: its own 8pt inset,
+    /// plus the 44pt tappable box `closeButton` pads its 32–44pt visible button out to, plus 4 of
+    /// clearance. `BannerCloseButtonStyle` caps the visible side at 44, so it never outgrows the box.
+    ///
+    /// The control is drawn OVER the content — it is a `ZStack` sibling, not a view in flow
+    /// beside it — so without this reserved the design runs underneath it and the tail of a
+    /// headline is painted beneath the glyph. sdk-react-native photographed exactly that on
+    /// 2026-10-03, where a narrow card's copy read "CHR-08 bottom-left offse✕"; sdk-kotlin
+    /// reserves a `closeGutter` and sdk-flutter a `_closeControlBand` for the same reason.
+    ///
+    /// Bigger than the 44/48 those two use because this SDK pads the control's hit area out to
+    /// Apple's 44pt minimum, so the box to clear is larger than the circle you can see.
+    /// DERIVED, not chosen: `closeControlInset + closeControlHitBox` plus 4 of clearance, which
+    /// `BannerChromeCloseControlTests` pins — raise the hit box and the band has to follow.
+    static let closeControlBand: CGFloat = closeControlInset + closeControlHitBox + 4
+
+    /// How far the control sits in from the card's edge.
+    static let closeControlInset: CGFloat = 8
+
+    /// Apple's minimum touch target, which `closeButton` pads its circle out to.
+    static let closeControlHitBox: CGFloat = 44
+
     // MARK: - Close Button
 
+    /// The close control, styled from `cssStyles` alone — see `BannerCloseButtonStyle`.
     @ViewBuilder
     private static func closeButton(
         for banner: BannerResponse,
-        size: CGFloat,
         action: @escaping () -> Void
     ) -> some View {
-        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
+        let style = BannerCloseButtonStyle(banner)
+        let shape = RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
 
-        let bgColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_backgroundColor"])
-            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonBackgroundColor"])
-            ?? .white
-        let iconColor = DesignRenderer.parseColor(bodyValues["popupCloseButton_iconColor"])
-            ?? DesignRenderer.parseColor(banner.cssStyles["closeButtonColor"])
-            ?? Color(white: 0.3)
-        let borderColor = DesignRenderer.parseColor(banner.cssStyles["closeButtonBorder"])
-            ?? Color(white: 0.8)
-
-        // The visible circle is `size` points; the tappable area is padded out to at least
-        // 44 points (Apple's minimum touch target) so a 24–36 pt glyph is still easy to hit.
-        let hitPadding = max(0, (44 - size) / 2)
+        // The visible button is `style.side` points (32–44); the tappable area is padded out to
+        // `style.hitSide`, at least `closeControlHitBox` (Apple's minimum touch target), centred
+        // on it. Read from the constant the band is derived from, so the two cannot drift.
+        let hitPadding = max(0, (style.hitSide - style.side) / 2)
 
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.system(size: size * 0.4, weight: .semibold))
-                .foregroundColor(iconColor)
-                .frame(width: size, height: size)
+                .font(.system(size: style.fontSize, weight: .semibold))
+                .foregroundColor(style.iconColor)
+                .frame(width: style.side, height: style.side)
                 .background(
-                    Circle()
-                        .fill(bgColor)
-                        .overlay(Circle().stroke(borderColor, lineWidth: 1))
+                    shape
+                        .fill(style.backgroundColor)
+                        .overlay {
+                            if let border = style.border {
+                                shape.strokeBorder(border.color, lineWidth: border.width)
+                            }
+                        }
                         .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
                 )
                 .padding(hitPadding)
@@ -329,12 +425,11 @@ private struct ContentHeightKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-/// Shows `content` at its own height, or inside a scroll view of `maxHeight` when taller (or when
-/// `forceScroll` is set). The content is measured once; `ViewThatFits` compares against the offered
-/// height, which in the overlay window is the whole safe area.
+/// Shows `content` at its own height, or inside a scroll view of `maxHeight` when taller. The
+/// content is measured once; `ViewThatFits` compares against the offered height, which in the
+/// overlay window is the whole safe area.
 struct CappedHeightContent<Content: View>: View {
     let maxHeight: CGFloat
-    let forceScroll: Bool
     /// Space to keep clear below the content (the home indicator when the container reaches
     /// the screen bottom). Added as padding when the content is shown as is; when it scrolls,
     /// the scroll view is given the extra height and its content is inset by the same amount,
@@ -356,7 +451,7 @@ struct CappedHeightContent<Content: View>: View {
             )
 
         Group {
-            if forceScroll || contentHeight > maxHeight {
+            if contentHeight > maxHeight {
                 ScrollView {
                     measured
                         .padding(.bottom, bottomInset)

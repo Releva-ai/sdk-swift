@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.2.0] - 2026-10-04
+
+### Added
+
+- **The banner editor's card chrome and position keys are honoured.** A popup or flyout now
+  reads the nine `cssStyles` keys the editor writes — `cardBackgroundColor`, `cardWidth`,
+  `cardHeight`, `cardBorderRadius`, `contentVerticalAlign`, `cardPositionVertical`,
+  `cardPositionHorizontal`, `cardOffsetVertical`, `cardOffsetHorizontal` — so a card the author
+  coloured, rounded, sized, moved or nudged renders that way instead of at the SDK's hard-coded
+  defaults. Every key is resolved against its documented default, compared trimmed and
+  lower-cased, and a key at its default runs the path it ran before.
+- A **bar** reads `cardPositionVertical` for its edge and nothing else. `cardWidth`,
+  `cardPositionHorizontal` and `cardOffsetHorizontal` do not apply to a bar — it spans the
+  viewport, so it has no width of its own, no horizontal axis to place a card on and no
+  horizontal edge to offset it from. The banner editor does not offer them for a bar and strips
+  them on save; see `constants/banner-chrome-css-styles.md` in magellan-api.
+
+### Fixed
+
+- **A positive offset moves a card AWAY from the edge it is anchored to.** `cardOffsetVertical`
+  and `cardOffsetHorizontal` are a gap from an anchored edge, not a translation, so an `end`
+  anchor (`bottom` / `right`) negates: `24px` on a bottom-anchored card lifts it 24 points off
+  the bottom, and a negative value is what lets a card bleed past its edge. This SDK translated
+  the raw value, which moved a bottom-anchored card further down and off screen. The contract is
+  `constants/banner-chrome-css-styles.md`; magellan-sdk-js, sdk-kotlin and sdk-flutter read it
+  this way.
+- **The close control no longer covers the copy.** It is drawn over the content as a `ZStack`
+  sibling rather than beside it in flow, so a design laid out to the full width ran underneath
+  it and the tail of a headline was painted beneath the glyph — sdk-react-native photographed
+  exactly that on 2026-10-03, where a narrow card's copy read `CHR-08 bottom-left offse✕`. Each
+  display type now reserves the 56-point band the control owns: a bar on its trailing edge, a
+  popup and a flyout at the top. When `cardHeight` is authored, the band comes out of that fixed
+  height's own budget, so the card still reports the size it asked for and `contentVerticalAlign:
+  bottom` copy is not pushed past its edge. At `cardHeight`'s `auto` default — every banner in
+  production today, since this is the first release reading the key at all — there is no fixed
+  height to take the band out of, so the popup and the flyout are 56 pt taller than they were
+  before this fix; the bar's design renders 56 pt narrower and is padded by the same amount on
+  its trailing edge. Both are the unavoidable cost of no longer drawing content under the
+  control, not a side effect of the new chrome keys.
+- **A flyout's reserved band is painted with the first row's colour, not the last.** The strip
+  the band opens above the content sat over the `ZStack`'s own background, which is the colour
+  computed for the bottom of the drawer; a drawer whose first row is dark and whose last row is
+  pale showed a pale strip above a dark first row. It now paints with the colour already computed
+  for the top.
+- **The close button is styled from `cssStyles`, the way the web draws it.** `closeButtonColor`
+  and `closeButtonBackgroundColor` now accept every CSS form the editor writes — `#rgb`, `#rgba`,
+  `#rrggbb`, `#rrggbbaa` (alpha last), `rgb()`, `rgba()`, `transparent` — so the admin default
+  `#000` on `#fff` is no longer dropped. `closeButtonBorder` is read as the CSS shorthand
+  (`2px solid #e00000`): its width and colour are drawn as a solid stroke, and an absent, empty,
+  `none` or colourless value draws NO border, replacing the fixed grey ring this SDK drew.
+  `closeFontSize` sizes the glyph (clamped to 8–26 pt; the visible button is
+  `max(32, size + 18)`, so at most 44, and the tap target stays at least 44 pt) and
+  `closeButtonBorderRadius` its corners (capped at half the side, so the default 20 is a circle).
+  The web-only keys (`closeButtonSymbol`, `…Padding`, `…FontWeight`, `…LineHeight`,
+  `…TopPosition`, `…RightPosition`) are ignored, and the design's `popupCloseButton_*` values are
+  no longer read. A banner at the server defaults now shows a BLACK ✕ on a white circle with no
+  ring, where it showed a dark-grey ✕ with a grey ring — intended: it is what the web shows.
+  `DesignRenderer.parseColor(css:)` gained the same colour forms for design colours too.
+
 ## [5.1.0] - 2026-09-09
 
 Everything here comes from the first pass over the SDK on a physical iPhone (iOS 26) since 1.0.2, run through the example app (`Releva-ai/example-swift`).

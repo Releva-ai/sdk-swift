@@ -94,28 +94,142 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         window.isHidden = true
     }
 
-    /// The window-space frame of the first view whose accessibility identifier is `id`.
-    @MainActor
-    private func frame(of id: String, in window: UIWindow) -> CGRect? {
-        func search(_ view: UIView) -> UIView? {
-            if view.accessibilityIdentifier == id { return view }
-            for sub in view.subviews { if let hit = search(sub) { return hit } }
-            return nil
-        }
-        guard let view = search(window) else { return nil }
-        return view.convert(view.bounds, to: window)
-    }
+    // WHY THERE IS NO `frame(of: identifier:)` HELPER HERE, which this file carried unused
+    // until 2026-10-04 and which does not work: it walked the window's `UIView` tree looking
+    // for `accessibilityIdentifier`, and SwiftUI content does not put one there. A
+    // `.accessibilityIdentifier` on a SwiftUI view sets an accessibility element's identifier,
+    // not a backing view's, and a hosting controller renders most of a view tree into very few
+    // `UIView`s. Adding the modifier to the close control and asking for its frame returned nil
+    // on CI, twice.
+    //
+    // What IS observable is `host.interactiveFrames`, which the SDK itself publishes through
+    // `reportBannerFrame()` for hit-testing — a production mechanism with a production purpose,
+    // not a test hook. Anything a test wants to measure has to be something the SDK already
+    // reports, or it has to be measured somewhere other than the rendered tree. See
+    // `BannerChromeCloseControlTests` for the second of those.
 
     /// Popup contract: a dim over the whole screen, and a card that is as tall as its design —
-    /// a short design must not become a screen-high card — sitting inside the safe area.
+    /// a short design must not become a screen-high card — sitting inside the safe area, sized
+    /// and centred the way `BannerCardStyle.cardWidth` says: 600 pt capped to the window's own
+    /// width minus 16 pt each side (here `min(600, 393 - 32) = 361`), not to `UIScreen`.
     @MainActor
     func testPopupSnapshot() throws {
         try snapshot(named: "popup") { vm in
             vm.popupBanner = BannerResponse(token: "popup", displayType: "popup", design: design(rowColor: "#3A3FE0"))
-        } check: { host, _ in
+        } check: { host, window in
             XCTAssertTrue(host.coversScreen, "a popup owns every touch")
-            XCTAssertTrue(host.interactiveFrames.isEmpty, "a popup reports no pass-through frames")
+            // `coversScreen`, not this frame, is what gates touch pass-through for a popup; the
+            // card still reports its own frame — the same mechanism a bar or a flyout uses — so
+            // its geometry is observable here.
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(card.width, min(600, window.bounds.width - 32), accuracy: 0.5)
+            XCTAssertEqual(card.midX, window.bounds.width / 2, accuracy: 0.5, "centred with no position keys authored")
         }
+    }
+
+    /// Regression guard for the popup's own pre-existing `popupWidth`/`borderRadius`/
+    /// `popupBackgroundColor` body-value reads: with none of the nine new `cssStyles` keys
+    /// authored, a design whose body values differ from this SDK's own 600/10/white literals
+    /// must still lay out off the body values, exactly as it did before this change. Width is
+    /// the one of the three with a geometry consequence this harness can observe directly; the
+    /// authored value must land strictly between `cardWidth`'s 120 pt floor and this window's
+    /// `393 - 32 = 361` pt cap, or the cap would produce the same frame with or without the
+    /// fallback and the assertion below would pass either way. `BannerCardStyleTests` covers the
+    /// corner-radius branch of the same fallback at the unit level
+    /// (`testTheDefaultBorderRadiusFallsBackToTheCallersLegacyDefaultNotItsOwnTenPoints`); the
+    /// background-colour branch lives inline in `BannerChrome.popup`
+    /// (`cardBackground = style.backgroundColor ?? DesignRenderer.parseColor(...) ?? .white`)
+    /// rather than in `BannerCardStyle`, and has no coverage at either level today.
+    @MainActor
+    func testPopupWithNoChromeKeysStillFallsBackToTheDesignsBodyValues() throws {
+        try snapshot(named: "popup_body_value_fallback") { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup",
+                displayType: "popup",
+                design: design(rowColor: "#3A3FE0", extraBody: ["popupWidth": "200px"])
+            )
+        } check: { host, _ in
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(card.width, 200, accuracy: 0.5, "the design's own popupWidth, not the SDK's 600 pt literal")
+        }
+    }
+
+    /// A design of `rows` identical single-text rows, so two designs that differ only in row
+    /// count give a popup whose content height is exactly `rows * (one row's height)` — no
+    /// heading, button or image whose own height would break that proportionality.
+    @MainActor
+    private func repeatedRowDesign(rows: Int) -> [String: JSONValue] {
+        let row: JSONValue = [
+            "values": ["backgroundColor": "#3A3FE0", "padding": "0px"],
+            "columns": [
+                [
+                    "values": [:],
+                    "contents": [
+                        ["type": "text", "values": ["text": "<p>Row</p>", "fontSize": "18px", "textAlign": "center", "containerPadding": "20px 10px", "color": "#FFFFFF"]]
+                    ]
+                ]
+            ]
+        ]
+        return [
+            "body": [
+                "values": [
+                    "popupWidth": "600px", "borderRadius": "10px", "popupBackgroundColor": "#FFFFFF",
+                    "popupOverlay_backgroundColor": "rgba(0, 0, 0, 0.5)"
+                ],
+                "rows": .array(Array(repeating: row, count: rows))
+            ]
+        ]
+    }
+
+    /// Observes the band actually reaching a layout call, rather than pinning its own
+    /// declaration the way `BannerChromeCloseControlTests` does (and says why that is all it
+    /// can do). `host.interactiveFrames` is the only frame this SDK publishes for a popup — see
+    /// the note above on why there is no `frame(of:)` helper — so this derives the band from two
+    /// cards whose designs differ only by a repeated, identical row, instead of asserting an
+    /// absolute height.
+    ///
+    /// At `cardHeight == nil` (every banner in production today) the reported card height is
+    /// `content height + closeControlBand`: `BannerChrome.popup` adds the band back as top
+    /// padding (`BannerChrome.swift:82`), and `CappedHeightContent` only switches to a clipped
+    /// `ScrollView` once the content is taller than its budget — two or three short text rows
+    /// stay well under it regardless of whether that budget was reduced by the band
+    /// (`:78`), so this test only guards the padding, not the budget reduction. So with
+    /// `oneRow` and `twoRows` built from the identical row:
+    ///   `oneRow  == rowHeight + band`
+    ///   `twoRows == 2 * rowHeight + band`
+    /// `twoRows - oneRow` cancels the band and leaves `rowHeight`; subtracting that back out of
+    /// `oneRow` leaves the band. Remove the padding at `:82` and the derived band drops to 0
+    /// here, while the three assertions in `BannerChromeCloseControlTests` stay green
+    /// throughout, because they pin the constant against its own definition rather than its
+    /// use.
+    @MainActor
+    func testTheBandIsReflectedInThePopupsReportedHeight() throws {
+        var heights: [Int: CGFloat] = [:]
+        for rowCount in [1, 2] {
+            try snapshot(named: "popup_band_\(rowCount)_row") { vm in
+                vm.popupBanner = BannerResponse(token: "popup", displayType: "popup", design: repeatedRowDesign(rows: rowCount))
+            } check: { host, _ in
+                guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                    return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+                }
+                heights[rowCount] = card.height
+            }
+        }
+        let oneRow = try XCTUnwrap(heights[1], "no frame recorded for the one-row popup")
+        let twoRows = try XCTUnwrap(heights[2], "no frame recorded for the two-row popup")
+        let rowHeight = twoRows - oneRow
+        XCTAssertGreaterThan(rowHeight, 1, "the second row must add measurable height, or this derivation proves nothing")
+        let derivedBand = oneRow - rowHeight
+        XCTAssertEqual(
+            derivedBand,
+            BannerChrome.closeControlBand,
+            accuracy: 1,
+            "the band BannerChrome.popup reserves via its padding and height budget should show up in the reported frame"
+        )
     }
 
     /// Bar contract: one full-width strip touching the screen edge it is pinned to, reported as
@@ -252,6 +366,144 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             XCTAssertEqual(bar.maxY, window.bounds.height, accuracy: 0.5, "bottom bar touches the bottom edge")
             XCTAssertEqual(bar.width, window.bounds.width, accuracy: 0.5)
             XCTAssertLessThan(bar.height, window.bounds.height / 2)
+        }
+    }
+
+    // MARK: - Card chrome and position keys
+
+    /// Every `cssStyles` chrome and position key written out at the value the API documents as
+    /// its default. Shared with `BannerCardStyleTests` — see `documentedBannerCardStyleDefaults`.
+    private let documentedDefaults = documentedBannerCardStyleDefaults
+
+    /// The regression guard for the whole adoption: a banner carrying all nine keys at their
+    /// documented defaults must lay out exactly like one carrying none — which is every banner
+    /// in production today. Compared as laid-out geometry rather than as pixels, so the
+    /// assertion says which number moved when it goes red. With `RLV_SNAPSHOT_DIR` set the two
+    /// PNGs are written side by side for eyes as well.
+    ///
+    /// Both arms run on this code, so this cannot by itself catch a drift between master and
+    /// this branch — only that the two arms agree with each other on whatever this branch does.
+    /// What pins the actual numbers master drew (600, the 32 pt cap, the 10 pt radius) is
+    /// `BannerCardStyleTests` and `testPopupSnapshot`'s width assertion.
+    @MainActor
+    func testDefaultedKeysLayOutExactlyLikeNoKeysAtAll() throws {
+        for displayType in ["popup", "flyout", "bar"] {
+            var laidOut: [[CGRect]] = []
+            for (suffix, cssStyles) in [("no_keys", [:] as [String: JSONValue]), ("defaults", documentedDefaults)] {
+                try snapshot(named: "\(displayType)_\(suffix)") { vm in
+                    let banner = BannerResponse(token: displayType, displayType: displayType, cssStyles: cssStyles, design: design(rowColor: "#3A3FE0"))
+                    switch displayType {
+                    case "bar": vm.barBanners = [banner]
+                    case "popup": vm.popupBanner = banner
+                    default: vm.flyoutBanner = banner
+                    }
+                } check: { host, _ in
+                    laidOut.append(host.interactiveFrames)
+                }
+            }
+            XCTAssertFalse(laidOut[0].isEmpty, "\(displayType): nothing was laid out, so nothing is being compared")
+            XCTAssertEqual(laidOut[0], laidOut[1], "\(displayType): the nine keys at their defaults moved something")
+        }
+    }
+
+    /// A bar with no `displayPosition` has always gone to the top edge; an authored
+    /// `cardPositionVertical` is what now decides it.
+    @MainActor
+    func testAnAuthoredVerticalPositionSendsABarToTheBottomEdge() throws {
+        try snapshot(named: "bar_bottom_authored") { vm in
+            vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", cssStyles: ["cardPositionVertical": "bottom"], design: design(rowColor: "#3A3FE0"))]
+        } check: { host, window in
+            guard let bar = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one bar frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(bar.maxY, window.bounds.height, accuracy: 0.5, "the authored key overrides the absent displayPosition")
+            XCTAssertLessThan(bar.height, window.bounds.height / 2, "a short design stays a strip")
+        }
+    }
+
+    /// The same for the axis a flyout docks to, plus the width key reaching the layout call.
+    @MainActor
+    func testAnAuthoredHorizontalPositionAndWidthMoveAndSizeAFlyout() throws {
+        try snapshot(named: "flyout_left_authored") { vm in
+            vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", cssStyles: ["cardPositionHorizontal": "left", "cardWidth": "200px"], design: design(rowColor: "#3A3FE0"))
+        } check: { host, _ in
+            guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
+            XCTAssertEqual(panel.minX, 0, accuracy: 0.5, "the authored key overrides the absent displayPosition, which would dock right")
+            XCTAssertEqual(panel.width, 200, accuracy: 0.5, "cardWidth sizes the drawer instead of the design's content width")
+        }
+    }
+
+    /// The popup is where eight of the nine keys actually reach a layout call
+    /// (`BannerChrome.popup`), but until now only the no-keys/defaults case was observed. An
+    /// authored position must reach the card the same way it does for a bar or a flyout: a
+    /// left/bottom card lands at the safe area's leading/bottom edge rather than at the 16 pt
+    /// the centred default implies.
+    @MainActor
+    func testAnAuthoredPositionMovesAPopupToAnEdge() throws {
+        try snapshot(named: "popup_left_bottom_authored") { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup",
+                displayType: "popup",
+                cssStyles: ["cardPositionHorizontal": "left", "cardPositionVertical": "bottom"],
+                design: design(rowColor: "#3A3FE0")
+            )
+        } check: { host, window in
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(card.minX, 0, accuracy: 0.5, "cardPositionHorizontal: left reaches the card, not just centring")
+            XCTAssertEqual(
+                card.maxY,
+                window.bounds.height - host.safeAreaInsets.bottom,
+                accuracy: 1,
+                "cardPositionVertical: bottom reaches the card, not just centring"
+            )
+        }
+    }
+
+    /// `.offset(...)` is applied outside `.reportBannerFrame()`'s `GeometryReader` in the popup's
+    /// modifier chain (`BannerChrome.swift`), which only reflects the offset if SwiftUI resolves
+    /// the offset before laying out that background — this snapshot is the only thing that
+    /// answers that question for this codebase rather than leaving it asserted by a comment.
+    @MainActor
+    func testAnAuthoredOffsetShiftsThePopupCardsReportedFrame() throws {
+        try snapshot(named: "popup_offset_authored") { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup",
+                displayType: "popup",
+                cssStyles: ["cardOffsetHorizontal": "-20px"],
+                design: design(rowColor: "#3A3FE0")
+            )
+        } check: { host, window in
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(
+                card.midX,
+                window.bounds.width / 2 - 20,
+                accuracy: 0.5,
+                "the reported frame moves with the offset instead of staying at the pre-offset centre"
+            )
+        }
+    }
+
+    /// `.frame(height:alignment:)` with a `nil` height — every default banner's case — is the
+    /// identity; an authored `cardHeight` is what exercises the non-`nil` branch that makes
+    /// `contentVerticalAlign` mean anything at all.
+    @MainActor
+    func testAnAuthoredHeightFixesThePopupCardsSize() throws {
+        try snapshot(named: "popup_height_authored") { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup",
+                displayType: "popup",
+                cssStyles: ["cardHeight": "300px", "contentVerticalAlign": "bottom"],
+                design: design(rowColor: "#3A3FE0")
+            )
+        } check: { host, _ in
+            guard let card = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
+                return XCTFail("expected exactly one popup card frame, got \(host.interactiveFrames)")
+            }
+            XCTAssertEqual(card.height, 300, accuracy: 0.5, "cardHeight fixes the card instead of it hugging the (much shorter) design")
         }
     }
 }
