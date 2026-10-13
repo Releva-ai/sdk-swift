@@ -212,6 +212,26 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
 
     /// With nothing accessible in the design, the card's id stays on the card rather than moving
     /// to the close control, its only child.
+    /// A content-sized card placed against the safe area's top edge: its id's frame is the card,
+    /// not the card extended up through the status bar.
+    @MainActor
+    func testAPopupAgainstTheSafeAreaTopKeepsItsIdOnTheDrawnCard() throws {
+        try overlay { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup-top-right",
+                displayType: "popup",
+                cssStyles: ["cardPositionVertical": "top", "cardPositionHorizontal": "right", "cardBackgroundColor": "#ff00ff"],
+                design: design()
+            )
+        } check: { tree, reported, safeArea in
+            let card = try XCTUnwrap(reported.first, "the popup reported no card frame")
+            XCTAssertEqual(card.minY, safeArea.minY, accuracy: 0.5, "the card sits against the safe area's top")
+            XCTAssertEqual(card.maxX, safeArea.maxX, accuracy: 0.5, "and its right")
+            let close = try assertBanner("popup-top-right", in: tree, frame: card)
+            assertCloseIsTheHitBox(close, in: card, top: card.minY + BannerChrome.closeControlInset)
+        }
+    }
+
     @MainActor
     func testAPopupWithNothingAccessibleInsideKeepsItsIdOnTheCard() throws {
         let dividerOnly: [String: JSONValue] = [

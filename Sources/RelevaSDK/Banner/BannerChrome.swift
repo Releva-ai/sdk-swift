@@ -91,7 +91,9 @@ enum BannerChrome {
                     .padding(closeControlInset)
                 }
                 .frame(width: cardWidth)
-                .background(cardBackground)
+                // A colour background reaches into the safe area wherever the card touches its
+                // edge; that is clipped away below but still widens the accessibility frame.
+                .background(cardBackground, ignoresSafeAreaEdges: [])
                 .clipShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
                 .shadow(color: Color.black.opacity(0.25), radius: 24, y: 8)
                 // Reports the card's own on-screen frame, so a snapshot test can observe its
