@@ -39,15 +39,6 @@ struct BannerCardStyle {
             case .right: return .trailing
             }
         }
-
-        /// Which way a panel docked to this side casts its shadow: away from its own edge.
-        var shadowDirection: CGFloat {
-            switch self {
-            case .left: return 1
-            case .center: return 0
-            case .right: return -1
-            }
-        }
     }
 
     enum VerticalPlacement: String {
@@ -62,6 +53,42 @@ struct BannerCardStyle {
         }
     }
 
+    /// Where a card sits on one axis once the keys and `displayPosition` are resolved, as
+    /// sdk-react-native's `resolveBannerChrome` reports it. `stretch` fills the axis: the bar's
+    /// width, the flyout's height and both popup axes when nothing moved them.
+    enum Anchor: Equatable {
+        case start, center, end, stretch
+
+        init(_ placement: HorizontalPlacement) {
+            switch placement {
+            case .left: self = .start
+            case .center: self = .center
+            case .right: self = .end
+            }
+        }
+
+        init(_ placement: VerticalPlacement) {
+            switch placement {
+            case .top: self = .start
+            case .center: self = .center
+            case .bottom: self = .end
+            }
+        }
+
+        /// The translation `offset` applies on an axis with this anchor: an end anchor negates,
+        /// so a positive offset is always a gap from the edge the card is anchored to.
+        func translation(_ offset: Length?, in extent: CGFloat) -> CGFloat {
+            let raw = offset?.resolved(in: extent) ?? 0
+            return self == .end ? -raw : raw
+        }
+    }
+
+    /// The display types a card's anchors are resolved for; `displayPosition` decides the bar's
+    /// vertical axis and the flyout's horizontal one, and nothing on a popup.
+    enum Kind {
+        case bar, flyout, popup
+    }
+
     /// `cardBackgroundColor`, or `nil` to keep the colour the call site already uses.
     let backgroundColor: Color?
     /// `cardWidth` / `cardHeight`, or `nil` for the size the call site already computes.
@@ -74,6 +101,9 @@ struct BannerCardStyle {
     /// `borderRadius` body-value read, which is `10` for every real banner today but keeps the
     /// same code path running unchanged, per the compatibility rule, rather than assuming that.
     let cornerRadius: CGFloat
+    /// `cardBorderRadius` when the author set one above zero, else `nil`: the bar and the flyout
+    /// are square unless a radius is authored.
+    let authoredCornerRadius: CGFloat?
     /// `contentVerticalAlign`: where the design sits in a card taller than it is. `top`, its
     /// default, is where a card that hugs its content puts it anyway.
     let contentVerticalAlign: VerticalPlacement
@@ -85,7 +115,7 @@ struct BannerCardStyle {
     let offsetVertical: Length?
     let offsetHorizontal: Length?
 
-    /// The translation `cardOffsetHorizontal` actually applies, after the anchor's sign rule.
+    /// The translation `cardOffsetHorizontal` applies to a popup card, after the anchor's sign rule.
     ///
     /// A positive offset moves the card AWAY FROM THE EDGE IT IS ANCHORED TO, so a `right`
     /// placement negates it; `left`, `center` and an unauthored axis have no edge to move away
@@ -93,20 +123,46 @@ struct BannerCardStyle {
     /// `constants/banner-chrome-css-styles.md` — "an offset is a gap from an edge and not a
     /// dimension", `0` is "flush against the edge", and `-20px` "lets a flyout bleed slightly
     /// past the viewport edge", which only has that meaning if the positive direction is inward.
-    ///
-    /// This SDK translated by the raw authored amount until 2026-10-03, as sdk-react-native did;
-    /// magellan-sdk-js, sdk-kotlin and sdk-flutter negate. The web SDK's own comment asserted
-    /// Swift, React Native and Flutter all "already give this key" the negating sign, which was
-    /// true only of Flutter — which is how two implementations stayed wrong unnoticed.
     func offsetTranslationX(in width: CGFloat) -> CGFloat {
-        let raw = offsetHorizontal?.resolved(in: width) ?? 0
-        return positionHorizontal == .right ? -raw : raw
+        anchors(for: .popup, displayPosition: nil).horizontal.translation(offsetHorizontal, in: width)
     }
 
     /// The vertical twin of `offsetTranslationX(in:)`; a `bottom` placement negates.
     func offsetTranslationY(in height: CGFloat) -> CGFloat {
-        let raw = offsetVertical?.resolved(in: height) ?? 0
-        return positionVertical == .bottom ? -raw : raw
+        anchors(for: .popup, displayPosition: nil).vertical.translation(offsetVertical, in: height)
+    }
+
+    /// Both axes' anchors for a card of `kind`. An authored position wins; otherwise
+    /// `displayPosition` decides the bar's vertical axis (`top`/`bottom`, top otherwise) and the
+    /// flyout's horizontal one (`left`/`right`, right otherwise), and every other axis stretches.
+    func anchors(for kind: Kind, displayPosition: String?) -> (horizontal: Anchor, vertical: Anchor) {
+        let horizontal: Anchor
+        if let placement = positionHorizontal {
+            horizontal = Anchor(placement)
+        } else if kind == .flyout {
+            horizontal = displayPosition == "left" ? .start : .end
+        } else {
+            horizontal = .stretch
+        }
+
+        let vertical: Anchor
+        if let placement = positionVertical {
+            vertical = Anchor(placement)
+        } else if kind == .bar {
+            vertical = displayPosition == "bottom" ? .end : .start
+        } else {
+            vertical = .stretch
+        }
+        return (horizontal, vertical)
+    }
+
+    /// The translation both offset keys apply to a card with these anchors. A percentage
+    /// resolves against `extent`, the window on that axis.
+    func offsetTranslation(horizontal: Anchor, vertical: Anchor, in extent: CGSize) -> CGSize {
+        CGSize(
+            width: horizontal.translation(offsetHorizontal, in: extent.width),
+            height: vertical.translation(offsetVertical, in: extent.height)
+        )
     }
 
     /// - Parameter legacyDefault: what `cornerRadius` resolves to when `cardBorderRadius` is
@@ -129,8 +185,10 @@ struct BannerCardStyle {
         let radius = radiusValue?.doubleValue ?? Double((radiusValue?.stringValue ?? "0").trimmingCharacters(in: .whitespaces))
         if let parsed = radius, parsed.isFinite, parsed > 0 {
             cornerRadius = CGFloat(parsed)
+            authoredCornerRadius = CGFloat(parsed)
         } else {
             cornerRadius = legacyDefault
+            authoredCornerRadius = nil
         }
         contentVerticalAlign = Self.authored(styles, "contentVerticalAlign", default: "top").flatMap { VerticalPlacement(rawValue: $0.lowercased()) } ?? .top
         positionVertical = Self.authored(styles, "cardPositionVertical", default: "auto").flatMap { VerticalPlacement(rawValue: $0.lowercased()) }
@@ -139,19 +197,16 @@ struct BannerCardStyle {
         offsetHorizontal = Self.length(Self.authored(styles, "cardOffsetHorizontal", default: "auto"), isOffset: true)
     }
 
-    /// Which screen edge a bar banner belongs to: the authored `cardPositionVertical` when there
-    /// is one, else `displayPosition` as before. `center` is not an edge, so it groups with the
-    /// top, the side a bar without a `displayPosition` has always gone to.
+    /// Where a bar sits vertically: the authored `cardPositionVertical` when there is one, else
+    /// `displayPosition` (`bottom` is the bottom edge, anything else the top). Never `stretch`.
     ///
-    /// Resolves just this one key rather than building a whole `BannerCardStyle` — this runs
-    /// twice per bar per layout pass (`BannerOverlayContent.topBars`/`bottomBars` and
-    /// `BannerBarStackView.banners`, both computed inside `body`), and the other eight keys
-    /// would go unused.
-    static func isBottomEdge(_ banner: BannerResponse) -> Bool {
+    /// Resolves just this one key rather than building a whole `BannerCardStyle`: the overlay
+    /// and the presenter sort their bars by it inside `body`.
+    static func barVerticalAnchor(_ banner: BannerResponse) -> Anchor {
         let vertical = Self.authored(banner.cssStyles, "cardPositionVertical", default: "auto")
             .flatMap { VerticalPlacement(rawValue: $0.lowercased()) }
-        if let vertical = vertical { return vertical == .bottom }
-        return banner.displayPosition == "bottom"
+        if let vertical = vertical { return Anchor(vertical) }
+        return banner.displayPosition == "bottom" ? .end : .start
     }
 
     /// The popup card's width for a container `availableWidth` pt wide: the resolved

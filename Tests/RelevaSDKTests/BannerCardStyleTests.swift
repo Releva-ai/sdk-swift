@@ -224,22 +224,44 @@ final class BannerCardStyleTests: XCTestCase {
         XCTAssertNil(style(["cardPositionHorizontal": "top"]).positionHorizontal, "the two axes do not share a vocabulary")
     }
 
-    /// Which edge a bar is pinned to. `displayPosition` is the legacy input and still decides it
-    /// on its own; an authored `cardPositionVertical` takes over, including for the recommender
-    /// banners that never carry a `displayPosition` at all.
-    func testABarSortsToTheEdgeTheResolvedVerticalAxisNames() {
-        func isBottom(displayPosition: String?, cssStyles: [String: JSONValue] = [:]) -> Bool {
-            BannerCardStyle.isBottomEdge(
+    /// Where a bar is placed. `displayPosition` is the legacy input and still decides it on its
+    /// own; an authored `cardPositionVertical` takes over, including for the recommender banners
+    /// that never carry a `displayPosition` at all, and `center` puts the bar in the middle.
+    func testABarIsPlacedWhereTheResolvedVerticalAxisNames() {
+        func anchor(displayPosition: String?, cssStyles: [String: JSONValue] = [:]) -> BannerCardStyle.Anchor {
+            BannerCardStyle.barVerticalAnchor(
                 BannerResponse(token: "bar", displayPosition: displayPosition, cssStyles: cssStyles)
             )
         }
 
-        XCTAssertTrue(isBottom(displayPosition: "bottom"))
-        XCTAssertFalse(isBottom(displayPosition: "top"))
-        XCTAssertFalse(isBottom(displayPosition: nil))
-        XCTAssertTrue(isBottom(displayPosition: nil, cssStyles: ["cardPositionVertical": "bottom"]))
-        XCTAssertFalse(isBottom(displayPosition: "bottom", cssStyles: ["cardPositionVertical": "top"]))
-        XCTAssertTrue(isBottom(displayPosition: "bottom", cssStyles: ["cardPositionVertical": "auto"]))
-        XCTAssertFalse(isBottom(displayPosition: nil, cssStyles: ["cardPositionVertical": "center"]), "a bar has no middle; centre stays on the top edge")
+        XCTAssertEqual(anchor(displayPosition: "bottom"), .end)
+        XCTAssertEqual(anchor(displayPosition: "top"), .start)
+        XCTAssertEqual(anchor(displayPosition: nil), .start)
+        XCTAssertEqual(anchor(displayPosition: nil, cssStyles: ["cardPositionVertical": "bottom"]), .end)
+        XCTAssertEqual(anchor(displayPosition: "bottom", cssStyles: ["cardPositionVertical": "top"]), .start)
+        XCTAssertEqual(anchor(displayPosition: "bottom", cssStyles: ["cardPositionVertical": "auto"]), .end)
+        XCTAssertEqual(anchor(displayPosition: "top", cssStyles: ["cardPositionVertical": "center"]), .center)
+    }
+
+    /// The anchors each display type resolves, as sdk-react-native's `resolveBannerChrome` does:
+    /// `displayPosition` decides the bar's vertical axis and the flyout's horizontal one, an
+    /// authored key wins over it, and every other axis stretches.
+    func testAnchorsFollowTheDisplayTypeAndTheAuthoredKeys() {
+        XCTAssertTrue(style([:]).anchors(for: .bar, displayPosition: "bottom") == (.stretch, .end))
+        XCTAssertTrue(style([:]).anchors(for: .flyout, displayPosition: nil) == (.end, .stretch))
+        XCTAssertTrue(style([:]).anchors(for: .flyout, displayPosition: "left") == (.start, .stretch))
+        XCTAssertTrue(style([:]).anchors(for: .popup, displayPosition: "left") == (.stretch, .stretch))
+        let moved = style(["cardPositionHorizontal": "center", "cardPositionVertical": "bottom"])
+        XCTAssertTrue(moved.anchors(for: .bar, displayPosition: "top") == (.center, .end))
+        XCTAssertTrue(moved.anchors(for: .flyout, displayPosition: "right") == (.center, .end))
+    }
+
+    /// An end anchor negates its offset, whether the anchor was authored or came from
+    /// `displayPosition`; a percentage resolves against the extent passed in.
+    func testTheOffsetSignFollowsTheResolvedAnchor() {
+        let offsets = style(["cardOffsetHorizontal": "10%", "cardOffsetVertical": "24px"])
+        XCTAssertEqual(offsets.offsetTranslation(horizontal: .end, vertical: .end, in: CGSize(width: 400, height: 800)), CGSize(width: -40, height: -24))
+        XCTAssertEqual(offsets.offsetTranslation(horizontal: .center, vertical: .stretch, in: CGSize(width: 400, height: 800)), CGSize(width: 40, height: 24))
+        XCTAssertEqual(offsets.offsetTranslation(horizontal: .start, vertical: .start, in: CGSize(width: 400, height: 800)), CGSize(width: 40, height: 24))
     }
 }

@@ -14,7 +14,7 @@ import SwiftUI
 ///
 /// `closeButtonSymbol`, `closeButtonPadding`, `closeButtonFontWeight`, `closeButtonLineHeight`,
 /// `closeButtonTopPosition` and `closeButtonRightPosition` are web-only and deliberately ignored:
-/// the control keeps this SDK's own glyph and placement. The Unlayer design's
+/// the control keeps the ✕ and the placement the mobile SDKs share. The Unlayer design's
 /// `popupCloseButton_*` body values are not read either — `cssStyles` is the only source.
 ///
 /// Colours go through `DesignRenderer.parseColor(css:)`; every value is trimmed and
@@ -39,7 +39,7 @@ struct BannerCloseButtonStyle {
     let border: Border?
     let fontSize: CGFloat
     /// The visible button's side: `max(32, fontSize + 18)`, so at most 44 at the 26 pt clamp —
-    /// never larger than the hit box `BannerChrome.closeControlBand` is derived from.
+    /// never larger than the 44 pt tap target.
     let side: CGFloat
     /// Already capped at half of `side`.
     let cornerRadius: CGFloat

@@ -5,8 +5,8 @@ import XCTest
 
 /// The accessibility identifiers device QA reads, asserted on the accessibility tree UI
 /// automation sees: `releva-banner-close` on the close control's whole tap target,
-/// `releva-banner-<token>` on each banner's own view, and `releva-banner-placement` on the box a
-/// popup or a sized flyout is placed in.
+/// `releva-banner-<token>` on each banner's own view (a popup's or a flyout's card, a bar's
+/// layer), and `releva-banner-placement` on the box a popup or a sized flyout is placed in.
 ///
 /// SwiftUI builds that tree only while accessibility is on, so each test turns on the automation
 /// mode XCUITest itself uses, and turns it off afterwards.
@@ -138,12 +138,15 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
     // MARK: - Shared assertions
 
     /// The banner's id sits on exactly one element, a container with the banner's frame, and the
-    /// close control and the copy inside it stay separate elements without that id.
+    /// close control and the copy stay separate elements without that id. A popup's or a flyout's
+    /// id is on its card, which contains them; a bar's is on its layer, an empty element behind the
+    /// card, so its frame stays the layer's when the card is moved.
     @MainActor
     private func assertBanner(
         _ token: String,
         in tree: AXNode,
         frame expected: CGRect,
+        containsContent: Bool = true,
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> AXNode {
@@ -154,32 +157,37 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
         assertFrame(banner.frame, expected, "releva-banner-\(token) has the banner's frame", file: file, line: line)
 
         XCTAssertEqual(tree.nodes(BannerAccessibilityID.close).count, 1, "releva-banner-close on exactly one element", file: file, line: line)
-        let close = try XCTUnwrap(banner.nodes(BannerAccessibilityID.close).first, "the close control is inside the banner", file: file, line: line)
+        let scope = containsContent ? banner : tree
+        let close = try XCTUnwrap(scope.nodes(BannerAccessibilityID.close).first, "the close control is in the tree", file: file, line: line)
         XCTAssertTrue(close.isElement, file: file, line: line)
         XCTAssertEqual(close.label, "Close", file: file, line: line)
         XCTAssertTrue(close.traits.contains(.button), "the close control keeps the button trait", file: file, line: line)
 
-        let copy = banner.flattened.filter { $0.isElement && $0.label.contains(Self.copy) }
-        XCTAssertFalse(copy.isEmpty, "the copy is its own element inside the banner", file: file, line: line)
+        let copy = scope.flattened.filter { $0.isElement && $0.label.contains(Self.copy) }
+        XCTAssertFalse(copy.isEmpty, "the copy is its own element", file: file, line: line)
         XCTAssertTrue(copy.allSatisfy { $0.identifier.isEmpty }, "the banner's id does not spread to its copy", file: file, line: line)
         return close
     }
 
-    /// The close element's frame is the whole tap target: a `hitSide` square `closeControlInset`
-    /// in from the banner's trailing edge, not the smaller visible button inside it.
+    /// The close element's frame is the whole tap target, centred on the visible button, which
+    /// sits `inset` in from the card's top and its leading or trailing edge.
     @MainActor
     private func assertCloseIsTheHitBox(
         _ close: AXNode,
-        in banner: CGRect,
-        top: CGFloat,
+        in card: CGRect,
+        inset: CGFloat = BannerChrome.closeControlInset,
+        top: CGFloat? = nil,
+        leading: Bool = false,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         let style = BannerCloseButtonStyle(cssStyles: [:])
         XCTAssertLessThan(style.side, style.hitSide, "at the default size the visible button is smaller than its tap target", file: file, line: line)
+        let ring = BannerChrome.closeRing(style)
+        let minX = leading ? card.minX + inset - ring : card.maxX - inset + ring - style.hitSide
         assertFrame(
             close.frame,
-            CGRect(x: banner.maxX - BannerChrome.closeControlInset - style.hitSide, y: top, width: style.hitSide, height: style.hitSide),
+            CGRect(x: minX, y: top ?? card.minY + inset - ring, width: style.hitSide, height: style.hitSide),
             "releva-banner-close is the tap target",
             file: file,
             line: line
@@ -201,7 +209,7 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
         } check: { tree, reported, safeArea in
             let card = try XCTUnwrap(reported.first, "the popup reported no card frame")
             let close = try assertBanner("popup-1", in: tree, frame: card)
-            assertCloseIsTheHitBox(close, in: card, top: card.minY + BannerChrome.closeControlInset)
+            assertCloseIsTheHitBox(close, in: card)
 
             let placement = tree.nodes(BannerAccessibilityID.placement)
             XCTAssertEqual(placement.count, 1, "a popup is always placed in the safe area")
@@ -228,7 +236,7 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
             XCTAssertEqual(card.minY, safeArea.minY, accuracy: 0.5, "the card sits against the safe area's top")
             XCTAssertEqual(card.maxX, safeArea.maxX, accuracy: 0.5, "and its right")
             let close = try assertBanner("popup-top-right", in: tree, frame: card)
-            assertCloseIsTheHitBox(close, in: card, top: card.minY + BannerChrome.closeControlInset)
+            assertCloseIsTheHitBox(close, in: card)
         }
     }
 
@@ -256,38 +264,65 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
             XCTAssertEqual(banner.flattened.filter(\.isElement).count, 1, "the close control is the only element inside")
             let close = try XCTUnwrap(banner.nodes(BannerAccessibilityID.close).first, "the close control is inside the card")
             XCTAssertTrue(close.isElement)
-            assertCloseIsTheHitBox(close, in: card, top: card.minY + BannerChrome.closeControlInset)
+            assertCloseIsTheHitBox(close, in: card)
         }
     }
 
     // MARK: - Bars
 
+    /// A top bar's layer spans the width; its card pads the status bar, so the control's visible
+    /// button sits 4 below the safe-area top and 4 in from the right, its tap target reaching 2
+    /// past the card's edge.
     @MainActor
-    func testTopBarStripAndCloseCarryTheirIds() throws {
+    func testTopBarLayerAndCloseCarryTheirIds() throws {
         try overlay { vm in
             vm.barBanners = [BannerResponse(token: "bar-top", displayType: "bar", displayPosition: "top", design: design())]
         } check: { tree, reported, safeArea in
-            let strip = try XCTUnwrap(reported.first, "the bar reported no frame")
-            XCTAssertEqual(strip.minY, 0, accuracy: 0.5, "the full strip, status-bar padding included")
-            XCTAssertEqual(strip.width, Self.windowSize.width, accuracy: 0.5)
-            let close = try assertBanner("bar-top", in: tree, frame: strip)
+            let card = try XCTUnwrap(reported.max { $0.width * $0.height < $1.width * $1.height }, "the bar reported no frame")
+            XCTAssertEqual(card.minY, 0, accuracy: 0.5, "the full card, status-bar padding included")
+            XCTAssertEqual(card.width, Self.windowSize.width, accuracy: 0.5)
+            let close = try assertBanner("bar-top", in: tree, frame: card, containsContent: false)
             // The status-bar padding is at least the host's inset; the key window's can raise it.
-            XCTAssertGreaterThanOrEqual(close.frame.minY, safeArea.minY + BannerChrome.closeControlInset - 0.5)
-            assertCloseIsTheHitBox(close, in: strip, top: close.frame.minY)
+            XCTAssertGreaterThanOrEqual(close.frame.minY, safeArea.minY - 2.5)
+            assertCloseIsTheHitBox(close, in: card, inset: BannerChrome.barCloseInset, top: close.frame.minY)
+            XCTAssertTrue(
+                reported.contains { abs($0.minX - close.frame.minX) < 0.5 && abs($0.minY - close.frame.minY) < 0.5 },
+                "the control's tap target claims touches where it reaches past the card"
+            )
             XCTAssertTrue(tree.nodes(BannerAccessibilityID.placement).isEmpty, "a bar has no placement box")
         }
     }
 
+    /// A bottom bar's control sits 4 above its content's top edge, as in sdk-react-native.
     @MainActor
-    func testBottomBarStripAndCloseCarryTheirIds() throws {
+    func testBottomBarLayerAndCloseCarryTheirIds() throws {
         try overlay { vm in
             vm.barBanners = [BannerResponse(token: "bar-bottom", displayType: "bar", displayPosition: "bottom", design: design())]
         } check: { tree, reported, _ in
-            let strip = try XCTUnwrap(reported.first, "the bar reported no frame")
-            XCTAssertEqual(strip.maxY, Self.windowSize.height, accuracy: 0.5, "the full strip, home-indicator padding included")
-            let close = try assertBanner("bar-bottom", in: tree, frame: strip)
-            assertCloseIsTheHitBox(close, in: strip, top: strip.minY + BannerChrome.closeControlInset)
+            let card = try XCTUnwrap(reported.max { $0.width * $0.height < $1.width * $1.height }, "the bar reported no frame")
+            XCTAssertEqual(card.maxY, Self.windowSize.height, accuracy: 0.5, "the full card, home-indicator padding included")
+            let close = try assertBanner("bar-bottom", in: tree, frame: card, containsContent: false)
+            let ring = BannerChrome.closeRing(BannerCloseButtonStyle(cssStyles: [:]))
+            assertCloseIsTheHitBox(close, in: card, inset: BannerChrome.barCloseInset, top: card.minY - BannerChrome.barCloseInset - ring)
             XCTAssertTrue(tree.nodes(BannerAccessibilityID.placement).isEmpty, "a bar has no placement box")
+        }
+    }
+
+    /// A centred, narrowed bar: the layer spans the window, the card does not.
+    @MainActor
+    func testACentredBarsLayerSpansTheWindow() throws {
+        try overlay { vm in
+            vm.barBanners = [BannerResponse(
+                token: "bar-centre",
+                displayType: "bar",
+                displayPosition: "top",
+                cssStyles: ["cardPositionVertical": "center", "cardWidth": "200px"],
+                design: design()
+            )]
+        } check: { tree, reported, _ in
+            let card = try XCTUnwrap(reported.max { $0.width * $0.height < $1.width * $1.height }, "the bar reported no frame")
+            XCTAssertEqual(card.width, 200, accuracy: 0.5)
+            _ = try assertBanner("bar-centre", in: tree, frame: CGRect(origin: .zero, size: Self.windowSize), containsContent: false)
         }
     }
 
@@ -297,30 +332,33 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
     func testLeftFlyoutCarriesItsIdAndNoPlacement() throws {
         try overlay { vm in
             vm.flyoutBanner = BannerResponse(token: "fly-left", displayType: "flyout", displayPosition: "left", design: design())
-        } check: { tree, reported, _ in
+        } check: { tree, reported, safeArea in
             let panel = try XCTUnwrap(reported.first, "the flyout reported no frame")
             XCTAssertEqual(panel.minX, 0, accuracy: 0.5)
             let close = try assertBanner("fly-left", in: tree, frame: panel)
-            assertCloseIsTheHitBox(close, in: panel, top: panel.minY + BannerChrome.closeControlInset)
+            let ring = BannerChrome.closeRing(BannerCloseButtonStyle(cssStyles: [:]))
+            assertCloseIsTheHitBox(close, in: panel, top: safeArea.minY + BannerChrome.closeControlInset - ring)
             XCTAssertTrue(tree.nodes(BannerAccessibilityID.placement).isEmpty, "an unsized flyout has no placement box")
         }
     }
 
+    /// A right-hand flyout's control sits on its inner, leading edge.
     @MainActor
-    func testRightFlyoutCarriesItsIdAndNoPlacement() throws {
+    func testRightFlyoutCarriesItsIdAndItsCloseOnTheInnerEdge() throws {
         try overlay { vm in
             vm.flyoutBanner = BannerResponse(token: "fly-right", displayType: "flyout", displayPosition: "right", design: design())
-        } check: { tree, reported, _ in
+        } check: { tree, reported, safeArea in
             let panel = try XCTUnwrap(reported.first, "the flyout reported no frame")
             XCTAssertEqual(panel.maxX, Self.windowSize.width, accuracy: 0.5)
             let close = try assertBanner("fly-right", in: tree, frame: panel)
-            assertCloseIsTheHitBox(close, in: panel, top: panel.minY + BannerChrome.closeControlInset)
+            let ring = BannerChrome.closeRing(BannerCloseButtonStyle(cssStyles: [:]))
+            assertCloseIsTheHitBox(close, in: panel, top: safeArea.minY + BannerChrome.closeControlInset - ring, leading: true)
             XCTAssertTrue(tree.nodes(BannerAccessibilityID.placement).isEmpty, "an unsized flyout has no placement box")
         }
     }
 
-    /// A sized flyout carries the box it is placed in: from the top of the safe area to the bottom
-    /// of the screen, which the drawer reaches.
+    /// A sized flyout is placed in the safe area and carries that box; its control is not inset
+    /// again.
     @MainActor
     func testASizedFlyoutCarriesItsPlacementBox() throws {
         try overlay { vm in
@@ -328,12 +366,13 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
         } check: { tree, reported, safeArea in
             let panel = try XCTUnwrap(reported.first, "the flyout reported no frame")
             XCTAssertEqual(panel.width, 200, accuracy: 0.5)
-            _ = try assertBanner("fly-sized", in: tree, frame: panel)
+            assertFrame(panel, CGRect(x: safeArea.maxX - 200, y: safeArea.minY, width: 200, height: safeArea.height), "the card fills the box's height")
+            let close = try assertBanner("fly-sized", in: tree, frame: panel)
+            assertCloseIsTheHitBox(close, in: panel, leading: true)
 
             let placement = tree.nodes(BannerAccessibilityID.placement)
             XCTAssertEqual(placement.count, 1, "a sized flyout carries its placement box")
-            let box = CGRect(x: safeArea.minX, y: safeArea.minY, width: safeArea.width, height: Self.windowSize.height - safeArea.minY)
-            assertFrame(try XCTUnwrap(placement.first).frame, box, "releva-banner-placement is the box the drawer is placed in")
+            assertFrame(try XCTUnwrap(placement.first).frame, safeArea, "releva-banner-placement is the safe-area box")
         }
     }
 

@@ -1013,11 +1013,11 @@ Stories with a scroll trigger use the same report. Both `reportScrollPercentage(
 | Type | Description |
 |------|-------------|
 | **Popup** | Centered modal dialog with overlay backdrop and close button. Supports full-screen mode. |
-| **Bar** | Fixed position bar at top or bottom with close button and shadow. |
-| **Flyout** | Side panel sliding in from left or right with scrollable content. |
+| **Bar** | A card at the top or bottom edge, or in the middle, of the screen, with a close button. Unpainted unless the card is given a colour; the rest of the screen stays usable. |
+| **Flyout** | Side panel, 80% of the screen wide, from the left or right edge with scrollable content and the close button on its inner edge. Full height unless sized; the rest of the screen stays usable. |
 | **Static** | Inline content injected before or after the wrapped view (afterbegin, beforeend, afterend, replace). |
 
-All banner styling, positioning, and content are configured in the Releva dashboard using the Unlayer editor.
+All banner styling, positioning, and content are configured in the Releva dashboard using the Unlayer editor. The card keys the editor writes (`cardBackgroundColor`, `cardWidth`, `cardHeight`, `cardBorderRadius`, `contentVerticalAlign`, `cardPositionVertical`, `cardPositionHorizontal`, `cardOffsetVertical`, `cardOffsetHorizontal`) apply to popups, flyouts and bars alike, and lay a banner out as the React Native SDK does.
 
 ### Automatic Tracking
 
@@ -1312,7 +1312,7 @@ Popup, flyout and bar banners are displayed. **Static and replace banners are no
 How they are presented:
 
 - Popups and flyouts share one `.overFullScreen` modal, presented from the frontmost view controller. A banner arriving while your app already has a sheet up appears over it instead of failing to present, and two banners arriving together stack inside that one modal exactly as they do in SwiftUI.
-- Bar banners are child view controllers pinned to the top or bottom safe area, so the rest of the screen stays usable while a bar is up.
+- Bar banners are child view controllers pinned to the top, the middle or the bottom of the safe area, so the rest of the screen stays usable while a bar is up.
 
 ### NPS Surveys in UIKit
 

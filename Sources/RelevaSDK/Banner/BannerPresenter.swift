@@ -219,8 +219,9 @@ public final class BannerPresenter {
     // MARK: - Bar Banners
 
     /// A bar banner cannot be a modal — that would block the whole screen for a strip of
-    /// chrome — so each screen edge gets a child view controller that is empty, and therefore
-    /// zero-height and untouchable, until a bar for that edge arrives.
+    /// chrome — so each placement (the top edge, the middle, the bottom edge) gets a child view
+    /// controller that is empty, and therefore zero-height and untouchable, until a bar for it
+    /// arrives.
     private struct BarSlot {
         let controller: UIHostingController<BannerBarStackView>
         /// Only set below iOS 16, where `UIHostingController.sizingOptions` does not exist.
@@ -230,9 +231,9 @@ public final class BannerPresenter {
     private func installBarSlots(in host: UIViewController) {
         let guide = host.view.safeAreaLayoutGuide
 
-        for isBottom in [false, true] {
+        for placement in [BannerCardStyle.Anchor.start, .center, .end] {
             let controller = UIHostingController(
-                rootView: BannerBarStackView(viewModel: viewModel, isBottom: isBottom, onLinkTap: onLinkTap)
+                rootView: BannerBarStackView(viewModel: viewModel, placement: placement, onLinkTap: onLinkTap)
             )
             controller.view.backgroundColor = .clear
             controller.view.translatesAutoresizingMaskIntoConstraints = false
@@ -247,12 +248,16 @@ public final class BannerPresenter {
                 heightConstraint = controller.view.heightAnchor.constraint(equalToConstant: 0)
             }
 
+            let vertical: NSLayoutConstraint
+            switch placement {
+            case .end: vertical = controller.view.bottomAnchor.constraint(equalTo: guide.bottomAnchor)
+            case .center: vertical = controller.view.centerYAnchor.constraint(equalTo: guide.centerYAnchor)
+            case .start, .stretch: vertical = controller.view.topAnchor.constraint(equalTo: guide.topAnchor)
+            }
             var constraints = [
                 controller.view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
                 controller.view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-                isBottom
-                    ? controller.view.bottomAnchor.constraint(equalTo: guide.bottomAnchor)
-                    : controller.view.topAnchor.constraint(equalTo: guide.topAnchor)
+                vertical
             ]
             if let heightConstraint = heightConstraint {
                 constraints.append(heightConstraint)
@@ -312,30 +317,45 @@ struct BannerOverlayView: View {
             }
 
             if let flyout = viewModel.flyoutBanner {
-                BannerChrome.flyout(flyout, viewModel: viewModel, onLinkTap: onLinkTap)
+                // The flyout positions itself in the whole window, so it is handed the insets this
+                // reader sees and then spans the safe area too.
+                GeometryReader { geometry in
+                    BannerChrome.flyout(flyout, viewModel: viewModel, safeArea: geometry.safeAreaInsets, onLinkTap: onLinkTap)
+                        .ignoresSafeArea()
+                }
             }
         }
     }
 }
 
-/// Every bar banner pinned to one screen edge, stacked in arrival order.
+/// Every bar banner at one placement, stacked in arrival order. The slot is pinned to the safe
+/// area, so a bar here overlaps no system UI and pads for none.
 struct BannerBarStackView: View {
     @ObservedObject var viewModel: BannerDisplayViewModel
-    let isBottom: Bool
+    let placement: BannerCardStyle.Anchor
     let onLinkTap: (String) -> Void
 
     private var banners: [BannerResponse] {
-        viewModel.barBanners.filter { BannerCardStyle.isBottomEdge($0) == isBottom }
+        viewModel.barBanners.filter { BannerCardStyle.barVerticalAnchor($0) == placement }
     }
 
     var body: some View {
+        // The slot sizes itself to its bars, so percentages and the design's width read the screen.
+        let container = UIScreen.main.bounds.size
         VStack(spacing: 0) {
             ForEach(banners, id: \.token) { banner in
                 BannerChrome.bar(
                     banner,
                     viewModel: viewModel,
-                    isBottom: isBottom,
-                    safeAreaInset: 0,
+                    layout: BarCardLayout(
+                        style: BannerCardStyle(banner),
+                        displayPosition: banner.displayPosition,
+                        container: container,
+                        safeArea: EdgeInsets(),
+                        touchesEdge: false,
+                        canSpanHeight: false
+                    ),
+                    containerWidth: container.width,
                     onLinkTap: onLinkTap
                 )
             }

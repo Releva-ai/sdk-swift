@@ -1,42 +1,51 @@
 import XCTest
 @testable import RelevaSDK
 
-/// The band the close control owns, and why it is asserted here rather than off a rendered
-/// frame.
+/// The space each display type keeps clear for the close control, and where the control sits.
 ///
-/// THE CONTROL IS DRAWN OVER THE CONTENT on every display type — it is a `ZStack` sibling, not
-/// a view in flow beside it — so each one reserves `closeControlBand` for it: a bar on its
-/// trailing edge, a popup and a flyout at the top. Without that, a design laid out to the full
-/// width runs underneath it and the tail of a headline is painted beneath the glyph.
-/// sdk-react-native photographed exactly that on 2026-10-03, where a narrow card's copy read
-/// `CHR-08 bottom-left offse✕`.
-///
-/// WHAT THIS CAN AND CANNOT PROVE. It pins the band against the control's own geometry, so the
-/// two cannot drift: raise the hit box for accessibility and the band has to follow, or this
-/// fails. It does NOT prove the band is applied — that it reaches the padding and the height
-/// budget at each of the three call sites. Measuring that needs the content's frame, and
-/// `BannerOverlaySnapshotTests` records why this harness cannot see it: SwiftUI accessibility
-/// identifiers do not surface as `UIView` identifiers, and the only frames the SDK publishes
-/// are the touch-claiming ones it needs for hit-testing. Application is covered by the iOS
-/// device pass, which is where the other three SDKs' equivalents were caught in the first place.
+/// The control is drawn over the content, so a popup and a flyout keep a band at the top of their
+/// content and a bar keeps a gutter on its trailing side. The numbers are sdk-react-native's
+/// (`closeBandHeight`, `closeGutterWidth`): the control is placed by its visible button, and its
+/// tap target grows outward around it. That the band reaches the layout is observed in
+/// `BannerOverlaySnapshotTests`.
 final class BannerChromeCloseControlTests: XCTestCase {
-    /// The band has to contain the whole control, not just the circle that is visible: this SDK
-    /// pads the tappable area out to Apple's minimum, so the box to clear is larger than the
-    /// glyph. 56 against a 52pt control leaves 4 of clearance.
-    func testTheBandCoversTheControlsWholeFootprint() {
-        let footprint = BannerChrome.closeControlInset + BannerChrome.closeControlHitBox
-        XCTAssertGreaterThanOrEqual(BannerChrome.closeControlBand, footprint, "copy inside the band would be drawn under the control")
-        XCTAssertLessThanOrEqual(BannerChrome.closeControlBand - footprint, 12, "a band far wider than the control is wasted card")
+    private func style(fontSize: String? = nil) -> BannerCloseButtonStyle {
+        BannerCloseButtonStyle(cssStyles: fontSize.map { ["closeFontSize": .string($0)] } ?? [:])
     }
 
-    /// Derived, not chosen. A literal here would silently stop covering the control the moment
-    /// either constant moved, which is the drift the derivation exists to prevent.
-    func testTheBandIsDerivedFromTheControlRatherThanHardCoded() {
-        XCTAssertEqual(BannerChrome.closeControlBand, BannerChrome.closeControlInset + BannerChrome.closeControlHitBox + 4)
+    /// Popup and flyout: the control's 8 pt inset, its visible button and 8 of clearance — 48 at
+    /// the default 32 pt button, growing with `closeFontSize`.
+    func testTheBandIsTheInsetTheButtonAndEightOfClearance() {
+        XCTAssertEqual(BannerChrome.closeBand(style()), 48)
+        XCTAssertEqual(BannerChrome.closeBand(style(fontSize: "24")), 58, "a 42 pt button")
+        XCTAssertEqual(BannerChrome.closeBand(style(fontSize: "26")), 60, "the 44 pt maximum")
     }
 
-    /// The hit box is Apple's 44pt minimum touch target, which is why the band is bigger than
-    /// the 44/48 sdk-kotlin and sdk-flutter reserve — their controls are not padded out to it.
+    /// Bar: the control's 4 pt inset, its visible button and 8 of clearance — 44 at the default.
+    func testTheBarGutterIsTheInsetTheButtonAndEightOfClearance() {
+        XCTAssertEqual(BannerChrome.closeGutter(style()), 44)
+        XCTAssertEqual(BannerChrome.closeGutter(style(fontSize: "24")), 54)
+    }
+
+    /// The tap target is centred on the visible button, so it reaches past it by half the
+    /// difference: 6 pt at the default, nothing once the button is 44 pt.
+    func testTheTapTargetGrowsOutwardAroundTheVisibleButton() {
+        XCTAssertEqual(BannerChrome.closeRing(style()), 6)
+        XCTAssertEqual(BannerChrome.closeRing(style(fontSize: "24")), 1)
+        XCTAssertEqual(BannerChrome.closeRing(style(fontSize: "26")), 0)
+    }
+
+    /// At every size the whole tap target of a popup's or a flyout's control stays inside the
+    /// band, so a tap meant for the first line of the design never lands on the control.
+    func testTheTapTargetFitsInTheBandAtEverySize() {
+        for size in ["8", "14", "20", "24", "26"] {
+            let resolved = style(fontSize: size)
+            let targetBottom = BannerChrome.closeControlInset - BannerChrome.closeRing(resolved) + resolved.hitSide
+            XCTAssertLessThanOrEqual(targetBottom, BannerChrome.closeBand(resolved), "closeFontSize \(size)")
+        }
+    }
+
+    /// The hit box is Apple's 44 pt minimum touch target.
     func testTheHitBoxIsApplesMinimumTouchTarget() {
         XCTAssertGreaterThanOrEqual(BannerChrome.closeControlHitBox, 44)
     }

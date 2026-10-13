@@ -6,22 +6,46 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **The banner editor's card chrome and position keys are honoured.** A popup or flyout now
-  reads the nine `cssStyles` keys the editor writes — `cardBackgroundColor`, `cardWidth`,
-  `cardHeight`, `cardBorderRadius`, `contentVerticalAlign`, `cardPositionVertical`,
-  `cardPositionHorizontal`, `cardOffsetVertical`, `cardOffsetHorizontal` — so a card the author
-  coloured, rounded, sized, moved or nudged renders that way instead of at the SDK's hard-coded
-  defaults. Every key is resolved against its documented default, compared trimmed and
-  lower-cased, and a key at its default runs the path it ran before.
-- A **bar** reads `cardPositionVertical` for its edge and nothing else. `cardWidth`,
-  `cardPositionHorizontal` and `cardOffsetHorizontal` do not apply to a bar — it spans the
-  viewport, so it has no width of its own, no horizontal axis to place a card on and no
-  horizontal edge to offset it from. The banner editor does not offer them for a bar and strips
-  them on save; see `constants/banner-chrome-css-styles.md` in magellan-api.
+- **The banner editor's card chrome and position keys are honoured on every display type.** A
+  popup, a flyout and a bar read the nine `cssStyles` keys the editor writes —
+  `cardBackgroundColor`, `cardWidth`, `cardHeight`, `cardBorderRadius`, `contentVerticalAlign`,
+  `cardPositionVertical`, `cardPositionHorizontal`, `cardOffsetVertical`, `cardOffsetHorizontal` —
+  so a card the author coloured, rounded, sized, moved or nudged renders that way. Every key is
+  resolved against its documented default, compared trimmed and lower-cased, and a key at its
+  default runs the path it ran before. Bars and flyouts are laid out as sdk-react-native lays them
+  out on iOS, which is the reference for every mobile SDK (see Changed below). A bar reads the
+  horizontal keys too, as sdk-react-native, sdk-kotlin and sdk-flutter do; the web SDK does not.
 - **Banners carry the accessibility identifiers sdk-react-native sets as testIDs**:
   `releva-banner-close` on the close control's whole tap target, `releva-banner-<token>` on the
-  popup or flyout card, the bar strip and a static banner, and `releva-banner-placement` on the
-  box a popup or a sized flyout is placed in. Layout and rendering are unchanged.
+  popup or flyout card, the bar's positioning layer and a static banner, and
+  `releva-banner-placement` on the box a popup or a sized flyout is placed in.
+
+### Changed
+
+- **A bar is a layer and a card, as in sdk-react-native.** The layer spans the window, pinned to
+  the edge `cardPositionVertical` (else `displayPosition`) names, or spans its height with the card
+  centred in it for `center`. The card is `cardWidth` wide (or the full width) at the side
+  `cardPositionHorizontal` names, `cardHeight` tall (or as tall as its content), rounded by
+  `cardBorderRadius`, with `contentVerticalAlign` placing the design in it, and the offset keys
+  translate it after layout. The card pads the design 16 on the leading side and 12 above and
+  below, and pads by the status bar or home indicator when it is the bar flush with that edge.
+  Touches beside a narrowed or moved card reach the app.
+- **A bar's card is unpainted unless `cardBackgroundColor` is authored.** It no longer paints the
+  first row's colour or the system background behind the design, and draws no shadow, so a design
+  that paints nothing shows the app through it, and `cardBackgroundColor` at its default
+  `#fefefe`, in either letter case, draws exactly what no key draws.
+- **A flyout is 80% of the window wide**, against the side `cardPositionHorizontal` (else
+  `displayPosition`) names, where it was its content's width capped at 72%. With no size key it
+  runs from the top of the screen to the bottom and insets its content and close control by the
+  status bar and the home indicator; with `cardWidth` or `cardHeight` it is placed inside the safe
+  area. `cardHeight` hangs it off `cardPositionVertical` (top, centre or bottom), the offset keys
+  move it with the sign of the side it is docked to, `cardBorderRadius` clips it and
+  `contentVerticalAlign` places the design in it.
+- **The close control is placed and drawn as in sdk-react-native.** Its visible button sits 8 in
+  from a popup's or a flyout's top corner and 4 in from a bar's content corner (above the content
+  on a bottom bar), and the 44 pt tap target grows outward around it. A right-hand flyout's
+  control sits on its inner, left edge. The ✕ is two 2 pt strokes `closeFontSize` long, with no
+  shadow.
 
 ### Fixed
 
@@ -32,19 +56,14 @@ All notable changes to this project will be documented in this file.
   the raw value, which moved a bottom-anchored card further down and off screen. The contract is
   `constants/banner-chrome-css-styles.md`; magellan-sdk-js, sdk-kotlin and sdk-flutter read it
   this way.
-- **The close control no longer covers the copy.** It is drawn over the content as a `ZStack`
-  sibling rather than beside it in flow, so a design laid out to the full width ran underneath
-  it and the tail of a headline was painted beneath the glyph — sdk-react-native photographed
-  exactly that on 2026-10-03, where a narrow card's copy read `CHR-08 bottom-left offse✕`. Each
-  display type now reserves the 56-point band the control owns: a bar on its trailing edge, a
-  popup and a flyout at the top. When `cardHeight` is authored, the band comes out of that fixed
-  height's own budget, so the card still reports the size it asked for and `contentVerticalAlign:
-  bottom` copy is not pushed past its edge. At `cardHeight`'s `auto` default — every banner in
-  production today, since this is the first release reading the key at all — there is no fixed
-  height to take the band out of, so the popup and the flyout are 56 pt taller than they were
-  before this fix; the bar's design renders 56 pt narrower and is padded by the same amount on
-  its trailing edge. Both are the unavoidable cost of no longer drawing content under the
-  control, not a side effect of the new chrome keys.
+- **The close control no longer covers the copy.** It is drawn over the content, so a design laid
+  out to the full width ran underneath it and the tail of a headline was painted beneath the ✕.
+  Each display type now keeps clear the space sdk-react-native keeps: a popup and a flyout a band
+  at the top of their content (the control's 8 pt inset, its visible button and 8 of clearance —
+  48 pt at the default size), a bar a gutter on its trailing side (4, the button and 8 — 44 pt).
+  Both grow with `closeFontSize`. When `cardHeight` is authored the band comes out of that height,
+  so the card keeps the size it asked for and `contentVerticalAlign: bottom` copy stays inside it;
+  a content-sized popup grows by the band.
 - **A flyout's reserved band is painted with the first row's colour, not the last.** The strip
   the band opens above the content sat over the `ZStack`'s own background, which is the colour
   computed for the bottom of the drawer; a drawer whose first row is dark and whose last row is

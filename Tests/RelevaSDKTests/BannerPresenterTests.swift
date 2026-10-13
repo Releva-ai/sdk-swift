@@ -93,9 +93,9 @@ final class BannerPresenterTests: XCTestCase {
 
         XCTAssertEqual(fixture.tracker.impressions, ["bar-1"])
         // A modal would black the whole screen out for a strip of chrome, so bars go in a child
-        // controller per screen edge instead.
+        // controller per placement instead: the top edge, the middle and the bottom edge.
         XCTAssertNil(fixture.host.presentedViewController)
-        XCTAssertEqual(fixture.host.children.count, 2)
+        XCTAssertEqual(fixture.host.children.count, 3)
     }
 
     @MainActor
@@ -254,6 +254,42 @@ final class BannerPresenterTests: XCTestCase {
         drainMainQueue()
 
         XCTAssertEqual(fixture.tracker.impressions, ["popup-1"], "the retained banner is not counted twice")
+    }
+
+    // MARK: - Layout
+
+    /// The presenter's overlay places a flyout the way the overlay window does: an unsized card is
+    /// 80% of the window wide and full-bleed from the top of the screen to its bottom, which needs
+    /// the safe-area insets the overlay view reads for itself.
+    @MainActor
+    func testTheOverlaysFlyoutIsPlacedInTheWholeWindow() {
+        final class Frames { var value: [CGRect] = [] }
+        let frames = Frames()
+        let viewModel = BannerDisplayViewModel()
+        viewModel.flyoutBanner = BannerResponse(
+            token: "fly-1",
+            displayType: "flyout",
+            displayPosition: "right",
+            design: BannerDisplayViewModelTests.minimalDesign
+        )
+        let controller = UIHostingController(
+            rootView: BannerOverlayView(viewModel: viewModel) { _ in }
+                .onPreferenceChange(BannerFramesKey.self) { frames.value = $0 }
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        window.layoutIfNeeded()
+        drainMainQueue(turns: 6)
+        window.layoutIfNeeded()
+        defer { window.isHidden = true }
+
+        XCTAssertGreaterThan(controller.view.safeAreaInsets.top, 0, "the window has a status bar to run under")
+        guard let card = frames.value.first else { return XCTFail("the flyout reported no frame") }
+        XCTAssertEqual(card.minX, 402 * 0.2, accuracy: 0.5)
+        XCTAssertEqual(card.maxX, 402, accuracy: 0.5)
+        XCTAssertEqual(card.minY, 0, accuracy: 0.5)
+        XCTAssertEqual(card.maxY, 874, accuracy: 0.5)
     }
 
     // MARK: - Fixtures

@@ -241,9 +241,8 @@ final class BannerCloseButtonStyleTests: XCTestCase {
     // MARK: - Tap target
 
     /// The tap target never drops below Apple's 44 pt nor below the visible side, and the visible
-    /// side never outgrows the hit box `BannerChrome.closeControlBand` is derived from — so card
-    /// geometry is untouched by any authored size.
-    func testTapTargetIsAtLeast44AndTheVisibleSideFitsTheBand() {
+    /// side never outgrows the 44 pt tap target.
+    func testTapTargetIsAtLeast44AndTheVisibleSideFitsInIt() {
         for size in ["8", "14", "24", "26", "100"] {
             let resolved = style(["closeFontSize": .string(size)])
             XCTAssertGreaterThanOrEqual(resolved.hitSide, 44)

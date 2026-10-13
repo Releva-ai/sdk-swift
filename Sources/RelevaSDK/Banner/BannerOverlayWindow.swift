@@ -22,8 +22,9 @@ final class BannerOverlayHost: ObservableObject {
     /// `GeometryReader` that ignores the safe area can report zero.
     @Published fileprivate(set) var safeAreaInsets: UIEdgeInsets = .zero
 
-    /// Screen-space frames of the bars and flyout currently drawn; touches outside them fall
-    /// through to the app. Updated by `BannerOverlayRoot` from a preference.
+    /// Screen-space frames of the bar cards, their close controls and the flyout card currently
+    /// drawn; touches outside them fall through to the app. Updated by `BannerOverlayRoot` from a
+    /// preference.
     var interactiveFrames: [CGRect] = []
     /// `true` while a popup is shown: its overlay owns the whole screen.
     var coversScreen = false
@@ -203,9 +204,9 @@ struct BannerOverlayRoot: View {
     @ObservedObject var host: BannerOverlayHost
 
     var body: some View {
-        // Not `ignoresSafeArea()` here: the popup and flyout centre their card inside the safe
-        // area (their dimmed overlay extends past it on its own), so a tall card never puts its
-        // close button under the status bar. The bars pin themselves to the screen edges below.
+        // Not `ignoresSafeArea()` here: the popup centres its card inside the safe area (its
+        // dimmed overlay extends past it on its own), so a tall card never puts its close button
+        // under the status bar. The bars and the flyout position themselves in the whole window.
         ZStack {
             if let viewModel = host.viewModel {
                 BannerOverlayContent(viewModel: viewModel, host: host)
@@ -221,63 +222,54 @@ private struct BannerOverlayContent: View {
     @ObservedObject var viewModel: BannerDisplayViewModel
     let host: BannerOverlayHost
 
-    private var topBars: [BannerResponse] { viewModel.barBanners.filter { !BannerCardStyle.isBottomEdge($0) } }
-    private var bottomBars: [BannerResponse] { viewModel.barBanners.filter { BannerCardStyle.isBottomEdge($0) } }
+    /// The bars at each placement, in arrival order.
+    private func bars(at anchor: BannerCardStyle.Anchor) -> [BannerResponse] {
+        viewModel.barBanners.filter { BannerCardStyle.barVerticalAnchor($0) == anchor }
+    }
 
     var body: some View {
         ZStack {
-            if !topBars.isEmpty {
+            if !viewModel.barBanners.isEmpty {
+                // Bars are positioned in the whole window, as sdk-react-native positions them in
+                // its container: top bars stacked down from the top edge, bottom bars up from the
+                // bottom edge, a centred bar in a layer spanning the height. Only the bar flush
+                // with an edge meets the system UI there.
                 GeometryReader { geometry in
-                    VStack(spacing: 0) {
-                        ForEach(topBars, id: \.token) { banner in
-                            BannerChrome.bar(
-                                banner,
-                                viewModel: viewModel,
-                                isBottom: false,
-                                safeAreaInset: host.safeAreaInsets.top,
-                                width: geometry.size.width,
-                                onLinkTap: host.onLinkTap
-                            )
+                    let top = bars(at: .start)
+                    let bottom = bars(at: .end)
+                    ZStack {
+                        VStack(spacing: 0) {
+                            ForEach(Array(top.enumerated()), id: \.element.token) { index, banner in
+                                bar(banner, in: geometry.size, touchesEdge: index == 0)
+                            }
                         }
-                    }
-                    .reportBannerFrame()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                }
-                .ignoresSafeArea()
-            }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            if !bottomBars.isEmpty {
-                GeometryReader { geometry in
-                    VStack(spacing: 0) {
-                        ForEach(bottomBars, id: \.token) { banner in
-                            BannerChrome.bar(
-                                banner,
-                                viewModel: viewModel,
-                                isBottom: true,
-                                safeAreaInset: host.safeAreaInsets.bottom,
-                                width: geometry.size.width,
-                                onLinkTap: host.onLinkTap
-                            )
+                        ForEach(bars(at: .center), id: \.token) { banner in
+                            bar(banner, in: geometry.size, touchesEdge: false)
                         }
+
+                        VStack(spacing: 0) {
+                            ForEach(Array(bottom.enumerated()), id: \.element.token) { index, banner in
+                                bar(banner, in: geometry.size, touchesEdge: index == bottom.count - 1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     }
-                    .reportBannerFrame()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 }
                 .ignoresSafeArea()
             }
 
             if let flyout = viewModel.flyoutBanner {
-                // The flyout reports its own panel frame; the GeometryReader around it is
-                // screen-sized and must not claim touches. It ignores the bottom safe area so
-                // the sheet reaches the screen bottom; the inset keeps content above the
-                // home indicator.
+                // Spans the window; the flyout reports its own card frame, so the rest of the
+                // window does not claim touches.
                 BannerChrome.flyout(
                     flyout,
                     viewModel: viewModel,
-                    bottomInset: host.safeAreaInsets.bottom,
+                    safeArea: EdgeInsets(host.safeAreaInsets),
                     onLinkTap: host.onLinkTap
                 )
-                .ignoresSafeArea(.container, edges: .bottom)
+                .ignoresSafeArea()
             }
 
             if let popup = viewModel.popupBanner {
@@ -288,5 +280,27 @@ private struct BannerOverlayContent: View {
         .onChange(of: viewModel.popupBanner?.token) { _ in
             host.coversScreen = viewModel.popupBanner != nil
         }
+    }
+
+    private func bar(_ banner: BannerResponse, in container: CGSize, touchesEdge: Bool) -> some View {
+        BannerChrome.bar(
+            banner,
+            viewModel: viewModel,
+            layout: BarCardLayout(
+                style: BannerCardStyle(banner),
+                displayPosition: banner.displayPosition,
+                container: container,
+                safeArea: BannerChrome.barSafeArea(host.safeAreaInsets),
+                touchesEdge: touchesEdge
+            ),
+            containerWidth: container.width,
+            onLinkTap: host.onLinkTap
+        )
+    }
+}
+
+extension EdgeInsets {
+    init(_ insets: UIEdgeInsets) {
+        self.init(top: insets.top, leading: insets.left, bottom: insets.bottom, trailing: insets.right)
     }
 }

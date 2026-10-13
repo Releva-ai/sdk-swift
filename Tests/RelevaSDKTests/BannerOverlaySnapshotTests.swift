@@ -48,6 +48,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     private func snapshot(
         named name: String,
         size: CGSize = CGSize(width: 393, height: 852),
+        interfaceStyle: UIUserInterfaceStyle = .dark,
         configure: (BannerDisplayViewModel) -> Void,
         check: (BannerOverlayHost, UIWindow) -> Void = { _, _ in }
     ) throws {
@@ -67,7 +68,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         // The app behind: a dark screen with a fake title and tab bar, so the layering is visible.
         let backdrop = UIHostingController(rootView: FakeApp())
         let window = UIWindow(frame: CGRect(origin: .zero, size: size))
-        window.overrideUserInterfaceStyle = .dark
+        window.overrideUserInterfaceStyle = interfaceStyle
         window.rootViewController = backdrop
         window.makeKeyAndVisible()
         backdrop.view.frame = window.bounds
@@ -92,6 +93,35 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         }
         host.detach(viewModel)
         window.isHidden = true
+    }
+
+    /// A drawn colour, 0...255 per channel.
+    private struct RGB: Equatable, CustomStringConvertible {
+        let red: Int, green: Int, blue: Int
+        var description: String { "rgb(\(red), \(green), \(blue))" }
+
+        func isClose(to other: RGB, tolerance: Int = 2) -> Bool {
+            abs(red - other.red) <= tolerance && abs(green - other.green) <= tolerance && abs(blue - other.blue) <= tolerance
+        }
+    }
+
+    /// The colour drawn at `point` (window points), from the same offscreen render the PNGs are
+    /// written from.
+    @MainActor
+    private func color(at point: CGPoint, in window: UIWindow) -> RGB {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { context in
+            window.layer.render(in: context.cgContext)
+        }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let space = CGColorSpaceCreateDeviceRGB()
+        let info = CGImageAlphaInfo.premultipliedLast.rawValue
+        if let cgImage = image.cgImage,
+           let context = CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: space, bitmapInfo: info) {
+            context.draw(cgImage, in: CGRect(x: -point.x, y: point.y - CGFloat(cgImage.height) + 1, width: CGFloat(cgImage.width), height: CGFloat(cgImage.height)))
+        }
+        return RGB(red: Int(pixel[0]), green: Int(pixel[1]), blue: Int(pixel[2]))
     }
 
     // WHY THERE IS NO `frame(of: identifier:)` HELPER HERE, which this file carried unused
@@ -188,27 +218,9 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         ]
     }
 
-    /// Observes the band actually reaching a layout call, rather than pinning its own
-    /// declaration the way `BannerChromeCloseControlTests` does (and says why that is all it
-    /// can do). `host.interactiveFrames` is the only frame this SDK publishes for a popup — see
-    /// the note above on why there is no `frame(of:)` helper — so this derives the band from two
-    /// cards whose designs differ only by a repeated, identical row, instead of asserting an
-    /// absolute height.
-    ///
-    /// At `cardHeight == nil` (every banner in production today) the reported card height is
-    /// `content height + closeControlBand`: `BannerChrome.popup` adds the band back as top
-    /// padding (`BannerChrome.swift:82`), and `CappedHeightContent` only switches to a clipped
-    /// `ScrollView` once the content is taller than its budget — two or three short text rows
-    /// stay well under it regardless of whether that budget was reduced by the band
-    /// (`:78`), so this test only guards the padding, not the budget reduction. So with
-    /// `oneRow` and `twoRows` built from the identical row:
-    ///   `oneRow  == rowHeight + band`
-    ///   `twoRows == 2 * rowHeight + band`
-    /// `twoRows - oneRow` cancels the band and leaves `rowHeight`; subtracting that back out of
-    /// `oneRow` leaves the band. Remove the padding at `:82` and the derived band drops to 0
-    /// here, while the three assertions in `BannerChromeCloseControlTests` stay green
-    /// throughout, because they pin the constant against its own definition rather than its
-    /// use.
+    /// Observes the band reaching the layout: two cards whose designs differ only by a repeated,
+    /// identical row are `rowHeight + band` and `2 * rowHeight + band` tall, so their difference
+    /// gives the row and the row gives the band.
     @MainActor
     func testTheBandIsReflectedInThePopupsReportedHeight() throws {
         var heights: [Int: CGFloat] = [:]
@@ -229,23 +241,32 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         let derivedBand = oneRow - rowHeight
         XCTAssertEqual(
             derivedBand,
-            BannerChrome.closeControlBand,
+            BannerChrome.closeBand(BannerCloseButtonStyle(cssStyles: [:])),
             accuracy: 1,
             "the band BannerChrome.popup reserves via its padding and height budget should show up in the reported frame"
         )
     }
 
-    /// Bar contract: one full-width strip touching the screen edge it is pinned to, reported as
-    /// the only touch-claiming frame so the rest of the app stays usable.
+    /// A bar reports its card and its close control, whose tap target can reach past the card.
+    /// The card is the larger of the two.
+    @MainActor
+    private func barCard(_ host: BannerOverlayHost) -> CGRect? {
+        guard host.interactiveFrames.count == 2 else {
+            XCTFail("expected a bar card and its close control, got \(host.interactiveFrames)")
+            return nil
+        }
+        return host.interactiveFrames.max { $0.width * $0.height < $1.width * $1.height }
+    }
+
+    /// Bar contract: one full-width card touching the screen edge it is pinned to, reported with
+    /// its close control as the only touch-claiming frames so the rest of the app stays usable.
     @MainActor
     func testTopBarSnapshot() throws {
         try snapshot(named: "bar_top") { vm in
             vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", displayPosition: "top", design: design(rowColor: "#3A3FE0"))]
         } check: { host, window in
             XCTAssertFalse(host.coversScreen)
-            guard let bar = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
-                return XCTFail("expected exactly one bar frame, got \(host.interactiveFrames)")
-            }
+            guard let bar = barCard(host) else { return }
             XCTAssertEqual(bar.minY, 0, accuracy: 0.5, "top bar touches the top edge")
             XCTAssertEqual(bar.width, window.bounds.width, accuracy: 0.5, "top bar spans the width")
             XCTAssertGreaterThan(bar.height, 59, "top bar pads for the status bar")
@@ -253,9 +274,9 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         }
     }
 
-    /// Flyout contract (mobile spec, deviating from the web's 20 px gap on purpose): one
-    /// content-sized sheet flush with its screen edge at the bottom of the safe area, never the
-    /// whole screen, and the rest of the screen passes touches through.
+    /// Flyout contract, as sdk-react-native draws it on iOS: with no size key the card is 80% of
+    /// the window wide, flush with its edge and full-bleed from the screen's top to its bottom,
+    /// and the rest of the screen passes touches through.
     @MainActor
     func testFlyoutRightSnapshot() throws {
         try snapshot(named: "flyout_right") { vm in
@@ -266,17 +287,13 @@ final class BannerOverlaySnapshotTests: XCTestCase {
                 return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
             }
             XCTAssertEqual(panel.maxX, window.bounds.width, accuracy: 0.5, "flush with the right edge")
-            XCTAssertLessThanOrEqual(panel.width, window.bounds.width * 0.72 + 0.5, "leaves the docking side visible")
-            XCTAssertGreaterThan(panel.minX, window.bounds.width * 0.2, "clearly docked right, not centred")
-            // The scene-less test window reports its own bottom inset (more than the 34 pt
-            // requested); the contract is "flush with whatever the bottom safe-area edge is".
-            XCTAssertGreaterThanOrEqual(host.safeAreaInsets.bottom, 34)
+            XCTAssertEqual(panel.width, window.bounds.width * 0.8, accuracy: 0.5, "80% of the window")
+            XCTAssertEqual(panel.minY, 0, accuracy: 0.5, "runs under the status bar")
             XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "reaches the screen bottom")
-            XCTAssertEqual(panel.minY, host.safeAreaInsets.top, accuracy: 1, "drawer fills to just under the status bar even for a short design")
         }
     }
 
-    /// A design taller than the screen grows to just under the status bar and scrolls there.
+    /// A design taller than the screen keeps the full-bleed card and scrolls inside it.
     @MainActor
     func testFlyoutCapsTallDesign() throws {
         var tall = design(rowColor: "#3A3FE0")
@@ -297,14 +314,14 @@ final class BannerOverlaySnapshotTests: XCTestCase {
             vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "left", design: tall)
         } check: { host, window in
             guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
-            XCTAssertEqual(panel.minY, host.safeAreaInsets.top, accuracy: 1, "grows up to the status bar, never under it")
+            XCTAssertEqual(panel.minY, 0, accuracy: 0.5, "the card stays full-bleed")
             XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "reaches the screen bottom")
         }
     }
 
-    /// An image-only design gets exactly its image width plus padding, no body colour around it.
+    /// The card's width does not follow the design: an image-only design gets the same 80%.
     @MainActor
-    func testFlyoutHugsAnImageOnlyDesign() throws {
+    func testFlyoutWidthIgnoresAnImageOnlyDesignsWidth() throws {
         let imageDesign: [String: JSONValue] = [
             "body": [
                 "values": ["contentWidth": "500px", "backgroundColor": "#F7F8F9", "popupWidth": "600px"],
@@ -322,14 +339,14 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         ]
         try snapshot(named: "flyout_image") { vm in
             vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "left", design: imageDesign)
-        } check: { host, _ in
+        } check: { host, window in
             guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
-            XCTAssertEqual(panel.width, 220, accuracy: 0.5, "200 px image + 10 px padding each side")
+            XCTAssertEqual(panel.width, window.bounds.width * 0.8, accuracy: 0.5)
             XCTAssertEqual(panel.minX, 0, accuracy: 0.5)
         }
     }
 
-    /// The drawer fills the height on small and large phones alike.
+    /// The card fills the height on small and large phones alike.
     @MainActor
     func testFlyoutFillsOnDifferentScreens() throws {
         for (name, size) in [("se", CGSize(width: 375, height: 667)), ("promax", CGSize(width: 430, height: 932))] {
@@ -337,11 +354,31 @@ final class BannerOverlaySnapshotTests: XCTestCase {
                 vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "right", design: design(rowColor: "#3A3FE0"))
             } check: { host, window in
                 guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame on \(name)") }
-                XCTAssertEqual(panel.minY, host.safeAreaInsets.top, accuracy: 1, "\(name): top under the status bar")
+                XCTAssertEqual(panel.minY, 0, accuracy: 0.5, "\(name): top at the screen edge")
                 XCTAssertEqual(panel.maxY, window.bounds.height, accuracy: 0.5, "\(name): bottom at the screen edge")
                 XCTAssertEqual(panel.maxX, window.bounds.width, accuracy: 0.5, "\(name): flush right")
-                XCTAssertLessThanOrEqual(panel.width, window.bounds.width * 0.72 + 0.5)
+                XCTAssertEqual(panel.width, window.bounds.width * 0.8, accuracy: 0.5)
             }
+        }
+    }
+
+    /// An offset on a flyout follows the sign rule of the side it is docked to, even when that
+    /// side comes from `displayPosition`: a positive horizontal offset moves a right-hand card
+    /// inward.
+    @MainActor
+    func testAFlyoutOffsetMovesItAwayFromItsDockedEdge() throws {
+        try snapshot(named: "flyout_offset") { vm in
+            vm.flyoutBanner = BannerResponse(
+                token: "fly",
+                displayType: "flyout",
+                displayPosition: "right",
+                cssStyles: ["cardOffsetHorizontal": "20px", "cardOffsetVertical": "10%"],
+                design: design(rowColor: "#3A3FE0")
+            )
+        } check: { host, window in
+            guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
+            XCTAssertEqual(panel.maxX, window.bounds.width - 20, accuracy: 0.5, "20 pt in from the right edge")
+            XCTAssertEqual(panel.minY, window.bounds.height * 0.1, accuracy: 0.5, "an unanchored axis takes the offset as downward")
         }
     }
 
@@ -363,9 +400,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         try snapshot(named: "bar_bottom") { vm in
             vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", displayPosition: "bottom", design: design(rowColor: "#3A3FE0"))]
         } check: { host, window in
-            guard let bar = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
-                return XCTFail("expected exactly one bar frame, got \(host.interactiveFrames)")
-            }
+            guard let bar = barCard(host) else { return }
             XCTAssertEqual(bar.maxY, window.bounds.height, accuracy: 0.5, "bottom bar touches the bottom edge")
             XCTAssertEqual(bar.width, window.bounds.width, accuracy: 0.5)
             XCTAssertLessThan(bar.height, window.bounds.height / 2)
@@ -409,6 +444,42 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         }
     }
 
+    /// A bar's strip is unpainted unless `cardBackgroundColor` is authored, as in
+    /// sdk-react-native: a design that paints nothing shows the app through it, and the default
+    /// spelled out (`#FEFEFE`, upper-cased) reads as unauthored. Light mode, so the system
+    /// background (white) and the black app behind are told apart.
+    @MainActor
+    func testAnUnpaintedBarStripShowsTheAppBehindIt() throws {
+        let seeThrough: [String: JSONValue] = [
+            "body": [
+                "values": ["contentWidth": "100%"],
+                "rows": [[
+                    "values": [:],
+                    "columns": [[
+                        "values": [:],
+                        "contents": [["type": "text", "values": ["text": "<p>CHR-01 bar top at defaults</p>", "fontSize": "14px", "containerPadding": "10px", "color": "#111111"]]]
+                    ]]
+                ]]
+            ]
+        ]
+        let black = RGB(red: 0, green: 0, blue: 0)
+        let cases: [String: (cssStyles: [String: JSONValue], expected: RGB)] = [
+            "bar_unpainted_no_keys": ([:], black),
+            "bar_unpainted_defaults": (documentedDefaults.merging(["cardBackgroundColor": "#FEFEFE"]) { $1 }, black),
+            "bar_painted": (["cardBackgroundColor": "#ff00ff"], RGB(red: 255, green: 0, blue: 255))
+        ]
+        for (name, (cssStyles, expected)) in cases {
+            try snapshot(named: name, interfaceStyle: .light) { vm in
+                vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", displayPosition: "top", cssStyles: cssStyles, design: seeThrough)]
+            } check: { host, window in
+                guard let strip = barCard(host) else { return }
+                // Inside the card's status-bar padding, clear of the copy and the close control.
+                let sample = color(at: CGPoint(x: strip.minX + 4, y: strip.minY + 4), in: window)
+                XCTAssertTrue(sample.isClose(to: expected), "\(name): drew \(sample), want \(expected)")
+            }
+        }
+    }
+
     /// A bar with no `displayPosition` has always gone to the top edge; an authored
     /// `cardPositionVertical` is what now decides it.
     @MainActor
@@ -416,9 +487,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         try snapshot(named: "bar_bottom_authored") { vm in
             vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", cssStyles: ["cardPositionVertical": "bottom"], design: design(rowColor: "#3A3FE0"))]
         } check: { host, window in
-            guard let bar = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
-                return XCTFail("expected exactly one bar frame, got \(host.interactiveFrames)")
-            }
+            guard let bar = barCard(host) else { return }
             XCTAssertEqual(bar.maxY, window.bounds.height, accuracy: 0.5, "the authored key overrides the absent displayPosition")
             XCTAssertLessThan(bar.height, window.bounds.height / 2, "a short design stays a strip")
         }
@@ -432,7 +501,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         } check: { host, _ in
             guard let panel = host.interactiveFrames.first else { return XCTFail("no flyout frame") }
             XCTAssertEqual(panel.minX, 0, accuracy: 0.5, "the authored key overrides the absent displayPosition, which would dock right")
-            XCTAssertEqual(panel.width, 200, accuracy: 0.5, "cardWidth sizes the drawer instead of the design's content width")
+            XCTAssertEqual(panel.width, 200, accuracy: 0.5, "cardWidth sizes the card instead of the default 80% of the window")
         }
     }
 
