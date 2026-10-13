@@ -107,6 +107,9 @@ final class BannerOverlaySnapshotTests: XCTestCase {
     // not a test hook. Anything a test wants to measure has to be something the SDK already
     // reports, or it has to be measured somewhere other than the rendered tree. See
     // `BannerChromeCloseControlTests` for the second of those.
+    //
+    // The accessibility element tree does carry SwiftUI identifiers and frames once accessibility
+    // automation is on; `BannerAccessibilityIdentifierTests` reads them that way.
 
     /// Popup contract: a dim over the whole screen, and a card that is as tall as its design —
     /// a short design must not become a screen-high card — sitting inside the safe area, sized

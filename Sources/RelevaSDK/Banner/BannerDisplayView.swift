@@ -58,13 +58,10 @@ public struct BannerDisplayModifier: ViewModifier {
 
     // MARK: - Banner Content View
 
-    @ViewBuilder
     private func bannerContentView(for banner: BannerResponse) -> some View {
-        if let design = banner.design {
-            DesignRenderer.render(design: design, maxWidth: UIScreen.main.bounds.width) { url in
-                viewModel.trackClick(banner)
-                onLinkTap(url)
-            }
+        BannerChrome.inline(banner) { url in
+            viewModel.trackClick(banner)
+            onLinkTap(url)
         }
     }
 }

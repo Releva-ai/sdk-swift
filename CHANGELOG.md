@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
   viewport, so it has no width of its own, no horizontal axis to place a card on and no
   horizontal edge to offset it from. The banner editor does not offer them for a bar and strips
   them on save; see `constants/banner-chrome-css-styles.md` in magellan-api.
+- **Banners carry the accessibility identifiers sdk-react-native sets as testIDs**:
+  `releva-banner-close` on the close control's whole tap target, `releva-banner-<token>` on the
+  popup or flyout card, the bar strip and a static banner, and `releva-banner-placement` on the
+  box a popup or a sized flyout is placed in. Layout and rendering are unchanged.
 
 ### Fixed
 

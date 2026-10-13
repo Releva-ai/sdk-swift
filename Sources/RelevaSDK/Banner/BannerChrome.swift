@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The chrome around a rendered banner design: the dimmed overlay, the close button, and the
-/// popup/flyout/bar framing.
+/// The chrome around a rendered banner design: the dimmed overlay, the close button, the
+/// popup/flyout/bar framing, and the inline static banner.
 ///
 /// This was private to `BannerDisplayModifier`. It moved here unchanged so `BannerPresenter`
 /// can put the very same views inside a `UIHostingController` rather than growing a second,
@@ -101,6 +101,7 @@ enum BannerChrome {
                 // is what actually gates touch pass-through for a popup, so this does not change
                 // hit-testing.
                 .reportBannerFrame()
+                .bannerAccessibilityContainer(BannerAccessibilityID.banner(banner.token))
                 // Place the card inside the safe area: centred unless the position keys say
                 // otherwise, then moved by the offset keys.
                 .frame(
@@ -116,6 +117,8 @@ enum BannerChrome {
                     y: style.offsetTranslationY(in: geometry.size.height)
                 )
             }
+            // The safe-area box the card is placed in.
+            .bannerAccessibilityMarker(BannerAccessibilityID.placement)
         }
     }
 
@@ -251,12 +254,15 @@ enum BannerChrome {
             .clipped()
             .shadow(color: Color.black.opacity(0.25), radius: 16, x: side.shadowDirection * 4, y: 0)
             .reportBannerFrame()
+            .bannerAccessibilityContainer(BannerAccessibilityID.banner(banner.token))
             .frame(
                 width: geometry.size.width,
                 height: geometry.size.height,
                 alignment: Alignment(horizontal: side.alignment, vertical: .bottom)
             )
         }
+        // The box the drawer is placed in, identified only for a sized drawer, as in sdk-react-native.
+        .bannerAccessibilityMarker(BannerAccessibilityID.placement, when: style.width != nil || style.height != nil)
     }
 
     /// A row's visible colour: its own background, its columns' background, or the first
@@ -337,6 +343,7 @@ enum BannerChrome {
                 .onTapGesture { viewModel.dismissBar(banner) }
         )
         .shadow(color: Color.black.opacity(0.2), radius: 6, y: isBottom ? -2 : 2)
+        .bannerAccessibilityContainer(BannerAccessibilityID.banner(banner.token))
     }
 
     /// The key window's safe-area insets, used as a floor for a top bar's status-bar padding.
@@ -346,6 +353,17 @@ enum BannerChrome {
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }?
             .safeAreaInsets ?? .zero
+    }
+
+    // MARK: - Static Banner
+
+    /// A static or replace banner: the design inline in the host's content, at the screen's width.
+    @ViewBuilder
+    static func inline(_ banner: BannerResponse, onLinkTap: @escaping (String) -> Void) -> some View {
+        if let design = banner.design {
+            DesignRenderer.render(design: design, maxWidth: UIScreen.main.bounds.width, onLinkTap: onLinkTap)
+                .bannerAccessibilityContainer(BannerAccessibilityID.banner(banner.token))
+        }
     }
 
     /// The band the close control owns, measured in from the card's edge: its own 8pt inset,
@@ -406,6 +424,7 @@ enum BannerChrome {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Close")
+        .accessibilityIdentifier(BannerAccessibilityID.close)
     }
 
     // MARK: - Helpers
@@ -415,6 +434,45 @@ enum BannerChrome {
         if let color = DesignRenderer.parseColor(bodyValues["popupOverlay_backgroundColor"]) { return color }
         if let color = DesignRenderer.parseColor(banner.cssStyles["overlayColor"]) { return color }
         return Color.black.opacity(0.5)
+    }
+}
+
+// MARK: - Accessibility identifiers
+
+/// The accessibility identifiers device QA reads; the same ids sdk-react-native sets as testIDs.
+enum BannerAccessibilityID {
+    /// The close control. Its frame is the whole tap target.
+    static let close = "releva-banner-close"
+    /// The box a popup, or a sized flyout, is placed in.
+    static let placement = "releva-banner-placement"
+
+    /// A banner's own view: the popup or flyout card, the bar strip, or a static banner's container.
+    static func banner(_ token: String) -> String { "releva-banner-\(token)" }
+}
+
+extension View {
+    /// Makes this view an accessibility container carrying `identifier`. The id stays on this
+    /// view, and the views inside it stay individually accessible.
+    func bannerAccessibilityContainer(_ identifier: String) -> some View {
+        // SwiftUI frames a container by what is drawn inside it; the clear fill makes that at
+        // least this view's own bounds.
+        background(Color.clear.allowsHitTesting(false))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(identifier)
+    }
+
+    /// An empty accessibility container carrying `identifier`, drawn behind this view with its
+    /// bounds. For a box whose only accessible child is itself a container: SwiftUI merges a
+    /// container wrapped around a single container into one element with one id.
+    func bannerAccessibilityMarker(_ identifier: String, when condition: Bool = true) -> some View {
+        background {
+            if condition {
+                Color.clear
+                    .allowsHitTesting(false)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier(identifier)
+            }
+        }
     }
 }
 
