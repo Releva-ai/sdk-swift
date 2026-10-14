@@ -76,6 +76,9 @@ final class BannerPresenterTests: XCTestCase {
         drainMainQueue()
 
         XCTAssertEqual(fixture.tracker.impressions, ["popup-1", "flyout-1"])
+        XCTAssertNil(fixture.presenter.viewModel.popupBanner, "the flyout replaced the popup")
+        XCTAssertEqual(fixture.presenter.viewModel.flyoutBanner?.token, "flyout-1")
+        XCTAssertEqual(fixture.tracker.actions, [], "the replaced popup was not closed")
         waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
         // Both banners are slots in one hosted view, so the second must not stack a second
         // modal on top of the first.

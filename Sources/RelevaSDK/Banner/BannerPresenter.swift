@@ -304,8 +304,8 @@ public final class BannerPresenter {
 
 /// The popup and flyout layer of `BannerDisplayModifier`'s `ZStack`, without the host's content.
 ///
-/// Both slots live in one view — and therefore one presented controller — so two banners
-/// arriving together stack exactly as they do in SwiftUI, with no modal bookkeeping.
+/// Both slots live in one view, and therefore one presented controller, so a popup and a flyout
+/// replacing each other need no modal bookkeeping.
 struct BannerOverlayView: View {
     @ObservedObject var viewModel: BannerDisplayViewModel
     let onLinkTap: (String) -> Void

@@ -157,12 +157,6 @@ class BannerDisplayViewModel: ObservableObject {
         cancellable = nil
         prefetchTasks.values.forEach { $0.cancel() }
         prefetchTasks.removeAll()
-        // Same release the cancelled-prefetch path needs above: a queued banner never ran
-        // `show(_:)`, so nothing else would ever clear it from `displayedBanners`.
-        queuedPopups.forEach { displayedBanners.remove($0.token) }
-        queuedFlyouts.forEach { displayedBanners.remove($0.token) }
-        queuedPopups.removeAll()
-        queuedFlyouts.removeAll()
     }
 
     /// How long an overlay banner waits for its images before it is shown anyway.
@@ -175,6 +169,8 @@ class BannerDisplayViewModel: ObservableObject {
         guard shouldDisplay(banner) else { return }
         guard !displayedBanners.contains(banner.token) else { return }
         displayedBanners.insert(banner.token)
+        let arrival = nextArrival
+        nextArrival += 1
 
         // Overlay banners appear all at once: load the design's images first, bounded by
         // `imagePrefetchTimeout`. Static banners render as they load.
@@ -187,7 +183,7 @@ class BannerDisplayViewModel: ObservableObject {
                     await BannerImageCache.shared.prefetch(urls, timeout: Self.imagePrefetchTimeout)
                     guard let self = self else { return }
                     defer { self.prefetchTasks.removeValue(forKey: taskId) }
-                    // `stop()` cancels this task and clears the queues but has no reference to
+                    // `stop()` cancels this task but has no reference to
                     // `banner.token` to release from `displayedBanners` — do it here, or a
                     // banner whose prefetch loses the race with a tab switch could never be
                     // shown again for the life of this view model (`initialize` re-arms and
@@ -196,36 +192,47 @@ class BannerDisplayViewModel: ObservableObject {
                         self.displayedBanners.remove(banner.token)
                         return
                     }
-                    self.show(banner)
+                    self.show(banner, arrival: arrival)
                 }
                 prefetchTasks[taskId] = task
                 return
             }
         }
-        show(banner)
+        show(banner, arrival: arrival)
     }
 
-    private func show(_ banner: BannerResponse) {
+    /// The order banners reached this view model in; a prefetch can finish out of that order.
+    private var nextArrival = 0
+    /// The arrival of the newest popup or flyout shown so far.
+    private var newestTakeoverArrival = -1
+
+    private func show(_ banner: BannerResponse, arrival: Int) {
         defer {
             if usesOverlayWindow, Self.overlayDisplayTypes.contains(banner.displayType ?? "") {
                 BannerOverlayHost.shared.contentChanged(in: self, onLinkTap: onLinkTap)
             }
         }
         switch banner.displayType {
-        case "popup":
-            // One popup at a time; a second one waits and is shown, and counted, when the first
-            // closes.
-            if popupBanner != nil {
-                queuedPopups.append(banner)
+        case "popup", "flyout":
+            // One popup or flyout at a time and the newest wins, as in sdk-react-native's single
+            // `popupBanner` slot. The one it replaces is not closed, so no close is tracked for it.
+            if arrival < newestTakeoverArrival {
+                // A newer one is already up: this one is counted and replaced at once.
+                displayedBanners.remove(banner.token)
+                trackImpression(banner)
                 return
             }
-            popupBanner = banner
-        case "flyout":
-            if flyoutBanner != nil {
-                queuedFlyouts.append(banner)
-                return
+            newestTakeoverArrival = arrival
+            for replaced in [popupBanner, flyoutBanner].compactMap({ $0 }) {
+                displayedBanners.remove(replaced.token)
             }
-            flyoutBanner = banner
+            if banner.displayType == "popup" {
+                flyoutBanner = nil
+                popupBanner = banner
+            } else {
+                popupBanner = nil
+                flyoutBanner = banner
+            }
         case "bar":
             barBanners.append(banner)
         case "static":
@@ -236,11 +243,6 @@ class BannerDisplayViewModel: ObservableObject {
 
         trackImpression(banner)
     }
-
-    /// Popups and flyouts that arrived while another was on screen; each is shown, and its
-    /// impression counted, when the current one is dismissed.
-    private var queuedPopups: [BannerResponse] = []
-    private var queuedFlyouts: [BannerResponse] = []
 
     private func shouldDisplay(_ banner: BannerResponse) -> Bool {
         // A missing design, or one with no rows or content, is neither shown nor counted.
@@ -281,14 +283,12 @@ class BannerDisplayViewModel: ObservableObject {
         popupBanner = nil
         displayedBanners.remove(banner.token)
         if track { trackDismiss(banner) }
-        if !queuedPopups.isEmpty { show(queuedPopups.removeFirst()) }
     }
 
     func dismissFlyout(_ banner: BannerResponse, track: Bool = true) {
         flyoutBanner = nil
         displayedBanners.remove(banner.token)
         if track { trackDismiss(banner) }
-        if !queuedFlyouts.isEmpty { show(queuedFlyouts.removeFirst()) }
     }
 
     func dismissBar(_ banner: BannerResponse) {

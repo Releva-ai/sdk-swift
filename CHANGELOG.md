@@ -64,6 +64,11 @@ All notable changes to this project will be documented in this file.
   on a bottom bar), and the 44 pt tap target grows outward around it. A right-hand flyout's
   control sits on its inner, left edge. The ✕ is two 2 pt strokes `closeFontSize` long, with no
   shadow.
+- **A newer popup or flyout replaces the one on screen, as in sdk-react-native.** A popup and a
+  flyout share one slot: the newest to arrive is shown and the one it replaces goes away without a
+  `bannerClose`, where a second one used to wait until the first was closed. Every one that
+  arrives is counted, including one replaced at once. Arrival order decides, so a popup that waited
+  for its images does not replace a newer one already on screen.
 
 ### Fixed
 
