@@ -156,7 +156,8 @@ enum BannerChrome {
     /// height unless `cardHeight` is authored, then moved by the offset keys and rounded by
     /// `cardBorderRadius`. A card with no size runs under the status bar and the home indicator and
     /// insets its content and close control instead. The close control sits on the card's inner
-    /// edge. There is no dimmed overlay; the page around the card stays usable.
+    /// edge. The rest of the window is dimmed black at 50%, and a tap there closes the flyout, as
+    /// sdk-react-native's Modal overlay does.
     /// - Parameter safeArea: the window's safe-area insets. The view itself spans the window.
     @ViewBuilder
     static func flyout(
@@ -192,6 +193,10 @@ enum BannerChrome {
             let closeSideInset = layout.closeOnLeading ? insets.leading : insets.trailing
 
             ZStack(alignment: .topLeading) {
+                Color.black.opacity(0.5)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .onTapGesture { viewModel.dismissFlyout(banner) }
+
                 if layout.isSized {
                     Color.clear
                         .frame(width: layout.box.width, height: layout.box.height)
@@ -242,6 +247,8 @@ enum BannerChrome {
                     }
                 )
                 .clipShape(RoundedRectangle(cornerRadius: style.authoredCornerRadius ?? 0, style: .circular))
+                // A tap on the card where the design draws nothing stays on the card.
+                .contentShape(Rectangle())
                 .shadow(color: Color.black.opacity(0.25), radius: 16, x: layout.shadowDirection * 4, y: 0)
                 .reportBannerFrame()
                 .bannerAccessibilityContainer(BannerAccessibilityID.banner(banner.token))

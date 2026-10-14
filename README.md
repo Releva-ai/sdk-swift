@@ -1014,7 +1014,7 @@ Stories with a scroll trigger use the same report. Both `reportScrollPercentage(
 |------|-------------|
 | **Popup** | Centered modal dialog with overlay backdrop and close button. Supports full-screen mode. |
 | **Bar** | A card at the top or bottom edge, or in the middle, of the screen, with a close button. Unpainted unless the card is given a colour; the rest of the screen stays usable. |
-| **Flyout** | Side panel, 80% of the screen wide, from the left or right edge with scrollable content and the close button on its inner edge. Full height unless sized; the rest of the screen stays usable. |
+| **Flyout** | Side panel, 80% of the screen wide, from the left or right edge with scrollable content and the close button on its inner edge. Full height unless sized; the rest of the screen is dimmed, and a tap there closes it. |
 | **Static** | Inline content injected before or after the wrapped view (afterbegin, beforeend, afterend, replace). |
 
 All banner styling, positioning, and content are configured in the Releva dashboard using the Unlayer editor. The card keys the editor writes (`cardBackgroundColor`, `cardWidth`, `cardHeight`, `cardBorderRadius`, `contentVerticalAlign`, `cardPositionVertical`, `cardPositionHorizontal`, `cardOffsetVertical`, `cardOffsetHorizontal`) apply to popups, flyouts and bars alike, and lay a banner out as the React Native SDK does.

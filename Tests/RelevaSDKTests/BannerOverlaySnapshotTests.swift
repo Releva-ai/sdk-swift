@@ -276,13 +276,16 @@ final class BannerOverlaySnapshotTests: XCTestCase {
 
     /// Flyout contract, as sdk-react-native draws it on iOS: with no size key the card is 80% of
     /// the window wide, flush with its edge and full-bleed from the screen's top to its bottom,
-    /// and the rest of the screen passes touches through.
+    /// and the rest of the screen is dimmed black at 50% and takes every touch.
     @MainActor
     func testFlyoutRightSnapshot() throws {
         try snapshot(named: "flyout_right") { vm in
             vm.flyoutBanner = BannerResponse(token: "fly", displayType: "flyout", displayPosition: "right", design: design(rowColor: "#3A3FE0"))
         } check: { host, window in
-            XCTAssertFalse(host.coversScreen, "a flyout has no overlay")
+            XCTAssertTrue(host.coversScreen, "a flyout's overlay owns every touch")
+            // Beside the card, over the fake app's tab bar (white 0.1, rgb(26, 26, 26)), dimmed by half.
+            let beside = color(at: CGPoint(x: 10, y: window.bounds.height - 10), in: window)
+            XCTAssertTrue(beside.isClose(to: RGB(red: 13, green: 13, blue: 13)), "dimmed: drew \(beside)")
             guard let panel = host.interactiveFrames.first, host.interactiveFrames.count == 1 else {
                 return XCTFail("expected exactly one flyout frame, got \(host.interactiveFrames)")
             }

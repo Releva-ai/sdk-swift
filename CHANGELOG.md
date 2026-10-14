@@ -72,6 +72,9 @@ All notable changes to this project will be documented in this file.
 - **A tap on a bar's card outside its design does nothing, as in sdk-react-native.** It used to
   close the bar. The ✕ and links inside the design are unchanged, and touches beside a narrowed or
   moved card still reach the app.
+- **A flyout dims the rest of the screen and closes on a tap there, as in sdk-react-native.** The
+  dim is black at 50% over the whole window, the app's bars included, and the tap reports a
+  `bannerClose`, as the ✕ does. The page beside a flyout used to stay usable.
 
 ### Fixed
 

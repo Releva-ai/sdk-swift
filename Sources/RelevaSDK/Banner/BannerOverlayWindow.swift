@@ -9,8 +9,8 @@ import Combine
 /// positions these banners `fixed` over the whole page; this is the UIKit equivalent. Static
 /// banners stay inline in the host view.
 ///
-/// The window passes touches through wherever no banner is drawn. A popup covers the screen with
-/// its dimmed overlay and takes every touch.
+/// The window passes touches through wherever no banner is drawn. A popup or a flyout covers the
+/// screen with its dimmed overlay and takes every touch.
 @MainActor
 final class BannerOverlayHost: ObservableObject {
     static let shared = BannerOverlayHost()
@@ -26,7 +26,7 @@ final class BannerOverlayHost: ObservableObject {
     /// drawn; touches outside them fall through to the app. Updated by `BannerOverlayRoot` from a
     /// preference.
     var interactiveFrames: [CGRect] = []
-    /// `true` while a popup is shown: its overlay owns the whole screen.
+    /// `true` while a popup or a flyout is shown: its overlay owns the whole screen.
     var coversScreen = false
 
     private var window: BannerOverlayWindow?
@@ -261,8 +261,7 @@ private struct BannerOverlayContent: View {
             }
 
             if let flyout = viewModel.flyoutBanner {
-                // Spans the window; the flyout reports its own card frame, so the rest of the
-                // window does not claim touches.
+                // Spans the window with its dimmed overlay.
                 BannerChrome.flyout(
                     flyout,
                     viewModel: viewModel,
@@ -276,11 +275,12 @@ private struct BannerOverlayContent: View {
                 BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: host.onLinkTap)
             }
         }
-        .onAppear { host.coversScreen = viewModel.popupBanner != nil }
-        .onChange(of: viewModel.popupBanner?.token) { _ in
-            host.coversScreen = viewModel.popupBanner != nil
-        }
+        .onAppear { host.coversScreen = coversScreen }
+        .onChange(of: viewModel.popupBanner?.token) { _ in host.coversScreen = coversScreen }
+        .onChange(of: viewModel.flyoutBanner?.token) { _ in host.coversScreen = coversScreen }
     }
+
+    private var coversScreen: Bool { viewModel.popupBanner != nil || viewModel.flyoutBanner != nil }
 
     private func bar(_ banner: BannerResponse, in container: CGSize, touchesEdge: Bool) -> some View {
         BannerChrome.bar(
