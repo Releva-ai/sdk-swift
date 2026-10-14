@@ -340,7 +340,7 @@ enum BannerChrome {
         .frame(maxWidth: .infinity, alignment: Alignment(horizontal: layout.layerAlignment, vertical: .center))
     }
 
-    /// The key window's safe-area insets, used as a floor for a top bar's status-bar padding.
+    /// The key window's safe-area insets, used as a floor for where top bars start.
     private static var keyWindowSafeAreaInsets: UIEdgeInsets {
         UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -349,8 +349,8 @@ enum BannerChrome {
             .safeAreaInsets ?? .zero
     }
 
-    /// The insets a bar positioned in a window pads by: `insets`, with the key window's top inset
-    /// as a floor, because a view that ignores the safe area can be handed zero.
+    /// The window's safe-area insets that bars are laid out by: `insets`, with the key window's top
+    /// inset as a floor, because a view that ignores the safe area can be handed zero.
     static func barSafeArea(_ insets: UIEdgeInsets) -> EdgeInsets {
         EdgeInsets(
             top: max(insets.top, keyWindowSafeAreaInsets.top),

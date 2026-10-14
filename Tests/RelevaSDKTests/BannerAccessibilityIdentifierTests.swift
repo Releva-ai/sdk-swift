@@ -211,21 +211,20 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
 
     // MARK: - Bars
 
-    /// A top bar's layer spans the width; its card pads the status bar, so the control's visible
-    /// button sits 4 below the safe-area top and 4 in from the right, its tap target reaching 2
-    /// past the card's edge.
+    /// A top bar's layer spans the width from the safe-area top, and its card carries no
+    /// status-bar padding, so the control's visible button sits 4 below the card's top and 4 in
+    /// from the right, its tap target reaching 2 past the card's edges.
     @MainActor
     func testTopBarLayerAndCloseCarryTheirIds() throws {
         try overlay { vm in
             vm.barBanners = [BannerResponse(token: "bar-top", displayType: "bar", displayPosition: "top", design: design())]
         } check: { tree, reported, safeArea in
             let card = try XCTUnwrap(reported.max { $0.width * $0.height < $1.width * $1.height }, "the bar reported no frame")
-            XCTAssertEqual(card.minY, 0, accuracy: 0.5, "the full card, status-bar padding included")
+            // At least the host's safe-area top; the key window's inset can raise it.
+            XCTAssertGreaterThanOrEqual(card.minY, safeArea.minY - 0.5, "the card starts below the status bar")
             XCTAssertEqual(card.width, Self.windowSize.width, accuracy: 0.5)
             let close = try assertBanner("bar-top", in: tree, frame: card, containsContent: false)
-            // The status-bar padding is at least the host's inset; the key window's can raise it.
-            XCTAssertGreaterThanOrEqual(close.frame.minY, safeArea.minY - 2.5)
-            assertCloseIsTheHitBox(close, in: card, inset: BannerChrome.barCloseInset, top: close.frame.minY)
+            assertCloseIsTheHitBox(close, in: card, inset: BannerChrome.barCloseInset)
             XCTAssertTrue(
                 reported.contains { abs($0.minX - close.frame.minX) < 0.5 && abs($0.minY - close.frame.minY) < 0.5 },
                 "the control's tap target claims touches where it reaches past the card"
@@ -249,9 +248,9 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
         }
     }
 
-    /// A centred, narrowed bar: the layer spans the window, the card does not.
+    /// A centred, narrowed bar: the layer spans the window below the status bar, the card does not.
     @MainActor
-    func testACentredBarsLayerSpansTheWindow() throws {
+    func testACentredBarsLayerSpansTheWindowBelowTheStatusBar() throws {
         try overlay { vm in
             vm.barBanners = [BannerResponse(
                 token: "bar-centre",
@@ -260,10 +259,20 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
                 cssStyles: ["cardPositionVertical": "center", "cardWidth": "200px"],
                 design: design()
             )]
-        } check: { tree, reported, _ in
+        } check: { tree, reported, safeArea in
             let card = try XCTUnwrap(reported.max { $0.width * $0.height < $1.width * $1.height }, "the bar reported no frame")
             XCTAssertEqual(card.width, 200, accuracy: 0.5)
-            _ = try assertBanner("bar-centre", in: tree, frame: CGRect(origin: .zero, size: Self.windowSize), containsContent: false)
+            let layer = try XCTUnwrap(tree.nodes(BannerAccessibilityID.banner("bar-centre")).first, "no element carries releva-banner-bar-centre")
+            // At least the host's safe-area top; the key window's inset can raise it.
+            XCTAssertGreaterThanOrEqual(layer.frame.minY, safeArea.minY - 0.5, "from below the status bar")
+            XCTAssertEqual(layer.frame.maxY, Self.windowSize.height, accuracy: 0.5, "down to the window's bottom")
+            XCTAssertEqual(card.midY, layer.frame.midY, accuracy: 1, "the card centred in it")
+            _ = try assertBanner(
+                "bar-centre",
+                in: tree,
+                frame: CGRect(x: 0, y: layer.frame.minY, width: Self.windowSize.width, height: Self.windowSize.height - layer.frame.minY),
+                containsContent: false
+            )
         }
     }
 

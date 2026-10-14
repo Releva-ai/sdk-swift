@@ -258,18 +258,27 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         return host.interactiveFrames.max { $0.width * $0.height < $1.width * $1.height }
     }
 
-    /// Bar contract: one full-width card touching the screen edge it is pinned to, reported with
-    /// its close control as the only touch-claiming frames so the rest of the app stays usable.
+    /// Bar contract: one full-width card at the edge it is pinned to, reported with its close
+    /// control as the only touch-claiming frames so the rest of the app stays usable. A top bar
+    /// starts at the safe-area top, below the status bar, as sdk-react-native's does inside the
+    /// host's content, so its card carries no status-bar padding: it is as tall as the same design
+    /// centred in the screen.
     @MainActor
     func testTopBarSnapshot() throws {
+        var centredHeight: CGFloat?
+        try snapshot(named: "bar_centre") { vm in
+            vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", cssStyles: ["cardPositionVertical": "center"], design: design(rowColor: "#3A3FE0"))]
+        } check: { host, _ in
+            centredHeight = barCard(host)?.height
+        }
         try snapshot(named: "bar_top") { vm in
             vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", displayPosition: "top", design: design(rowColor: "#3A3FE0"))]
         } check: { host, window in
             XCTAssertFalse(host.coversScreen)
             guard let bar = barCard(host) else { return }
-            XCTAssertEqual(bar.minY, 0, accuracy: 0.5, "top bar touches the top edge")
+            XCTAssertEqual(bar.minY, host.safeAreaInsets.top, accuracy: 0.5, "top bar starts at the safe-area top")
             XCTAssertEqual(bar.width, window.bounds.width, accuracy: 0.5, "top bar spans the width")
-            XCTAssertGreaterThan(bar.height, 59, "top bar pads for the status bar")
+            XCTAssertEqual(bar.height, centredHeight ?? -1, accuracy: 0.5, "no status-bar padding inside the card")
             XCTAssertLessThan(bar.height, window.bounds.height / 2, "a short design stays a strip")
         }
     }
@@ -476,7 +485,7 @@ final class BannerOverlaySnapshotTests: XCTestCase {
                 vm.barBanners = [BannerResponse(token: "bar", displayType: "bar", displayPosition: "top", cssStyles: cssStyles, design: seeThrough)]
             } check: { host, window in
                 guard let strip = barCard(host) else { return }
-                // Inside the card's status-bar padding, clear of the copy and the close control.
+                // Inside the card's top-leading padding, clear of the copy and the close control.
                 let sample = color(at: CGPoint(x: strip.minX + 4, y: strip.minY + 4), in: window)
                 XCTAssertTrue(sample.isClose(to: expected), "\(name): drew \(sample), want \(expected)")
             }

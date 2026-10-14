@@ -274,30 +274,30 @@ final class BannerQAFixtureTests: XCTestCase {
             XCTAssertEqual(row.reported, base.reported, "the same card and control")
             assertFrame(row.banner, try XCTUnwrap(base.banner), "the same layer")
             let card = try XCTUnwrap(row.card)
-            XCTAssertEqual(card.minY, 0, accuracy: 0.5)
+            XCTAssertEqual(card.minY, row.safeArea.top, accuracy: 0.5)
             XCTAssertEqual(card.width, Self.windowSize.width, accuracy: 0.5)
             let sample = row.color(at: CGPoint(x: card.minX + 4, y: card.minY + 4))
             XCTAssertTrue(sample.isClose(to: Self.backdrop), "unpainted: drew \(sample)")
         }
     }
 
-    /// CHR-02: a 240 pt magenta card centred in a layer that spans the width, its bottom corners
-    /// rounded 16.
+    /// CHR-02: a 240 pt magenta card centred in a layer that spans the width, at the safe-area top,
+    /// its bottom corners rounded 16.
     @MainActor
     func testCHR02BarCentred240Radius16() throws {
         let keys: [String: JSONValue] = ["cardPositionHorizontal": "center", "cardWidth": "240px", "cardBorderRadius": "16", "cardBackgroundColor": "#ff00ff"]
         try draw("CHR-02", [Self.banner("chr02", "bar", position: "top", keys: keys, design: Self.chromeDesign("CHR-02 centred 240"))]) { row in
             let card = try XCTUnwrap(row.card)
-            assertFrame(card, CGRect(x: (Self.windowSize.width - 240) / 2, y: 0, width: 240, height: card.height), "card")
-            assertFrame(row.banner, CGRect(x: 0, y: 0, width: Self.windowSize.width, height: card.height), "layer")
+            assertFrame(card, CGRect(x: (Self.windowSize.width - 240) / 2, y: row.safeArea.top, width: 240, height: card.height), "card")
+            assertFrame(row.banner, CGRect(x: 0, y: row.safeArea.top, width: Self.windowSize.width, height: card.height), "layer")
             XCTAssertTrue(row.color(at: CGPoint(x: card.midX, y: card.maxY - 2)).isClose(to: Self.magenta), "painted")
             XCTAssertTrue(row.color(at: CGPoint(x: card.minX + 1, y: card.maxY - 1)).isClose(to: Self.backdrop), "bottom-left corner rounded")
             XCTAssertTrue(row.color(at: CGPoint(x: card.maxX - 1, y: card.maxY - 1)).isClose(to: Self.backdrop), "bottom-right corner rounded")
         }
     }
 
-    /// CHR-03: a 200 pt card in the vertical middle of a layer spanning the window, which passes
-    /// touches through beside the card.
+    /// CHR-03: a 200 pt card in the vertical middle of a layer spanning the window below the status
+    /// bar, which passes touches through beside the card.
     @MainActor
     func testCHR03BarCentredVerticallyPassesTouchesBesideIt() throws {
         let keys: [String: JSONValue] = ["cardPositionVertical": "center", "cardWidth": "200px", "cardBackgroundColor": "#ff00ff"]
@@ -305,9 +305,9 @@ final class BannerQAFixtureTests: XCTestCase {
             let card = try XCTUnwrap(row.card)
             XCTAssertEqual(card.minX, 0, accuracy: 0.5)
             XCTAssertEqual(card.width, 200, accuracy: 0.5)
-            XCTAssertEqual(card.midY, Self.windowSize.height / 2, accuracy: 1)
+            XCTAssertEqual(card.midY, (row.safeArea.top + Self.windowSize.height) / 2, accuracy: 1)
             XCTAssertGreaterThan(card.minY, row.safeArea.top, "no status-bar padding away from the edge")
-            assertFrame(row.banner, CGRect(origin: .zero, size: Self.windowSize), "layer")
+            assertFrame(row.banner, CGRect(x: 0, y: row.safeArea.top, width: Self.windowSize.width, height: Self.windowSize.height - row.safeArea.top), "layer")
             let beside = CGPoint(x: 300, y: card.midY)
             XCTAssertFalse(row.reported.contains { $0.contains(beside) }, "a touch beside the card reaches the app")
         }
@@ -333,23 +333,23 @@ final class BannerQAFixtureTests: XCTestCase {
         try draw("CHR-05", [Self.banner("chr05", "bar", position: "top", keys: keys, design: Self.chromeDesign("CHR-05 offset 40px 5%"))]) { row in
             let card = try XCTUnwrap(row.card)
             let shift = Self.windowSize.width * 0.05
-            assertFrame(card, CGRect(x: shift, y: 40, width: Self.windowSize.width, height: card.height), "card")
-            assertFrame(row.banner, CGRect(x: 0, y: 0, width: Self.windowSize.width, height: card.height), "layer")
+            assertFrame(card, CGRect(x: shift, y: row.safeArea.top + 40, width: Self.windowSize.width, height: card.height), "card")
+            assertFrame(row.banner, CGRect(x: 0, y: row.safeArea.top, width: Self.windowSize.width, height: card.height), "layer")
             let close = try XCTUnwrap(row.close)
             XCTAssertLessThanOrEqual(close.maxX, Self.windowSize.width + 2.5, "the control stays on screen")
         }
     }
 
-    /// CHR-06: a 120 pt card with its copy centred in the part below the status bar.
+    /// CHR-06: a 120 pt card at the safe-area top with its copy centred in it.
     @MainActor
     func testCHR06FixedHeightCentresTheCopy() throws {
         let keys: [String: JSONValue] = ["cardHeight": "120px", "contentVerticalAlign": "center", "cardBackgroundColor": "#ff00ff"]
         try draw("CHR-06", [Self.banner("chr06", "bar", position: "top", keys: keys, design: Self.chromeDesign("CHR-06 copy centred"))], copy: "CHR-06 copy centred") { row in
             let card = try XCTUnwrap(row.card)
-            XCTAssertEqual(card.minY, 0, accuracy: 0.5)
+            XCTAssertEqual(card.minY, row.safeArea.top, accuracy: 0.5)
             XCTAssertEqual(card.height, 120, accuracy: 0.5)
             let copy = try XCTUnwrap(row.copy)
-            XCTAssertEqual(copy.midY, (row.safeArea.top + 120) / 2, accuracy: 1)
+            XCTAssertEqual(copy.midY, card.midY, accuracy: 1)
         }
     }
 
@@ -361,7 +361,7 @@ final class BannerQAFixtureTests: XCTestCase {
             let card = try XCTUnwrap(row.card)
             XCTAssertEqual(card.width, Self.windowSize.width * 0.45, accuracy: 0.5)
             XCTAssertEqual(card.midX, Self.windowSize.width / 2 + 60, accuracy: 0.5)
-            XCTAssertEqual(card.minY, 0, accuracy: 0.5)
+            XCTAssertEqual(card.minY, row.safeArea.top, accuracy: 0.5)
         }
     }
 
@@ -532,8 +532,8 @@ final class BannerQAFixtureTests: XCTestCase {
         }
     }
 
-    /// CLS-09: on a top bar the visible button sits 4 in from the content's top-right corner, below
-    /// the status bar, so the tap target reaches 2 past the card's right edge.
+    /// CLS-09: on a top bar the visible button sits 4 in from the card's top-right corner, at the
+    /// safe-area top, so the tap target reaches 2 past the card's top and right edges.
     @MainActor
     func testCLS09BarCloseControl() throws {
         try draw("CLS-09", [Self.banner("cls09", "bar", position: "top", keys: ["closeButtonColor": "#fff", "closeButtonBackgroundColor": "#000"], design: Self.design("CLS-09 bar"))]) { row in

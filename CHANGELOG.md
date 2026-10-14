@@ -40,13 +40,13 @@ All notable changes to this project will be documented in this file.
   banner** (`@discardableResult`, so existing calls compile unchanged): `false` when nothing is
   subscribed to `bannerPublisher`.
 
-- **A bar is a layer and a card, as in sdk-react-native.** The layer spans the window, pinned to
-  the edge `cardPositionVertical` (else `displayPosition`) names, or spans its height with the card
-  centred in it for `center`. The card is `cardWidth` wide (or the full width) at the side
+- **A bar is a layer and a card, as in sdk-react-native.** The layer spans the window below the
+  status bar, pinned to the edge `cardPositionVertical` (else `displayPosition`) names, or spans
+  that height with the card centred in it for `center`. The card is `cardWidth` wide (or the full width) at the side
   `cardPositionHorizontal` names, `cardHeight` tall (or as tall as its content), rounded by
   `cardBorderRadius`, with `contentVerticalAlign` placing the design in it, and the offset keys
   translate it after layout. The card pads the design 16 on the leading side and 12 above and
-  below, and pads by the status bar or home indicator when it is the bar flush with that edge.
+  below, and pads by the home indicator when it is the bottom bar flush with that edge.
   Touches beside a narrowed or moved card reach the app.
 - **A bar's card is unpainted unless `cardBackgroundColor` is authored.** It no longer paints the
   first row's colour or the system background behind the design, and draws no shadow, so a design
@@ -75,6 +75,13 @@ All notable changes to this project will be documented in this file.
 - **A flyout dims the rest of the screen and closes on a tap there, as in sdk-react-native.** The
   dim is black at 50% over the whole window, the app's bars included, and the tap reports a
   `bannerClose`, as the ✕ does. The page beside a flyout used to stay usable.
+- **A top bar starts below the status bar, as in sdk-react-native.** sdk-react-native draws a bar
+  inside the host's content, which on iOS starts below the status bar, so its card has no
+  status-bar padding. A top bar now starts at the safe-area top, a centred bar is centred between
+  there and the screen's bottom, and a `cardHeight` of 120 is 120 points of content area that
+  `contentVerticalAlign` aligns in. A bottom bar still reaches the screen's bottom edge with the
+  home indicator padded inside its card, as sdk-react-native's does. Percentages still resolve
+  against the window.
 
 ### Fixed
 

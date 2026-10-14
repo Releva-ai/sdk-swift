@@ -198,8 +198,9 @@ extension View {
     }
 }
 
-/// The root view of the overlay window: bars pinned to the screen edges, then the popup and
-/// flyout, all drawn with the same `BannerChrome` views the presenter uses.
+/// The root view of the overlay window: bars pinned below the status bar and to the screen's
+/// bottom edge, then the popup and flyout, all drawn with the same `BannerChrome` views the
+/// presenter uses.
 struct BannerOverlayRoot: View {
     @ObservedObject var host: BannerOverlayHost
 
@@ -230,32 +231,36 @@ private struct BannerOverlayContent: View {
     var body: some View {
         ZStack {
             if !viewModel.barBanners.isEmpty {
-                // Bars are positioned in the whole window, as sdk-react-native positions them in
-                // its container: top bars stacked down from the top edge, bottom bars up from the
-                // bottom edge, a centred bar in a layer spanning the height. Only the bar flush
-                // with an edge meets the system UI there.
+                // Bars are positioned in the window below the status bar, as sdk-react-native
+                // positions them in the host's content, which starts below it on iOS: top bars
+                // stacked down from the safe-area top, bottom bars up from the window's bottom
+                // edge, a centred bar in a layer spanning that height. Only the bottom bar flush
+                // with the edge meets the system UI, and pads by the home indicator inside its
+                // card. Percentages resolve against the window, as sdk-react-native's do.
                 GeometryReader { geometry in
+                    let safeArea = BannerChrome.barSafeArea(host.safeAreaInsets)
                     let top = bars(at: .start)
                     let bottom = bars(at: .end)
                     ZStack {
                         VStack(spacing: 0) {
                             ForEach(Array(top.enumerated()), id: \.element.token) { index, banner in
-                                bar(banner, in: geometry.size, touchesEdge: index == 0)
+                                bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: index == 0)
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                         ForEach(bars(at: .center), id: \.token) { banner in
-                            bar(banner, in: geometry.size, touchesEdge: false)
+                            bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: false)
                         }
 
                         VStack(spacing: 0) {
                             ForEach(Array(bottom.enumerated()), id: \.element.token) { index, banner in
-                                bar(banner, in: geometry.size, touchesEdge: index == bottom.count - 1)
+                                bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: index == bottom.count - 1)
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     }
+                    .padding(.top, safeArea.top)
                 }
                 .ignoresSafeArea()
             }
@@ -282,7 +287,8 @@ private struct BannerOverlayContent: View {
 
     private var coversScreen: Bool { viewModel.popupBanner != nil || viewModel.flyoutBanner != nil }
 
-    private func bar(_ banner: BannerResponse, in container: CGSize, touchesEdge: Bool) -> some View {
+    /// - Parameter safeArea: the window's; the bars' box starts at its top, so no bar meets it there.
+    private func bar(_ banner: BannerResponse, in container: CGSize, safeArea: EdgeInsets, touchesEdge: Bool) -> some View {
         BannerChrome.bar(
             banner,
             viewModel: viewModel,
@@ -290,7 +296,7 @@ private struct BannerOverlayContent: View {
                 style: BannerCardStyle(banner),
                 displayPosition: banner.displayPosition,
                 container: container,
-                safeArea: BannerChrome.barSafeArea(host.safeAreaInsets),
+                safeArea: EdgeInsets(top: 0, leading: safeArea.leading, bottom: safeArea.bottom, trailing: safeArea.trailing),
                 touchesEdge: touchesEdge
             ),
             containerWidth: container.width,

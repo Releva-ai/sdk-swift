@@ -3,8 +3,9 @@ import SwiftUI
 /// Where a bar's card sits and what it pads, resolved the way sdk-react-native's
 /// `BannerDisplayWidget` lays a bar out on iOS.
 ///
-/// The bar is a layer and a card. The layer spans the container's width, pinned to the edge the
-/// vertical anchor names, or spans its height too with the card centred in it. The card inside is
+/// The bar is a layer and a card. The layer spans the width of the box it is positioned in, pinned
+/// to the edge the vertical anchor names, or spans its height too with the card centred in it. In
+/// the overlay window that box starts below the status bar. The card inside is
 /// the authored size, or the layer's width and its content's height, and pads by whatever part of
 /// the system UI its laid-out frame overlaps, as a `SafeAreaView` does. An offset translates the
 /// card after layout, so neither the layer nor that padding moves with it.
@@ -22,7 +23,7 @@ struct BarCardLayout: Equatable {
     /// How far the close control and its gutter move in when a card that reaches the container's
     /// right edge is translated past it, so the control stays on screen.
     let closeInset: CGFloat
-    /// A centred layer spans the container's height and centres its card in it.
+    /// A centred layer spans the height of the box it is positioned in and centres its card in it.
     let spansHeight: Bool
 
     /// A layer anchored to one side hugs its card; otherwise it spans the container's width.
@@ -42,8 +43,8 @@ struct BarCardLayout: Equatable {
     var layerAlignment: HorizontalAlignment { horizontal == .end ? .trailing : .leading }
 
     /// - Parameters:
-    ///   - container: the box the layer is positioned in; percentages resolve against it.
-    ///   - safeArea: the parts of that box under system UI.
+    ///   - container: the window, which percentages resolve against and whose width the layer spans.
+    ///   - safeArea: the parts of the box the layer is positioned in that are under system UI.
     ///   - touchesEdge: whether this bar is the one flush with its edge (the first top bar, the
     ///     last bottom bar), and so the one that meets the status bar or the home indicator.
     ///   - canSpanHeight: `false` where the container has no height to span (a presenter slot).
