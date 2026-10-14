@@ -227,8 +227,9 @@ public final class BannerPresenter {
     /// A bar banner cannot be a modal — that would block the whole screen for a strip of
     /// chrome — so the bars are drawn in a layer over the host's view: a child view controller
     /// laying them out exactly as the overlay window does (`BannerBarLayer`), against the host
-    /// view's edges and its safe area. The layer passes every touch through except on a bar's
-    /// card or close control.
+    /// view's edges and its safe area. Over a scroll view (a table or collection view controller's
+    /// view) the layer covers its visible frame, so the bars do not scroll. The layer passes every
+    /// touch through except on a bar's card or close control.
     struct BarLayer {
         let view: BannerBarPassThroughView
         let controller: BannerBarLayerHostingController
@@ -252,16 +253,37 @@ public final class BannerPresenter {
         host.view.addSubview(layerView)
         host.addChild(controller)
         layerView.addSubview(controller.view)
+        // A scroll view's edges are its content's; its frame guide is what stays on screen.
+        let frameGuide = (host.view as? UIScrollView)?.frameLayoutGuide
         NSLayoutConstraint.activate([
-            layerView.leadingAnchor.constraint(equalTo: host.view.leadingAnchor),
-            layerView.trailingAnchor.constraint(equalTo: host.view.trailingAnchor),
-            layerView.topAnchor.constraint(equalTo: host.view.topAnchor),
-            layerView.bottomAnchor.constraint(equalTo: host.view.bottomAnchor),
+            layerView.leadingAnchor.constraint(equalTo: frameGuide?.leadingAnchor ?? host.view.leadingAnchor),
+            layerView.trailingAnchor.constraint(equalTo: frameGuide?.trailingAnchor ?? host.view.trailingAnchor),
+            layerView.topAnchor.constraint(equalTo: frameGuide?.topAnchor ?? host.view.topAnchor),
+            layerView.bottomAnchor.constraint(equalTo: frameGuide?.bottomAnchor ?? host.view.bottomAnchor),
             controller.view.leadingAnchor.constraint(equalTo: layerView.leadingAnchor),
             controller.view.trailingAnchor.constraint(equalTo: layerView.trailingAnchor),
             controller.view.topAnchor.constraint(equalTo: layerView.topAnchor),
             controller.view.bottomAnchor.constraint(equalTo: layerView.bottomAnchor)
         ])
+        if let scrollView = host.view as? UIScrollView {
+            // A scroll view gives its subviews no safe area: a hidden view pinned to its safe-area
+            // guide measures it for the layer.
+            let safeAreaGuide = UIView()
+            safeAreaGuide.isHidden = true
+            safeAreaGuide.translatesAutoresizingMaskIntoConstraints = false
+            layerView.insertSubview(safeAreaGuide, at: 0)
+            let guide = scrollView.safeAreaLayoutGuide
+            NSLayoutConstraint.activate([
+                safeAreaGuide.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+                safeAreaGuide.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+                safeAreaGuide.topAnchor.constraint(equalTo: guide.topAnchor),
+                safeAreaGuide.bottomAnchor.constraint(equalTo: guide.bottomAnchor)
+            ])
+            layerView.safeAreaGuide = safeAreaGuide
+            layerView.onSafeAreaChange = { [weak controller] insets in
+                if controller?.additionalSafeAreaInsets != insets { controller?.additionalSafeAreaInsets = insets }
+            }
+        }
         controller.didMove(toParent: host)
         barLayer = BarLayer(view: layerView, controller: controller)
     }
@@ -337,6 +359,21 @@ final class BannerBarLayerHostingController: UIHostingController<BannerPresenter
 /// A view that only claims touches inside `interactiveFrames`, which are in window coordinates.
 final class BannerBarPassThroughView: UIView {
     var interactiveFrames: [CGRect] = []
+    /// Over a scroll view: a hidden subview covering the scroll view's safe area.
+    var safeAreaGuide: UIView?
+    /// Called on each layout with the insets `safeAreaGuide` measures.
+    var onSafeAreaChange: ((UIEdgeInsets) -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let guide = safeAreaGuide?.frame else { return }
+        onSafeAreaChange?(UIEdgeInsets(
+            top: max(guide.minY, 0),
+            left: max(guide.minX, 0),
+            bottom: max(bounds.maxY - guide.maxY, 0),
+            right: max(bounds.maxX - guide.maxX, 0)
+        ))
+    }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let inWindow = convert(point, to: nil)

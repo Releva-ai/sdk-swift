@@ -89,7 +89,8 @@ All notable changes to this project will be documented in this file.
   bars are drawn in one layer over the host's view with the modifier's layout: a top bar starts at
   the host's safe-area top with no inset in its card, a centred bar is centred between there and
   the bottom edge, and a bottom bar runs to the bottom edge with the bottom inset inside its card,
-  where the presenter's bars used to end at the safe-area bottom. The layer passes touches beside
+  where the presenter's bars used to end at the safe-area bottom. Over a table or collection view
+  the layer covers its visible frame, so the bars do not scroll. The layer passes touches beside
   a narrowed or moved card through to the host.
 - **A flyout slides up from the bottom of the screen when it opens and back down when it closes,
   as in sdk-react-native**, whose flyout is a `Modal` with `animationType="slide"`. The flyout and

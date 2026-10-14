@@ -402,6 +402,67 @@ final class BannerPresenterTests: XCTestCase {
         XCTAssertEqual(cards.map(\.maxY).max() ?? -1, bounds.maxY, accuracy: 0.5, "the last bottom bar runs to the bottom edge")
     }
 
+    /// Over a `UITableViewController` in a navigation controller the host's view is the table, whose
+    /// own edges are its content's. The bars sit on its visible frame: the top bar at the safe-area
+    /// top below the navigation bar, the bottom bar at the bottom edge, and neither moves when the
+    /// table scrolls.
+    @MainActor
+    func testBarsOverATableViewHostStayOnScreenWhenItScrolls() throws {
+        final class Rows: NSObject, UITableViewDataSource {
+            func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { 200 }
+            func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+                let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+                cell.textLabel?.text = "row \(indexPath.row)"
+                return cell
+            }
+        }
+        let host = UITableViewController(style: .plain)
+        let rows = Rows()
+        host.tableView.dataSource = rows
+        let window = makeVisibleWindow(rootViewController: UINavigationController(rootViewController: host))
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        let presenter = BannerPresenter(host: host, tracker: BannerTrackerSpy()) { _ in }
+        presenter.start()
+        defer { presenter.stop() }
+        presenter.viewModel.barBanners = [bar("top", position: "top"), bar("bottom", position: "bottom")]
+        func settle() {
+            drainMainQueue(turns: 6)
+            window.layoutIfNeeded()
+            drainMainQueue(turns: 6)
+            window.layoutIfNeeded()
+        }
+        settle()
+
+        let table = try XCTUnwrap(host.tableView)
+        let layer = try XCTUnwrap(presenter.barLayer).view
+        let visible = table.convert(table.bounds, to: nil)
+        func cards() -> [CGRect] {
+            layer.interactiveFrames.filter { $0.width > 100 }.sorted { $0.minY < $1.minY }
+        }
+        XCTAssertGreaterThan(table.safeAreaInsets.top, 0, "the navigation bar is over the table")
+        let before = cards()
+        XCTAssertEqual(before.count, 2, "a card per bar, got \(layer.interactiveFrames)")
+        XCTAssertEqual(before.first?.minY ?? -1, visible.minY + table.safeAreaInsets.top, accuracy: 0.5, "the top bar starts below the navigation bar")
+        XCTAssertEqual(before.last?.maxY ?? -1, visible.maxY, accuracy: 0.5, "the bottom bar runs to the bottom edge")
+        XCTAssertEqual(before.first?.width ?? -1, visible.width, accuracy: 0.5, "the bars span the table's width")
+
+        table.contentOffset = CGPoint(x: 0, y: 600)
+        settle()
+        XCTAssertEqual(table.contentOffset.y, 600, "the table scrolled")
+        XCTAssertEqual(layer.convert(layer.bounds, to: nil), visible, "the layer stays on the visible frame")
+        XCTAssertEqual(cards(), before, "the bars do not scroll with the rows")
+        let layerIndex = try XCTUnwrap(table.subviews.firstIndex(of: layer))
+        let lastRow = try XCTUnwrap(table.subviews.lastIndex { $0 is UITableViewCell })
+        XCTAssertGreaterThan(layerIndex, lastRow, "the bars stay above the rows")
+
+        // A safe area that changes with the frame unchanged, as when a large title collapses.
+        host.additionalSafeAreaInsets.top = 40
+        settle()
+        XCTAssertEqual(cards().first?.minY ?? -1, (before.first?.minY ?? 0) + 40, accuracy: 0.5, "the top bar follows the safe-area top")
+        XCTAssertEqual(cards().last?.maxY ?? -1, visible.maxY, accuracy: 0.5, "the bottom bar stays at the bottom edge")
+    }
+
     /// Touches beside a bar reach the host; touches on its card are the bar's. The host's view is
     /// offset in its window, since the bars report their frames in window coordinates.
     @MainActor

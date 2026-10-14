@@ -1314,7 +1314,7 @@ Popup, flyout and bar banners are displayed. **Static and replace banners are no
 How they are presented:
 
 - Popups and flyouts share one `.overFullScreen` modal, presented from the frontmost view controller. A banner arriving while your app already has a sheet up appears over it instead of failing to present, and a newer popup or flyout replaces the one inside that modal, as it does in SwiftUI.
-- Bar banners are child view controllers pinned to the top, the middle or the bottom of the safe area, so the rest of the screen stays usable while a bar is up.
+- Bar banners are drawn in a layer over your view controller's view, laid out as in SwiftUI, so the rest of the screen stays usable while a bar is up. When that view is a scroll view (a `UITableViewController` or `UICollectionViewController`), the layer covers its visible frame and the bars do not scroll.
 
 ### NPS Surveys in UIKit
 
