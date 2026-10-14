@@ -234,7 +234,6 @@ public final class BannerPresenter {
     private func installBarLayer(in host: UIViewController) {
         let geometry = BannerBarLayerGeometry()
         let layerView = BannerBarPassThroughView()
-        layerView.translatesAutoresizingMaskIntoConstraints = false
         layerView.backgroundColor = .clear
 
         let rootView = BannerPresenterBarView(viewModel: viewModel, geometry: geometry, onLinkTap: onLinkTap) { [weak layerView] frames in
@@ -249,42 +248,27 @@ public final class BannerPresenter {
         host.view.addSubview(layerView)
         host.addChild(controller)
         layerView.addSubview(controller.view)
-        // A scroll view's edges are its content's; its frame guide is what stays on screen.
-        let frameGuide = (host.view as? UIScrollView)?.frameLayoutGuide
         NSLayoutConstraint.activate([
-            layerView.leadingAnchor.constraint(equalTo: frameGuide?.leadingAnchor ?? host.view.leadingAnchor),
-            layerView.trailingAnchor.constraint(equalTo: frameGuide?.trailingAnchor ?? host.view.trailingAnchor),
-            layerView.topAnchor.constraint(equalTo: frameGuide?.topAnchor ?? host.view.topAnchor),
-            layerView.bottomAnchor.constraint(equalTo: frameGuide?.bottomAnchor ?? host.view.bottomAnchor),
             controller.view.leadingAnchor.constraint(equalTo: layerView.leadingAnchor),
             controller.view.trailingAnchor.constraint(equalTo: layerView.trailingAnchor),
             controller.view.topAnchor.constraint(equalTo: layerView.topAnchor),
             controller.view.bottomAnchor.constraint(equalTo: layerView.bottomAnchor)
         ])
         if let scrollView = host.view as? UIScrollView {
+            layerView.cover(scrollView)
             // A scroll view passes its subviews only the safe area it does not take into its
-            // content inset: a hidden view pinned to its safe-area guide measures all of it, and
-            // the bars are laid out by that alone.
-            let safeAreaGuide = UIView()
-            safeAreaGuide.isHidden = true
-            safeAreaGuide.translatesAutoresizingMaskIntoConstraints = false
-            layerView.insertSubview(safeAreaGuide, at: 0)
-            let guide = scrollView.safeAreaLayoutGuide
-            NSLayoutConstraint.activate([
-                safeAreaGuide.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
-                safeAreaGuide.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-                safeAreaGuide.topAnchor.constraint(equalTo: guide.topAnchor),
-                safeAreaGuide.bottomAnchor.constraint(equalTo: guide.bottomAnchor)
-            ])
-            layerView.safeAreaGuide = safeAreaGuide
+            // content inset, so the bars are laid out by the scroll view's own safe area alone.
             layerView.onSafeAreaChange = { [weak controller] insets in
                 controller?.measuredSafeArea = insets
             }
-            // The scroll view adds section headers above the layer as it scrolls or loads rows.
-            layerView.scrollObservations = [
-                scrollView.observe(\.contentOffset) { [weak layerView] _, _ in layerView?.setNeedsLayout() },
-                scrollView.observe(\.contentSize) { [weak layerView] _, _ in layerView?.setNeedsLayout() }
-            ]
+        } else {
+            layerView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                layerView.leadingAnchor.constraint(equalTo: host.view.leadingAnchor),
+                layerView.trailingAnchor.constraint(equalTo: host.view.trailingAnchor),
+                layerView.topAnchor.constraint(equalTo: host.view.topAnchor),
+                layerView.bottomAnchor.constraint(equalTo: host.view.bottomAnchor)
+            ])
         }
         controller.didMove(toParent: host)
         barLayer = BarLayer(view: layerView, controller: controller)
@@ -374,27 +358,64 @@ final class BannerBarLayerHostingController: UIHostingController<BannerPresenter
 /// A view that only claims touches inside `interactiveFrames`, which are in window coordinates.
 final class BannerBarPassThroughView: UIView {
     var interactiveFrames: [CGRect] = []
-    /// Over a scroll view: a hidden subview covering the scroll view's safe area.
-    var safeAreaGuide: UIView?
-    /// Called on each layout with the insets `safeAreaGuide` measures.
+    /// Over a scroll view: called on each layout with the scroll view's safe-area insets.
     var onSafeAreaChange: ((UIEdgeInsets) -> Void)?
-    /// Over a scroll view: lays this view out again when the scroll view scrolls or its content
-    /// changes size.
-    var scrollObservations: [NSKeyValueObservation] = []
+    /// The scroll view whose visible bounds this view covers, if it is over one.
+    private weak var scrollView: UIScrollView?
+    private var scrollObservations: [NSKeyValueObservation] = []
+
+    /// Covers `scrollView`'s visible bounds and stays above its other subviews. The frame is set
+    /// from `bounds`, which the scroll view also moves itself, as a table does when sections are
+    /// inserted above the rows on screen; its frame layout guide does not follow those moves.
+    func cover(_ scrollView: UIScrollView) {
+        self.scrollView = scrollView
+        translatesAutoresizingMaskIntoConstraints = true
+        // A resize sets the scroll view's frame, not its bounds.
+        autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        frame = scrollView.bounds
+
+        // A hidden view on the scroll view's safe-area guide lays this view out again when the
+        // safe area changes.
+        let safeAreaGuide = UIView()
+        safeAreaGuide.isHidden = true
+        safeAreaGuide.translatesAutoresizingMaskIntoConstraints = false
+        insertSubview(safeAreaGuide, at: 0)
+        let guide = scrollView.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            safeAreaGuide.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+            safeAreaGuide.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+            safeAreaGuide.topAnchor.constraint(equalTo: guide.topAnchor),
+            safeAreaGuide.bottomAnchor.constraint(equalTo: guide.bottomAnchor)
+        ])
+
+        // The scroll view moves its bounds as it scrolls or updates rows, and adds section headers
+        // above this view as it scrolls or loads rows.
+        scrollObservations = [
+            scrollView.observe(\.bounds) { [weak self] _, _ in self?.followScrollView() },
+            scrollView.observe(\.contentOffset) { [weak self] _, _ in self?.followScrollView() },
+            scrollView.observe(\.contentSize) { [weak self] _, _ in self?.followScrollView() }
+        ]
+    }
+
+    private func followScrollView() {
+        matchScrollViewBounds()
+        setNeedsLayout()
+    }
+
+    private func matchScrollViewBounds() {
+        guard let scrollView = scrollView, superview === scrollView, frame != scrollView.bounds else { return }
+        frame = scrollView.bounds
+    }
 
     override func layoutSubviews() {
+        matchScrollViewBounds()
         super.layoutSubviews()
-        guard let guide = safeAreaGuide?.frame else { return }
+        guard let scrollView = scrollView, superview === scrollView else { return }
         // Back above what the scroll view added since, for drawing and for touches.
-        if let superview = superview, superview.subviews.last !== self {
-            superview.bringSubviewToFront(self)
+        if scrollView.subviews.last !== self {
+            scrollView.bringSubviewToFront(self)
         }
-        onSafeAreaChange?(UIEdgeInsets(
-            top: max(guide.minY, 0),
-            left: max(guide.minX, 0),
-            bottom: max(bounds.maxY - guide.maxY, 0),
-            right: max(bounds.maxX - guide.maxX, 0)
-        ))
+        onSafeAreaChange?(scrollView.safeAreaInsets)
     }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {

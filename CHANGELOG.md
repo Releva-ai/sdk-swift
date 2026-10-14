@@ -90,9 +90,10 @@ All notable changes to this project will be documented in this file.
   the host's safe-area top with no inset in its card, a centred bar is centred between there and
   the bottom edge, and a bottom bar runs to the bottom edge with the bottom inset inside its card,
   where the presenter's bars used to end at the safe-area bottom. Over a scroll view, such as a
-  `UITableViewController`'s table, the layer covers its visible frame and stays above the rows and
-  section headers, so the bars neither scroll nor go under a pinned header. The layer passes
-  touches beside a narrowed or moved card through to the host.
+  `UITableViewController`'s table, the layer covers its visible frame, also when the table moves
+  its own offset as sections are inserted or deleted above the rows on screen, and stays above the
+  rows and section headers, so the bars neither scroll nor go under a pinned header. The layer
+  passes touches beside a narrowed or moved card through to the host.
 - **A flyout slides up from the bottom of the screen when it opens and back down when it closes,
   and a popup fades in and out, as in sdk-react-native**, whose `Modal` is
   `animationType="slide"` for a flyout and `"fade"` for a popup. The banner and its dim move or

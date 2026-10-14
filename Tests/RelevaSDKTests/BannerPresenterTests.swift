@@ -13,7 +13,7 @@ private struct BannerFixture {
 
 /// Rows of plain cells, in sections whose headers pin in a plain table when `headers` is set.
 private final class TableRows: NSObject, UITableViewDataSource {
-    let sections: Int
+    var sections: Int
     let rowsPerSection: Int
     let headers: Bool
 
@@ -600,6 +600,147 @@ final class BannerPresenterTests: XCTestCase {
         }
     }
 
+    /// A table moves its own content offset when sections are inserted or deleted above the rows on
+    /// screen, and when it reloads, scrolls to a row, or its insets or size change. The layer follows
+    /// at once and the bars stay on the table's visible frame, above its section headers, with the
+    /// top bar taking the touches on its card.
+    @MainActor
+    func testBarsOverATableViewHostFollowTheOffsetsTheTableMovesItself() throws {
+        struct Move {
+            let name: String
+            /// Whether the table ends up away from the offset `prepare` scrolled it to.
+            let movesOffset: Bool
+            var prepare: (UITableView) -> Void = { $0.contentOffset.y = 636 }
+            let run: (UITableViewController, TableRows) -> Void
+        }
+        let moves = [
+            Move(name: "a section inserted above, without animation", movesOffset: true) { host, rows in
+                rows.sections += 1
+                host.tableView.insertSections([0], with: .none)
+            },
+            Move(name: "a section deleted above, without animation", movesOffset: true) { host, rows in
+                rows.sections -= 1
+                host.tableView.deleteSections([0], with: .none)
+            },
+            Move(name: "a section inserted above, animated", movesOffset: true) { host, rows in
+                rows.sections += 1
+                host.tableView.insertSections([0], with: .automatic)
+            },
+            Move(name: "a section deleted above, animated", movesOffset: true) { host, rows in
+                rows.sections -= 1
+                host.tableView.deleteSections([0], with: .fade)
+            },
+            Move(name: "a section inserted above in begin/endUpdates", movesOffset: true) { host, rows in
+                host.tableView.beginUpdates()
+                rows.sections += 1
+                host.tableView.insertSections([0], with: .automatic)
+                host.tableView.endUpdates()
+            },
+            Move(name: "a reload with the same rows", movesOffset: false) { host, _ in
+                host.tableView.reloadData()
+            },
+            Move(name: "a reload with too few rows to stay scrolled", movesOffset: true) { host, rows in
+                rows.sections = 3
+                host.tableView.reloadData()
+            },
+            Move(name: "a scroll to a row, without animation", movesOffset: true) { host, _ in
+                host.tableView.scrollToRow(at: IndexPath(row: 0, section: 20), at: .top, animated: false)
+            },
+            Move(name: "a larger top content inset", movesOffset: false) { host, _ in
+                host.tableView.contentInset.top += 100
+            },
+            Move(
+                name: "a smaller bottom content inset at the end of the rows",
+                movesOffset: true,
+                prepare: { table in
+                    table.contentInset.bottom = 300
+                    table.contentOffset.y = table.contentSize.height + table.adjustedContentInset.bottom - table.bounds.height
+                },
+                run: { host, _ in host.tableView.contentInset.bottom = 0 }
+            ),
+            Move(name: "the navigation bar hidden", movesOffset: true) { host, _ in
+                host.navigationController?.setNavigationBarHidden(true, animated: false)
+            },
+            Move(name: "the window turned to landscape", movesOffset: false) { host, _ in
+                guard let window = host.view.window else { return XCTFail("the table is in a window") }
+                window.frame = CGRect(x: 0, y: 0, width: window.bounds.height, height: window.bounds.width)
+            }
+        ]
+        for move in moves {
+            let host = UITableViewController(style: .plain)
+            let rows = TableRows(sections: 30, rowsPerSection: 5, headers: true)
+            host.tableView.dataSource = rows
+            let window = showInNavigationController(host, extraInsets: .zero)
+            defer { window.isHidden = true }
+            let presenter = BannerPresenter(host: host, tracker: BannerTrackerSpy()) { _ in }
+            presenter.start()
+            defer { presenter.stop() }
+            presenter.viewModel.barBanners = [bar("top", position: "top"), bar("bottom", position: "bottom")]
+            settleLayout(window)
+            let table = try XCTUnwrap(host.tableView)
+            let layer = try XCTUnwrap(presenter.barLayer).view
+            move.prepare(table)
+            settleLayout(window)
+            let offset = table.contentOffset.y
+
+            move.run(host, rows)
+            XCTAssertEqual(layer.frame, table.bounds, "\(move.name): the layer follows the table's bounds at once")
+            settleLayout(window)
+            if move.movesOffset {
+                XCTAssertNotEqual(table.contentOffset.y, offset, "\(move.name): the table moved its offset")
+            }
+            assertBarsOnTheVisibleFrame(of: table, layer: layer, in: window, move.name)
+        }
+    }
+
+    /// Once the table and the bars are still, the bar layer is not laid out again and does not move
+    /// the table either, including after the table moved its own offset.
+    @MainActor
+    func testTheBarLayerOverATableViewHostIsNotLaidOutAgainWhileNothingChanges() throws {
+        let host = UITableViewController(style: .plain)
+        let rows = TableRows(sections: 30, rowsPerSection: 5, headers: true)
+        host.tableView.dataSource = rows
+        let window = showInNavigationController(host, extraInsets: .zero)
+        defer { window.isHidden = true }
+        let presenter = BannerPresenter(host: host, tracker: BannerTrackerSpy()) { _ in }
+        presenter.start()
+        defer { presenter.stop() }
+        presenter.viewModel.barBanners = [bar("top", position: "top"), bar("bottom", position: "bottom")]
+        settleLayout(window)
+        let table = try XCTUnwrap(host.tableView)
+        let layer = try XCTUnwrap(presenter.barLayer).view
+        table.contentOffset.y = 636
+        rows.sections += 1
+        table.insertSections([0], with: .none)
+        settleLayout(window)
+        assertBarsOnTheVisibleFrame(of: table, layer: layer, in: window, "after the insert")
+
+        final class Counts { var layerPasses = 0; var tableChanges = 0 }
+        let counts = Counts()
+        let measure = layer.onSafeAreaChange
+        layer.onSafeAreaChange = { insets in
+            counts.layerPasses += 1
+            measure?(insets)
+        }
+        layer.setNeedsLayout()
+        window.layoutIfNeeded()
+        XCTAssertEqual(counts.layerPasses, 1, "a layout pass of the layer is counted")
+        counts.layerPasses = 0
+        let observations = [
+            table.observe(\.bounds) { _, _ in counts.tableChanges += 1 },
+            table.observe(\.contentOffset) { _, _ in counts.tableChanges += 1 },
+            table.observe(\.contentSize) { _, _ in counts.tableChanges += 1 }
+        ]
+        let end = Date().addingTimeInterval(1)
+        while Date() < end {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            window.layoutIfNeeded()
+        }
+        observations.forEach { $0.invalidate() }
+        XCTAssertEqual(counts.layerPasses, 0, "no layout passes of the layer while idle")
+        XCTAssertEqual(counts.tableChanges, 0, "the table's bounds, offset and content size are not set again while idle")
+    }
+
     /// A collection view controller in a navigation controller: the bars sit as over a plain view
     /// controller in the same place, and stay there when the collection view scrolls.
     @MainActor
@@ -793,6 +934,34 @@ final class BannerPresenterTests: XCTestCase {
         window.layoutIfNeeded()
         drainMainQueue(turns: 6)
         window.layoutIfNeeded()
+    }
+
+    /// The layer covers the table's visible frame, the top bar starts at the safe-area top and the
+    /// bottom bar runs to the bottom edge, the layer is drawn above every row and header, and only
+    /// the bars take touches.
+    @MainActor
+    private func assertBarsOnTheVisibleFrame(
+        of table: UITableView,
+        layer: BannerBarPassThroughView,
+        in window: UIWindow,
+        _ context: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let visible = table.convert(table.bounds, to: nil)
+        XCTAssertEqual(layer.convert(layer.bounds, to: nil), visible, "\(context): the layer covers the visible frame", file: file, line: line)
+        let cards = layer.interactiveFrames.filter { $0.width > 100 }.sorted { $0.minY < $1.minY }
+        guard cards.count == 2, let top = cards.first, let bottom = cards.last else {
+            return XCTFail("\(context): a card per bar, got \(layer.interactiveFrames)", file: file, line: line)
+        }
+        XCTAssertEqual(top.minY, visible.minY + table.safeAreaInsets.top, accuracy: 0.5, "\(context): the top bar starts at the safe-area top", file: file, line: line)
+        XCTAssertEqual(bottom.maxY, visible.maxY, accuracy: 0.5, "\(context): the bottom bar runs to the bottom edge", file: file, line: line)
+        XCTAssertTrue(table.subviews.last === layer, "\(context): the bars are drawn above the rows and headers", file: file, line: line)
+        let onBar = window.hitTest(CGPoint(x: top.midX, y: top.midY), with: nil)
+        XCTAssertTrue(onBar?.isDescendant(of: layer) ?? false, "\(context): the top bar takes a touch on its card, got \(String(describing: onBar))", file: file, line: line)
+        let onRow = window.hitTest(CGPoint(x: top.midX, y: visible.midY), with: nil)
+        XCTAssertFalse(onRow?.isDescendant(of: layer) ?? true, "\(context): a touch between the bars passes through", file: file, line: line)
+        XCTAssertTrue(onRow?.isDescendant(of: table) ?? false, "\(context): the table takes it, got \(String(describing: onRow))", file: file, line: line)
     }
 
     /// The frames a presenter's bars claim over a plain view controller shown as
