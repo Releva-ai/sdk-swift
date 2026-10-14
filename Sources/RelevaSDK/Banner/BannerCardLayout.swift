@@ -46,7 +46,7 @@ struct BarCardLayout: Equatable {
     ///   - container: the window, which percentages resolve against and whose width the layer spans.
     ///   - safeArea: the parts of the box the layer is positioned in that are under system UI.
     ///   - touchesEdge: whether this bar is the one flush with its edge (the first top bar, the
-    ///     last bottom bar), and so the one that meets the status bar or the home indicator.
+    ///     last bottom bar); only a bottom bar's edge meets system UI, the home indicator.
     ///   - canSpanHeight: `false` where the container has no height to span (a presenter slot).
     init(
         style: BannerCardStyle,

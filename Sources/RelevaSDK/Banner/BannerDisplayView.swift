@@ -226,12 +226,14 @@ class BannerDisplayViewModel: ObservableObject {
             for replaced in [popupBanner, flyoutBanner].compactMap({ $0 }) {
                 displayedBanners.remove(replaced.token)
             }
+            // The incoming slot is filled before the other is cleared, so an observer of both never
+            // sees neither set and does not take the overlay down between the two.
             if banner.displayType == "popup" {
-                flyoutBanner = nil
                 popupBanner = banner
+                flyoutBanner = nil
             } else {
-                popupBanner = nil
                 flyoutBanner = banner
+                popupBanner = nil
             }
         case "bar":
             barBanners.append(banner)

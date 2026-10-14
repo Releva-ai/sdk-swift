@@ -86,6 +86,34 @@ final class BannerPresenterTests: XCTestCase {
     }
 
     @MainActor
+    func testSwappingPopupForFlyoutNeverEmptiesTheOverlay() {
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+
+        fixture.presenter.start()
+        BannerDisplayController.shared.showBanner(banner("popup-1", displayType: "popup"))
+        drainMainQueue()
+        waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
+        let overlay = fixture.host.presentedViewController
+
+        // The presenter dismisses its overlay on any state with neither slot set, so the swap
+        // must never pass through one.
+        var emptied = false
+        let watch = fixture.presenter.viewModel.$popupBanner
+            .combineLatest(fixture.presenter.viewModel.$flyoutBanner)
+            .sink { popup, flyout in if popup == nil && flyout == nil { emptied = true } }
+        BannerDisplayController.shared.showBanner(banner("flyout-1", displayType: "flyout"))
+        BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
+        drainMainQueue()
+        watch.cancel()
+
+        XCTAssertFalse(emptied, "a swap between a popup and a flyout passed through an empty overlay")
+        XCTAssertEqual(fixture.presenter.viewModel.popupBanner?.token, "popup-2")
+        XCTAssertNil(fixture.presenter.viewModel.flyoutBanner)
+        XCTAssertTrue(fixture.host.presentedViewController === overlay, "the overlay stayed up through both swaps")
+    }
+
+    @MainActor
     func testBarIsHostedInTheHostsOwnViewRatherThanPresented() {
         let fixture = makeFixture()
         defer { takeDown(fixture) }
