@@ -28,6 +28,10 @@ final class BannerOverlayHost: ObservableObject {
     var interactiveFrames: [CGRect] = []
     /// `true` while a popup or a flyout is shown: its overlay owns the whole screen.
     var coversScreen = false
+    /// When a closed flyout finishes sliding out; the window stays up until then.
+    private(set) var flyoutLeavesAt: Date?
+    /// Whether the view model drawn last had a flyout up.
+    private var showedFlyout = false
 
     private var window: BannerOverlayWindow?
     private var cancellable: AnyCancellable?
@@ -70,6 +74,8 @@ final class BannerOverlayHost: ObservableObject {
         cancellable = nil
         interactiveFrames = []
         coversScreen = false
+        showedFlyout = false
+        flyoutLeavesAt = nil
         updateVisibility()
     }
 
@@ -133,6 +139,7 @@ final class BannerOverlayHost: ObservableObject {
                     .compactMap { $0 } + vm.barBanners.map { "bar \($0.token)" }
             }()
             let hasContent = !shown.isEmpty
+            let leaving = self.trackFlyoutExit()
             if hasContent && self.window == nil {
                 // A banner arrived before any scene was connected at attach time; try again now.
                 self.ensureWindow()
@@ -142,11 +149,31 @@ final class BannerOverlayHost: ObservableObject {
                 if hasContent { relevaLog("RelevaSDK: BannerOverlay - \(shown.joined(separator: ", ")) pending, no window yet") }
                 return
             }
-            if window.isHidden == hasContent {
-                relevaLog("RelevaSDK: BannerOverlay - \(hasContent ? "showing" : "hiding") window (\(shown.joined(separator: ", ")))")
+            let visible = hasContent || leaving
+            if window.isHidden == visible {
+                relevaLog("RelevaSDK: BannerOverlay - \(visible ? "showing" : "hiding") window (\(shown.joined(separator: ", ")))")
             }
-            window.isHidden = !hasContent
+            window.isHidden = !visible
         }
+    }
+
+    /// Starts the slide-out when the flyout closed with nothing taking its place, and says whether
+    /// one is still sliding out.
+    private func trackFlyoutExit() -> Bool {
+        let hasFlyout = viewModel?.flyoutBanner != nil
+        if showedFlyout && !hasFlyout && viewModel?.popupBanner == nil {
+            let duration = BannerChrome.flyoutSlideDuration
+            flyoutLeavesAt = Date().addingTimeInterval(duration)
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in self?.updateVisibility() }
+        } else if hasFlyout || viewModel?.popupBanner != nil {
+            flyoutLeavesAt = nil
+        }
+        showedFlyout = hasFlyout
+        guard let leavesAt = flyoutLeavesAt, leavesAt > Date() else {
+            flyoutLeavesAt = nil
+            return false
+        }
+        return true
     }
 }
 
@@ -233,16 +260,24 @@ private struct BannerOverlayContent: View {
                 )
             }
 
-            if let flyout = viewModel.flyoutBanner {
-                // Spans the window with its dimmed overlay.
-                BannerChrome.flyout(
-                    flyout,
-                    viewModel: viewModel,
-                    safeArea: EdgeInsets(host.safeAreaInsets),
-                    onLinkTap: host.onLinkTap
-                )
-                .ignoresSafeArea()
+            // The flyout and its dim slide up when the overlay opens with one and back down when
+            // it closes, as sdk-react-native's Modal does; a flyout that replaces a popup, or a
+            // popup that replaces it, swaps in place. A flyout sliding out takes no touches.
+            ZStack {
+                if let flyout = viewModel.flyoutBanner {
+                    // Spans the window with its dimmed overlay.
+                    BannerChrome.flyout(
+                        flyout,
+                        viewModel: viewModel,
+                        safeArea: EdgeInsets(host.safeAreaInsets),
+                        onLinkTap: host.onLinkTap
+                    )
+                    .ignoresSafeArea()
+                    .transition(.move(edge: .bottom))
+                }
             }
+            .allowsHitTesting(viewModel.flyoutBanner != nil)
+            .animation(BannerChrome.flyoutSlide, value: coversScreen)
 
             if let popup = viewModel.popupBanner {
                 BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: host.onLinkTap)

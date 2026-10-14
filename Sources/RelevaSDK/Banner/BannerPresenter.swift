@@ -90,6 +90,7 @@ public final class BannerPresenter {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] popup, flyout, _ in
                 self?.syncOverlay(isNeeded: popup != nil || flyout != nil)
+                self?.matchTransition(toFlyout: flyout != nil, popup: popup != nil)
             }
     }
 
@@ -169,7 +170,7 @@ public final class BannerPresenter {
             )
             controller.view.backgroundColor = .clear
             controller.modalPresentationStyle = .overFullScreen
-            controller.modalTransitionStyle = .crossDissolve
+            controller.modalTransitionStyle = viewModel.flyoutBanner != nil ? .coverVertical : .crossDissolve
             overlayController = controller
             // Present from whatever is frontmost so a banner is not lost behind a modal the
             // host already had up, and so the banner itself can be covered by a later one. This
@@ -211,6 +212,14 @@ public final class BannerPresenter {
                 self.syncOverlay(isNeeded: hasOverlay)
             }
         }
+    }
+
+    /// The overlay comes and goes as sdk-react-native's Modal does: sliding up and down with a
+    /// flyout, fading with a popup. A swap between the two keeps the overlay up and sets how it
+    /// will leave.
+    private func matchTransition(toFlyout flyout: Bool, popup: Bool) {
+        guard flyout || popup, let controller = overlayController else { return }
+        controller.modalTransitionStyle = flyout ? .coverVertical : .crossDissolve
     }
 
     // MARK: - Bar Banners
@@ -267,21 +276,34 @@ public final class BannerPresenter {
 struct BannerOverlayView: View {
     @ObservedObject var viewModel: BannerDisplayViewModel
     let onLinkTap: (String) -> Void
+    /// The last flyout shown, drawn while the overlay slides away with it after it closes.
+    @State private var leavingFlyout: BannerResponse?
 
     var body: some View {
+        // A popup taking a flyout's place replaces it at once.
+        let flyout = viewModel.flyoutBanner ?? (viewModel.popupBanner == nil ? leavingFlyout : nil)
         ZStack {
             if let popup = viewModel.popupBanner {
                 BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: onLinkTap)
             }
 
-            if let flyout = viewModel.flyoutBanner {
+            if let flyout = flyout {
                 // The flyout positions itself in the whole window, so it is handed the insets this
                 // reader sees and then spans the safe area too.
                 GeometryReader { geometry in
                     BannerChrome.flyout(flyout, viewModel: viewModel, safeArea: geometry.safeAreaInsets, onLinkTap: onLinkTap)
                         .ignoresSafeArea()
                 }
+                // A flyout sliding out takes no touches.
+                .allowsHitTesting(viewModel.flyoutBanner != nil)
             }
+        }
+        .onAppear { leavingFlyout = viewModel.flyoutBanner }
+        .onChange(of: viewModel.flyoutBanner?.token) { _ in
+            if let shown = viewModel.flyoutBanner { leavingFlyout = shown }
+        }
+        .onChange(of: viewModel.popupBanner?.token) { _ in
+            if viewModel.popupBanner != nil { leavingFlyout = nil }
         }
     }
 }

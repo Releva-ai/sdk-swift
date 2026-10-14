@@ -40,6 +40,46 @@ final class BannerPresenterTests: XCTestCase {
             "expected the hosted overlay, got \(String(describing: fixture.host.presentedViewController))"
         )
         XCTAssertEqual(fixture.host.presentedViewController?.modalPresentationStyle, .overFullScreen)
+        XCTAssertEqual(fixture.host.presentedViewController?.modalTransitionStyle, .crossDissolve, "a popup fades in and out")
+    }
+
+    /// As sdk-react-native's `Modal animationType="slide"`: the overlay holding a flyout slides up
+    /// from the bottom and back down.
+    @MainActor
+    func testAFlyoutsOverlaySlidesUpAndDown() {
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+
+        fixture.presenter.start()
+        BannerDisplayController.shared.showBanner(banner("flyout-1", displayType: "flyout"))
+        drainMainQueue()
+
+        waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
+        XCTAssertEqual(fixture.host.presentedViewController?.modalPresentationStyle, .overFullScreen)
+        XCTAssertEqual(fixture.host.presentedViewController?.modalTransitionStyle, .coverVertical)
+    }
+
+    /// A swap keeps the overlay up and sets how it leaves: down with a flyout, fading with a popup.
+    @MainActor
+    func testASwapSetsHowTheOverlayLeaves() {
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+
+        fixture.presenter.start()
+        BannerDisplayController.shared.showBanner(banner("popup-1", displayType: "popup"))
+        drainMainQueue()
+        waitUntil("the overlay is presented") { fixture.host.presentedViewController != nil }
+        let overlay = fixture.host.presentedViewController
+
+        BannerDisplayController.shared.showBanner(banner("flyout-1", displayType: "flyout"))
+        drainMainQueue()
+        XCTAssertTrue(fixture.host.presentedViewController === overlay)
+        XCTAssertEqual(overlay?.modalTransitionStyle, .coverVertical, "a flyout leaves sliding down")
+
+        BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
+        drainMainQueue()
+        XCTAssertTrue(fixture.host.presentedViewController === overlay)
+        XCTAssertEqual(overlay?.modalTransitionStyle, .crossDissolve, "a popup leaves fading")
     }
 
     /// The presenter presents from `host.topMostPresentedViewController` so that a banner
@@ -391,6 +431,41 @@ final class BannerPresenterTests: XCTestCase {
         XCTAssertNotNil(layer.hitTest(point(card.midX, card.midY), with: nil), "the card takes a touch")
         XCTAssertNil(layer.hitTest(point(card.minX - 20, card.midY), with: nil), "beside the card the touch passes through")
         XCTAssertNil(layer.hitTest(point(card.midX, card.maxY + 100), with: nil), "below the bar the touch passes through")
+    }
+
+    /// A closed flyout stays drawn, taking no touches, while the overlay slides away with it; a
+    /// popup that replaces it takes its place at once.
+    @MainActor
+    func testTheOverlayKeepsDrawingAClosedFlyoutUntilItIsGone() throws {
+        final class Frames { var value: [CGRect] = [] }
+        let frames = Frames()
+        let viewModel = BannerDisplayViewModel()
+        let flyout = BannerResponse(token: "fly-1", displayType: "flyout", displayPosition: "right", design: BannerDisplayViewModelTests.minimalDesign)
+        viewModel.flyoutBanner = flyout
+        let controller = UIHostingController(
+            rootView: BannerOverlayView(viewModel: viewModel) { _ in }
+                .onPreferenceChange(BannerFramesKey.self) { frames.value = $0 }
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        func settle() {
+            window.layoutIfNeeded()
+            drainMainQueue(turns: 6)
+            window.layoutIfNeeded()
+        }
+        settle()
+        let card = try XCTUnwrap(frames.value.first, "the flyout reported no frame")
+
+        viewModel.dismissFlyout(flyout)
+        settle()
+        XCTAssertEqual(frames.value.first ?? .zero, card, "the closed flyout is still drawn")
+
+        viewModel.popupBanner = BannerResponse(token: "popup-1", displayType: "popup", design: BannerDisplayViewModelTests.minimalDesign)
+        settle()
+        XCTAssertEqual(frames.value.count, 1, "only the popup's card, got \(frames.value)")
+        XCTAssertNotEqual(frames.value.first ?? .zero, card, "the popup replaced the flyout")
     }
 
     // MARK: - Fixtures

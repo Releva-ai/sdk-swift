@@ -150,6 +150,20 @@ enum BannerChrome {
 
     // MARK: - Flyout Banner
 
+    /// How a flyout and its dim slide up from the bottom of the window when it opens and back down
+    /// when it closes: the spring UIKit runs a `.coverVertical` modal transition with, which is how
+    /// sdk-react-native presents a flyout (`Modal animationType="slide"`). Critically damped, mass
+    /// 3, stiffness 1000.
+    static let flyoutSlide = Animation.interpolatingSpring(
+        mass: 3,
+        stiffness: 1000,
+        damping: 2 * (3.0 * 1000).squareRoot(),
+        initialVelocity: 0
+    )
+
+    /// How long UIKit's `.coverVertical` transition runs.
+    nonisolated static let flyoutSlideDuration: TimeInterval = 0.5
+
     /// The flyout, placed as sdk-react-native places it on iOS (see `FlyoutCardLayout`): a card 80%
     /// of the window wide against the side `cardPositionHorizontal` or `displayPosition` names, full
     /// height unless `cardHeight` is authored, then moved by the offset keys and rounded by

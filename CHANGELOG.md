@@ -91,6 +91,12 @@ All notable changes to this project will be documented in this file.
   the bottom edge, and a bottom bar runs to the bottom edge with the bottom inset inside its card,
   where the presenter's bars used to end at the safe-area bottom. The layer passes touches beside
   a narrowed or moved card through to the host.
+- **A flyout slides up from the bottom of the screen when it opens and back down when it closes,
+  as in sdk-react-native**, whose flyout is a `Modal` with `animationType="slide"`. The flyout and
+  its dim move together, with the spring UIKit gives a `.coverVertical` modal; `BannerPresenter`
+  presents its overlay `.coverVertical` while it holds a flyout. A popup and a flyout replacing
+  each other swap in place, and popups and bars keep their transitions. Reduce Motion is not
+  consulted, as sdk-react-native does not consult it.
 
 ### Fixed
 
