@@ -69,6 +69,9 @@ All notable changes to this project will be documented in this file.
   `bannerClose`, where a second one used to wait until the first was closed. Every one that
   arrives is counted, including one replaced at once. Arrival order decides, so a popup that waited
   for its images does not replace a newer one already on screen.
+- **A tap on a bar's card outside its design does nothing, as in sdk-react-native.** It used to
+  close the bar. The ✕ and links inside the design are unchanged, and touches beside a narrowed or
+  moved card still reach the app.
 
 ### Fixed
 

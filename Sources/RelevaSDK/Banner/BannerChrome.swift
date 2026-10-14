@@ -269,8 +269,8 @@ enum BannerChrome {
     /// round, paint, align and move. The card is unpainted unless `cardBackgroundColor` is
     /// authored, so only the design's own colours paint it. It pads the design 16 on the leading
     /// side and 12 above and below, keeps a gutter on the trailing side for the close control, and
-    /// pads by the system UI it overlaps. A tap on the card outside the design closes the bar; the
-    /// layer around the card passes touches through to the app.
+    /// pads by the system UI it overlaps. A tap on the card outside the design does nothing, as in
+    /// sdk-react-native; the layer around the card passes touches through to the app.
     /// - Parameter containerWidth: the width of the box the layer spans, which the design is laid
     ///   out against.
     @ViewBuilder
@@ -320,8 +320,6 @@ enum BannerChrome {
         .background {
             RoundedRectangle(cornerRadius: style.authoredCornerRadius ?? 0, style: .circular)
                 .fill(style.backgroundColor ?? Color.clear)
-                .contentShape(Rectangle())
-                .onTapGesture { viewModel.dismissBar(banner) }
         }
         .reportBannerFrame()
         .offset(layout.translation)
