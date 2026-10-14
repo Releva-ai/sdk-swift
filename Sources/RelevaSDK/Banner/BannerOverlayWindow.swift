@@ -21,6 +21,8 @@ final class BannerOverlayHost: ObservableObject {
     /// The overlay window's safe-area insets, published from UIKit's layout pass; a
     /// `GeometryReader` that ignores the safe area can report zero.
     @Published fileprivate(set) var safeAreaInsets: UIEdgeInsets = .zero
+    /// The overlay window's height, published from the same layout pass.
+    @Published fileprivate(set) var height: CGFloat = 0
 
     /// Screen-space frames of the bar cards, their close controls and the flyout card currently
     /// drawn; touches outside them fall through to the app. Updated by `BannerOverlayRoot` from a
@@ -28,10 +30,10 @@ final class BannerOverlayHost: ObservableObject {
     var interactiveFrames: [CGRect] = []
     /// `true` while a popup or a flyout is shown: its overlay owns the whole screen.
     var coversScreen = false
-    /// When a closed flyout finishes sliding out; the window stays up until then.
-    private(set) var flyoutLeavesAt: Date?
-    /// Whether the view model drawn last had a flyout up.
-    private var showedFlyout = false
+    /// When a closed popup or flyout finishes leaving; the window stays up until then.
+    private(set) var overlayLeavesAt: Date?
+    /// Whether the view model drawn last had a popup or a flyout up.
+    private var showedOverlay = false
 
     private var window: BannerOverlayWindow?
     private var cancellable: AnyCancellable?
@@ -74,8 +76,8 @@ final class BannerOverlayHost: ObservableObject {
         cancellable = nil
         interactiveFrames = []
         coversScreen = false
-        showedFlyout = false
-        flyoutLeavesAt = nil
+        showedOverlay = false
+        overlayLeavesAt = nil
         updateVisibility()
     }
 
@@ -139,7 +141,7 @@ final class BannerOverlayHost: ObservableObject {
                     .compactMap { $0 } + vm.barBanners.map { "bar \($0.token)" }
             }()
             let hasContent = !shown.isEmpty
-            let leaving = self.trackFlyoutExit()
+            let leaving = self.trackOverlayExit()
             if hasContent && self.window == nil {
                 // A banner arrived before any scene was connected at attach time; try again now.
                 self.ensureWindow()
@@ -157,20 +159,20 @@ final class BannerOverlayHost: ObservableObject {
         }
     }
 
-    /// Starts the slide-out when the flyout closed with nothing taking its place, and says whether
-    /// one is still sliding out.
-    private func trackFlyoutExit() -> Bool {
-        let hasFlyout = viewModel?.flyoutBanner != nil
-        if showedFlyout && !hasFlyout && viewModel?.popupBanner == nil {
-            let duration = BannerChrome.flyoutSlideDuration
-            flyoutLeavesAt = Date().addingTimeInterval(duration)
+    /// Starts the exit when the popup or flyout closed with nothing taking its place, and says
+    /// whether one is still leaving.
+    private func trackOverlayExit() -> Bool {
+        let hasOverlay = viewModel?.popupBanner != nil || viewModel?.flyoutBanner != nil
+        if showedOverlay && !hasOverlay {
+            let duration = BannerChrome.modalTransitionDuration
+            overlayLeavesAt = Date().addingTimeInterval(duration)
             DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in self?.updateVisibility() }
-        } else if hasFlyout || viewModel?.popupBanner != nil {
-            flyoutLeavesAt = nil
+        } else if hasOverlay {
+            overlayLeavesAt = nil
         }
-        showedFlyout = hasFlyout
-        guard let leavesAt = flyoutLeavesAt, leavesAt > Date() else {
-            flyoutLeavesAt = nil
+        showedOverlay = hasOverlay
+        guard let leavesAt = overlayLeavesAt, leavesAt > Date() else {
+            overlayLeavesAt = nil
             return false
         }
         return true
@@ -184,11 +186,13 @@ final class BannerOverlayHostingController: UIHostingController<BannerOverlayRoo
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         host?.safeAreaInsets = view.safeAreaInsets
+        if host?.height != view.bounds.height { host?.height = view.bounds.height }
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         if host?.safeAreaInsets != view.safeAreaInsets { host?.safeAreaInsets = view.safeAreaInsets }
+        if host?.height != view.bounds.height { host?.height = view.bounds.height }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .default }
@@ -249,8 +253,11 @@ struct BannerOverlayRoot: View {
 private struct BannerOverlayContent: View {
     @ObservedObject var viewModel: BannerDisplayViewModel
     let host: BannerOverlayHost
+    /// How the popup or flyout came in when the overlay last opened; `nil` while it is closed.
+    @State private var openedWith: BannerChrome.ModalTransition?
 
     var body: some View {
+        let transition = openedWith ?? opening
         ZStack {
             if !viewModel.barBanners.isEmpty {
                 BannerBarLayer(
@@ -260,9 +267,10 @@ private struct BannerOverlayContent: View {
                 )
             }
 
-            // The flyout and its dim slide up when the overlay opens with one and back down when
-            // it closes, as sdk-react-native's Modal does; a flyout that replaces a popup, or a
-            // popup that replaces it, swaps in place. A flyout sliding out takes no touches.
+            // The popup or flyout and its dim leave as they came in when the overlay opened, as
+            // sdk-react-native's Modal does: fading with a popup, sliding up and down with a
+            // flyout. A popup and a flyout replacing each other swap in place. One leaving takes
+            // no touches.
             ZStack {
                 if let flyout = viewModel.flyoutBanner {
                     // Spans the window with its dimmed overlay.
@@ -273,19 +281,35 @@ private struct BannerOverlayContent: View {
                         onLinkTap: host.onLinkTap
                     )
                     .ignoresSafeArea()
-                    .transition(.move(edge: .bottom))
+                    .transition(transition == .slide ? slide : .opacity)
+                }
+
+                if let popup = viewModel.popupBanner {
+                    BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: host.onLinkTap)
+                        .transition(transition == .slide ? slide : .opacity)
                 }
             }
-            .allowsHitTesting(viewModel.flyoutBanner != nil)
-            .animation(BannerChrome.flyoutSlide, value: coversScreen)
-
-            if let popup = viewModel.popupBanner {
-                BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: host.onLinkTap)
-            }
+            .allowsHitTesting(coversScreen)
+            .animation(BannerChrome.modalSpring, value: coversScreen)
         }
-        .onAppear { host.coversScreen = coversScreen }
+        .onAppear {
+            host.coversScreen = coversScreen
+            if coversScreen { openedWith = opening }
+        }
         .onChange(of: viewModel.popupBanner?.token) { _ in host.coversScreen = coversScreen }
         .onChange(of: viewModel.flyoutBanner?.token) { _ in host.coversScreen = coversScreen }
+        .onChange(of: coversScreen) { covers in openedWith = covers ? opening : nil }
+    }
+
+    /// How the overlay comes in with what it shows now.
+    private var opening: BannerChrome.ModalTransition {
+        BannerChrome.ModalTransition(opensWithFlyout: viewModel.flyoutBanner != nil)
+    }
+
+    /// Down by the window's height, as a `.coverVertical` modal moves. `move(edge:)` stops short of
+    /// that where the view reaches past the safe area, as a popup's or a flyout's dim does.
+    private var slide: AnyTransition {
+        host.height > 0 ? .offset(y: host.height) : .move(edge: .bottom)
     }
 
     private var coversScreen: Bool { viewModel.popupBanner != nil || viewModel.flyoutBanner != nil }

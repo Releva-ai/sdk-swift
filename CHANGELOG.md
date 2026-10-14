@@ -93,11 +93,15 @@ All notable changes to this project will be documented in this file.
   the layer covers its visible frame, so the bars do not scroll. The layer passes touches beside
   a narrowed or moved card through to the host.
 - **A flyout slides up from the bottom of the screen when it opens and back down when it closes,
-  as in sdk-react-native**, whose flyout is a `Modal` with `animationType="slide"`. The flyout and
-  its dim move together, with the spring UIKit gives a `.coverVertical` modal; `BannerPresenter`
-  presents its overlay `.coverVertical` while it holds a flyout. A popup and a flyout replacing
-  each other swap in place, and popups and bars keep their transitions. Reduce Motion is not
-  consulted, as sdk-react-native does not consult it.
+  and a popup fades in and out, as in sdk-react-native**, whose `Modal` is
+  `animationType="slide"` for a flyout and `"fade"` for a popup. The banner and its dim move or
+  fade together, with the spring UIKit gives a `.coverVertical` or `.crossDissolve` modal, half a
+  second each way; the SwiftUI modifier's popup used to appear and vanish at once. The way in is
+  chosen when the overlay opens and is the way out, as a Modal keeps the style it was presented
+  with: a popup and a flyout replacing each other swap in place, and the overlay then leaves as
+  it came in. `BannerPresenter` sets its overlay's transition style once, when it presents it, and
+  keeps drawing a closed popup or flyout while the overlay goes. Bars keep their transitions.
+  Reduce Motion is not consulted, as sdk-react-native does not consult it.
 
 ### Fixed
 

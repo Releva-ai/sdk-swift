@@ -148,21 +148,38 @@ enum BannerChrome {
         CappedHeightContent(maxHeight: maxHeight, bottomInset: bottomInset, topBleedColor: topBleedColor) { rendered }
     }
 
-    // MARK: - Flyout Banner
+    // MARK: - Popup and Flyout Transitions
 
-    /// How a flyout and its dim slide up from the bottom of the window when it opens and back down
-    /// when it closes: the spring UIKit runs a `.coverVertical` modal transition with, which is how
-    /// sdk-react-native presents a flyout (`Modal animationType="slide"`). Critically damped, mass
-    /// 3, stiffness 1000.
-    static let flyoutSlide = Animation.interpolatingSpring(
+    /// How a popup or a flyout and its dim come and go, as sdk-react-native's Modal does: `fade`
+    /// (`animationType="fade"`, UIKit's `.crossDissolve`) when the overlay opens with a popup,
+    /// `slide` (`animationType="slide"`, `.coverVertical`) when it opens with a flyout. Chosen when
+    /// the overlay opens and kept until it closes, as UIKit keeps a presented modal's style.
+    enum ModalTransition {
+        case fade
+        case slide
+
+        init(opensWithFlyout: Bool) {
+            self = opensWithFlyout ? .slide : .fade
+        }
+
+        var modalTransitionStyle: UIModalTransitionStyle {
+            self == .slide ? .coverVertical : .crossDissolve
+        }
+    }
+
+    /// The spring UIKit runs `.crossDissolve` and `.coverVertical` modal transitions with, in and
+    /// out: critically damped, mass 3, stiffness 1000.
+    static let modalSpring = Animation.interpolatingSpring(
         mass: 3,
         stiffness: 1000,
         damping: 2 * (3.0 * 1000).squareRoot(),
         initialVelocity: 0
     )
 
-    /// How long UIKit's `.coverVertical` transition runs.
-    nonisolated static let flyoutSlideDuration: TimeInterval = 0.5
+    /// How long UIKit's modal transitions run.
+    nonisolated static let modalTransitionDuration: TimeInterval = 0.5
+
+    // MARK: - Flyout Banner
 
     /// The flyout, placed as sdk-react-native places it on iOS (see `FlyoutCardLayout`): a card 80%
     /// of the window wide against the side `cardPositionHorizontal` or `displayPosition` names, full

@@ -90,7 +90,6 @@ public final class BannerPresenter {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] popup, flyout, _ in
                 self?.syncOverlay(isNeeded: popup != nil || flyout != nil)
-                self?.matchTransition(toFlyout: flyout != nil, popup: popup != nil)
             }
     }
 
@@ -108,7 +107,7 @@ public final class BannerPresenter {
     /// leaves any presented overlay on screen with nothing left to dismiss it — bracket `start()`
     /// / `stop()` with the host's appearance callbacks as shown above to avoid that. A `stop()`
     /// whose dismissal UIKit declines lands in the same place when the presenter is never started
-    /// again, which a nav pop during the overlay's brief `.crossDissolve` reaches: a pop is not a
+    /// again, which a nav pop during the overlay's brief presentation reaches: a pop is not a
     /// dismissal, so it is not refused the way that dismiss was, and the overlay is presented from
     /// a context above the popped host — typically the `UINavigationController` — so it stays on
     /// screen while the host and this presenter go.
@@ -170,7 +169,11 @@ public final class BannerPresenter {
             )
             controller.view.backgroundColor = .clear
             controller.modalPresentationStyle = .overFullScreen
-            controller.modalTransitionStyle = viewModel.flyoutBanner != nil ? .coverVertical : .crossDissolve
+            // Set once, as sdk-react-native's Modal sets it when presenting: the overlay leaves as
+            // it came in, whatever replaced its popup or flyout meanwhile.
+            controller.modalTransitionStyle = BannerChrome.ModalTransition(
+                opensWithFlyout: viewModel.flyoutBanner != nil
+            ).modalTransitionStyle
             overlayController = controller
             // Present from whatever is frontmost so a banner is not lost behind a modal the
             // host already had up, and so the banner itself can be covered by a later one. This
@@ -190,8 +193,8 @@ public final class BannerPresenter {
 
             // Only let go of the reference from the dismiss completion — the one place that
             // knows the dismissal actually happened. A controller still `isBeingPresented` (the
-            // user taps close as it fades in, or the host's `viewWillDisappear` fires on a fast
-            // tab switch, both inside the brief `.crossDissolve`) declines `dismiss` and only
+            // user taps close as it comes in, or the host's `viewWillDisappear` fires on a fast
+            // tab switch, both inside the brief presentation) declines `dismiss` and only
             // logs; clearing `overlayController` up front, as before, would then leave nothing
             // able to reach the orphaned overlay ever again. If the dismissal is declined here,
             // this completion never runs, `overlayController` stays set, and the next reconcile
@@ -212,14 +215,6 @@ public final class BannerPresenter {
                 self.syncOverlay(isNeeded: hasOverlay)
             }
         }
-    }
-
-    /// The overlay comes and goes as sdk-react-native's Modal does: sliding up and down with a
-    /// flyout, fading with a popup. A swap between the two keeps the overlay up and sets how it
-    /// will leave.
-    private func matchTransition(toFlyout flyout: Bool, popup: Bool) {
-        guard flyout || popup, let controller = overlayController else { return }
-        controller.modalTransitionStyle = flyout ? .coverVertical : .crossDissolve
     }
 
     // MARK: - Bar Banners
@@ -298,35 +293,44 @@ public final class BannerPresenter {
 struct BannerOverlayView: View {
     @ObservedObject var viewModel: BannerDisplayViewModel
     let onLinkTap: (String) -> Void
-    /// The last flyout shown, drawn while the overlay slides away with it after it closes.
-    @State private var leavingFlyout: BannerResponse?
+    /// The popup and the flyout shown last, drawn while the overlay goes away with them after they
+    /// close.
+    @State private var leaving = Shown()
+
+    private struct Shown {
+        var popup: BannerResponse?
+        var flyout: BannerResponse?
+    }
+
+    private var isOpen: Bool { viewModel.popupBanner != nil || viewModel.flyoutBanner != nil }
 
     var body: some View {
-        // A popup taking a flyout's place replaces it at once.
-        let flyout = viewModel.flyoutBanner ?? (viewModel.popupBanner == nil ? leavingFlyout : nil)
+        // A popup and a flyout taking each other's place swap at once.
+        let shown = isOpen ? Shown(popup: viewModel.popupBanner, flyout: viewModel.flyoutBanner) : leaving
         ZStack {
-            if let popup = viewModel.popupBanner {
+            if let popup = shown.popup {
                 BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: onLinkTap)
             }
 
-            if let flyout = flyout {
+            if let flyout = shown.flyout {
                 // The flyout positions itself in the whole window, so it is handed the insets this
                 // reader sees and then spans the safe area too.
                 GeometryReader { geometry in
                     BannerChrome.flyout(flyout, viewModel: viewModel, safeArea: geometry.safeAreaInsets, onLinkTap: onLinkTap)
                         .ignoresSafeArea()
                 }
-                // A flyout sliding out takes no touches.
-                .allowsHitTesting(viewModel.flyoutBanner != nil)
             }
         }
-        .onAppear { leavingFlyout = viewModel.flyoutBanner }
-        .onChange(of: viewModel.flyoutBanner?.token) { _ in
-            if let shown = viewModel.flyoutBanner { leavingFlyout = shown }
-        }
-        .onChange(of: viewModel.popupBanner?.token) { _ in
-            if viewModel.popupBanner != nil { leavingFlyout = nil }
-        }
+        // A popup or flyout leaving takes no touches.
+        .allowsHitTesting(isOpen)
+        .onAppear { rememberShown() }
+        .onChange(of: viewModel.popupBanner?.token) { _ in rememberShown() }
+        .onChange(of: viewModel.flyoutBanner?.token) { _ in rememberShown() }
+    }
+
+    private func rememberShown() {
+        guard isOpen else { return }
+        leaving = Shown(popup: viewModel.popupBanner, flyout: viewModel.flyoutBanner)
     }
 }
 
