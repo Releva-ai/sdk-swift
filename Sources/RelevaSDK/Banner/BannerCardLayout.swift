@@ -79,7 +79,7 @@ struct BarCardLayout: Equatable {
         )
         translation = style.offsetTranslation(horizontal: anchors.horizontal, vertical: anchors.vertical, in: container)
 
-        let reachesRightEdge = cardWidth == nil && (anchors.horizontal == .stretch || anchors.horizontal == .end)
+        let reachesRightEdge = cardWidth == nil
         closeInset = reachesRightEdge ? max(0, translation.width) : 0
     }
 }

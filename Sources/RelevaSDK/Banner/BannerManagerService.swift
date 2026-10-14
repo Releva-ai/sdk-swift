@@ -134,7 +134,7 @@ public class BannerManagerService {
         guard !(oneShot && Self.wasShownThisSession(banner.token)) else { return }
         displayedBanners.insert(banner.token)
         relevaLog("RelevaSDK: Banner trigger fired: \(banner.token.prefix(8)) (\(banner.trigger ?? "?"))")
-        // Recorded only when a display surface received it: a popup emitted before any surface
+        // Recorded only when a display surface was listening, not when it drew it: a popup emitted before any surface
         // subscribed was never shown, so it must not use up its one showing.
         let delivered = BannerDisplayController.shared.showBanner(banner)
         if delivered && oneShot {

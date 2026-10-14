@@ -340,6 +340,19 @@ final class BannerQAFixtureTests: XCTestCase {
         }
     }
 
+    /// An unsized card reaches the right edge at every horizontal anchor, so a positive offset must
+    /// not push the control off the window whichever anchor is authored.
+    @MainActor
+    func testCHR05bAnUnsizedBarKeepsItsControlOnScreenAtEveryAnchor() throws {
+        for anchor in ["left", "center", "right"] {
+            let keys: [String: JSONValue] = ["cardPositionHorizontal": .string(anchor), "cardOffsetHorizontal": "40px", "cardBackgroundColor": "#ff00ff"]
+            try draw("CHR-05-\(anchor)", [Self.banner("chr05-\(anchor)", "bar", position: "top", keys: keys, design: Self.chromeDesign("CHR-05 \(anchor) 40px"))]) { row in
+                let close = try XCTUnwrap(row.close)
+                XCTAssertLessThanOrEqual(close.maxX, Self.windowSize.width + 2.5, "the control stays on screen at the \(anchor) anchor")
+            }
+        }
+    }
+
     /// CHR-06: a 120 pt card at the safe-area top with its copy centred in it.
     @MainActor
     func testCHR06FixedHeightCentresTheCopy() throws {

@@ -25,7 +25,7 @@ final class BannerFlyoutSlideTests: XCTestCase {
         defer { takeDown(window, viewModel) }
 
         viewModel.flyoutBanner = flyout("fly-in")
-        let frames = film(window, for: 1)
+        let frames = film(window, for: 1) { $0.dimEdge == 0 }
 
         let edges = frames.map(\.dimEdge)
         XCTAssertTrue(edges.contains { $0 > 100 && $0 < 750 }, "the dim was seen on its way up, edges \(edges)")
@@ -45,7 +45,7 @@ final class BannerFlyoutSlideTests: XCTestCase {
         viewModel.dismissFlyout(banner)
         drainMainQueue()
         XCTAssertNotNil(BannerOverlayHost.shared.overlayLeavesAt, "the window stays up while the flyout slides out")
-        let frames = film(window, for: 1)
+        let frames = film(window, for: 1) { $0.dimEdge == Int(Self.windowSize.height) }
 
         assertSlidesOut(frames)
         XCTAssertNil(BannerOverlayHost.shared.overlayLeavesAt, "the window can go once the slide has run")
@@ -140,7 +140,7 @@ final class BannerFlyoutSlideTests: XCTestCase {
 
         viewModel.dismissPopup(banner)
         drainMainQueue()
-        assertSlidesOut(film(window, for: 1))
+        assertSlidesOut(film(window, for: 1) { $0.dimEdge == Int(Self.windowSize.height) })
     }
 
     // MARK: - Assertions
@@ -198,15 +198,26 @@ final class BannerFlyoutSlideTests: XCTestCase {
         var dimIsEven: Bool { abs(value(at: BannerFlyoutSlideTests.top) - value(at: BannerFlyoutSlideTests.bottom)) <= 3 }
     }
 
-    /// Renders `window` as it is on screen on every turn of the run loop for `seconds`.
+    /// Renders `window` as it is on screen on every turn of the run loop for `seconds`, and on past
+    /// that, up to five times as long, until `settled` holds of a frame: a loaded runner can take
+    /// longer than a second to run a spring.
     @MainActor
-    private func film(_ window: UIWindow, for seconds: TimeInterval, at points: [CGPoint] = []) -> [Frame] {
+    private func film(
+        _ window: UIWindow,
+        for seconds: TimeInterval,
+        at points: [CGPoint] = [],
+        until settled: ((Frame) -> Bool)? = nil
+    ) -> [Frame] {
         let start = Date()
         var frames: [Frame] = []
-        repeat {
+        while true {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.005))
-            frames.append(render(window, at: points, time: Date().timeIntervalSince(start)))
-        } while Date().timeIntervalSince(start) < seconds
+            let frame = render(window, at: points, time: Date().timeIntervalSince(start))
+            frames.append(frame)
+            let elapsed = Date().timeIntervalSince(start)
+            if elapsed >= seconds * 5 { break }
+            if elapsed >= seconds && (settled?(frame) ?? true) { break }
+        }
         return frames
     }
 
