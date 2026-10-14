@@ -3,7 +3,40 @@ import Foundation
 /// Manages banner trigger logic and lifecycle.
 /// Handles trigger types: immediately, delaySeconds, scrollPercentage, cartChanged, wishlistChanged.
 public class BannerManagerService {
+    /// Tokens of popups and flyouts already shown in the current session, shared by every
+    /// instance. `initialize` runs on every push response, so instance state would only remember
+    /// one response and a popup the server re-delivers would show on every screen.
+    private static var shownOneShotTokens = Set<String>()
+    private static let shownOneShotTokensLock = NSLock()
+
+    /// Forgets which popups and flyouts were shown. Called when a new session begins; `dispose()`
+    /// and `initialize` leave the memory alone because it belongs to the session, not the instance.
+    static func startNewSession() {
+        shownOneShotTokensLock.lock()
+        defer { shownOneShotTokensLock.unlock() }
+        shownOneShotTokens.removeAll()
+    }
+
+    private static func wasShownThisSession(_ token: String) -> Bool {
+        shownOneShotTokensLock.lock()
+        defer { shownOneShotTokensLock.unlock() }
+        return shownOneShotTokens.contains(token)
+    }
+
+    private static func recordShownThisSession(_ token: String) {
+        shownOneShotTokensLock.lock()
+        defer { shownOneShotTokensLock.unlock() }
+        shownOneShotTokens.insert(token)
+    }
+
+    /// Popups and flyouts are shown once per session. Bars and static banners are page content
+    /// that a new response is the only way to put back on screen, so they are not remembered.
+    static func isOneShot(_ banner: BannerResponse) -> Bool {
+        banner.displayType == "popup" || banner.displayType == "flyout"
+    }
+
     private var banners: [BannerResponse] = []
+    /// Tokens triggered for the current response, so two trigger paths cannot show one banner twice.
     private var displayedBanners = Set<String>()
     private var delayTimers: [Timer] = []
     private var scrollTimer: Timer?
@@ -13,7 +46,8 @@ public class BannerManagerService {
     public init() {}
 
     /// Initialize with banners from a push response.
-    /// Clears previous state and sets up triggers for each banner.
+    /// Clears the previous response's triggers and sets up triggers for each banner. Popups and
+    /// flyouts already shown this session stay suppressed.
     public func initialize(
         newBanners: [BannerResponse],
         scrollPercentageProvider: (() -> Int)? = nil
@@ -96,9 +130,16 @@ public class BannerManagerService {
 
     private func triggerBanner(_ banner: BannerResponse) {
         guard !displayedBanners.contains(banner.token) else { return }
+        let oneShot = Self.isOneShot(banner)
+        guard !(oneShot && Self.wasShownThisSession(banner.token)) else { return }
         displayedBanners.insert(banner.token)
         relevaLog("RelevaSDK: Banner trigger fired: \(banner.token.prefix(8)) (\(banner.trigger ?? "?"))")
-        BannerDisplayController.shared.showBanner(banner)
+        // Recorded only when a display surface received it: a popup emitted before any surface
+        // subscribed was never shown, so it must not use up its one showing.
+        let delivered = BannerDisplayController.shared.showBanner(banner)
+        if delivered && oneShot {
+            Self.recordShownThisSession(banner.token)
+        }
     }
 
     /// Clean up timers

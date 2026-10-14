@@ -198,8 +198,9 @@ public class RelevaClient {
     /// under its previous profile.
     ///
     /// Removes the lifecycle observer, stops engagement batching, disposes the banner, story and
-    /// NPS managers, resets the process-wide session tracker so the replacement gets its own,
-    /// hands the notification-centre delegate back if it is ours, and clears the shared slot.
+    /// NPS managers, forgets which popups and flyouts were shown, resets the process-wide session
+    /// tracker so the replacement gets its own, hands the notification-centre delegate back if it
+    /// is ours, and clears the shared slot.
     /// The inbox is a process-wide singleton the replacement re-initialises.
     public func shutdown() {
         guard !isShutDown else { return }
@@ -220,6 +221,9 @@ public class RelevaClient {
         // `initialized`, and the next client's `preparePush` would then re-run the cold-start
         // path in `initialize` and double-count a device session per replacement.
         SessionService.shared.rebind(npsManager: nil)
+        // A replacement client continues the device session rather than starting one, so the
+        // popups and flyouts shown under this client are forgotten here, as a new session would.
+        BannerManagerService.startNewSession()
         notificationService?.restorePreviousDelegate()
         if RelevaClient.shared === self {
             RelevaClient.shared = nil
