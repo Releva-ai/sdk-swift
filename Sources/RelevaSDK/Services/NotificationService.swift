@@ -316,9 +316,10 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 // Track delivered event
                 RelevaClient.shared?.trackEngagement(userInfo: userInfo, type: .delivered)
 
-                // Show notification even when app is in foreground
+                // Show notification even when app is in foreground, and keep it in Notification
+                // Center as a background delivery would be.
                 if #available(iOS 14.0, *) {
-                    completionHandler([.banner, .sound, .badge])
+                    completionHandler([.banner, .list, .sound, .badge])
                 } else {
                     completionHandler([.alert, .sound, .badge])
                 }

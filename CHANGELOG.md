@@ -32,6 +32,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **A Releva push that arrives in the foreground is also listed in Notification Center**
+  (`willPresent` answers `[.banner, .list, .sound, .badge]`), as sdk-react-native's foreground
+  pushes are, so it can still be opened after the banner goes away.
+
 - **`BannerDisplayController.showBanner(_:)` returns whether a display surface received the
   banner** (`@discardableResult`, so existing calls compile unchanged): `false` when nothing is
   subscribed to `bannerPublisher`.
