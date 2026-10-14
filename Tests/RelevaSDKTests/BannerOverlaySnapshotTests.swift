@@ -162,6 +162,24 @@ final class BannerOverlaySnapshotTests: XCTestCase {
         }
     }
 
+    /// A popup dims the screen black at 50%, as sdk-react-native's Modal overlay does, whatever
+    /// overlay colour the design or `cssStyles` name.
+    @MainActor
+    func testAPopupDimsBlackAtHalfWhateverColourTheBannerNames() throws {
+        try snapshot(named: "popup_dim_ignores_overlay_colour") { vm in
+            vm.popupBanner = BannerResponse(
+                token: "popup",
+                displayType: "popup",
+                cssStyles: ["overlayColor": "#00FF00"],
+                design: design(rowColor: "#3A3FE0", extraBody: ["popupOverlay_backgroundColor": "rgba(255, 0, 0, 0.9)"])
+            )
+        } check: { _, window in
+            // Beside the card, over the fake app's tab bar (white 0.1, rgb(26, 26, 26)), dimmed by half.
+            let beside = color(at: CGPoint(x: 10, y: window.bounds.height - 10), in: window)
+            XCTAssertTrue(beside.isClose(to: RGB(red: 13, green: 13, blue: 13)), "dimmed black at 50%: drew \(beside)")
+        }
+    }
+
     /// Regression guard for the popup's own pre-existing `popupWidth`/`borderRadius`/
     /// `popupBackgroundColor` body-value reads: with none of the nine new `cssStyles` keys
     /// authored, a design whose body values differ from this SDK's own 600/10/white literals

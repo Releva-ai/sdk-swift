@@ -19,8 +19,8 @@ enum BannerChrome {
     /// A card holding the design, sized and placed from the banner's chrome keys
     /// (`BannerCardStyle`) over what this SDK has always drawn: `popupWidth` capped to the
     /// available width minus 16 pt each side (default 600), `borderRadius` (default 10),
-    /// `popupBackgroundColor` (default white), centred inside the safe area, with the design's
-    /// `popupOverlay_backgroundColor` dimming the rest of the screen.
+    /// `popupBackgroundColor` (default white), centred inside the safe area. The rest of the
+    /// screen is dimmed black at 50%, as sdk-react-native's Modal overlay is.
     /// Height follows the content and scrolls inside the card when taller than the safe area,
     /// unless `cardHeight` fixes it, in which case `contentVerticalAlign` places the design in
     /// the card. The close button sits 8 in from the top-right corner, its 44 pt tap target
@@ -43,14 +43,13 @@ enum BannerChrome {
         let closeStyle = BannerCloseButtonStyle(banner)
         let band = closeBand(closeStyle)
         let ring = closeRing(closeStyle)
-        let overlayColor = getOverlayColor(banner)
         let cardBackground = style.backgroundColor
             ?? DesignRenderer.parseColor(bodyValues["popupBackgroundColor"])
             ?? .white
 
         ZStack {
             // Overlay
-            overlayColor
+            Color.black.opacity(0.5)
                 .edgesIgnoringSafeArea(.all)
                 .onTapGesture {
                     viewModel.dismissPopup(banner)
@@ -456,15 +455,6 @@ enum BannerChrome {
         .buttonStyle(.plain)
         .accessibilityLabel("Close")
         .accessibilityIdentifier(BannerAccessibilityID.close)
-    }
-
-    // MARK: - Helpers
-
-    private static func getOverlayColor(_ banner: BannerResponse) -> Color {
-        let bodyValues = DesignRenderer.getDesignBodyValues(banner)
-        if let color = DesignRenderer.parseColor(bodyValues["popupOverlay_backgroundColor"]) { return color }
-        if let color = DesignRenderer.parseColor(banner.cssStyles["overlayColor"]) { return color }
-        return Color.black.opacity(0.5)
     }
 }
 

@@ -82,6 +82,9 @@ All notable changes to this project will be documented in this file.
   `contentVerticalAlign` aligns in. A bottom bar still reaches the screen's bottom edge with the
   home indicator padded inside its card, as sdk-react-native's does. Percentages still resolve
   against the window.
+- **A popup dims the rest of the screen black at 50%, as in sdk-react-native.** The design's
+  `popupOverlay_backgroundColor` and the `overlayColor` style key are no longer read; the card
+  itself is unchanged.
 
 ### Fixed
 
