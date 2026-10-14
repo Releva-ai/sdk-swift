@@ -1026,6 +1026,8 @@ The SDK automatically tracks:
 - **Banner clicks** — when user taps a link or button within a banner
 - **Banner dismissals** — when user closes a banner
 
+A link tapped in a popup or a flyout reports a click, calls `onLinkTap` and closes the banner without reporting a dismissal, where the React Native SDK leaves it up; a bar stays up. This SDK draws popups and flyouts in their own window above the app (a modal with `BannerPresenter`), so anything a link opens inside the app would appear under the dim; closing keeps it reachable.
+
 ## Stories
 
 Stories are full-screen, multi-slide content experiences similar to Instagram or Facebook stories. They support auto-advance timers, progress indicators, tap/swipe navigation, and configurable end behavior. Like banners, stories are configured in the Releva dashboard and delivered as part of the push response.

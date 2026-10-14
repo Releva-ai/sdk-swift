@@ -136,11 +136,11 @@ enum BannerChrome {
     ) -> some View {
         let rendered = Group {
             if let design = banner.design {
-                DesignRenderer.render(design: design, maxWidth: width) { url in
-                    dismissForLink()
-                    viewModel.trackClick(banner)
-                    onLinkTap(url)
-                }
+                DesignRenderer.render(
+                    design: design,
+                    maxWidth: width,
+                    onLinkTap: linkTap(banner, viewModel: viewModel, close: dismissForLink, onLinkTap: onLinkTap)
+                )
             }
         }
         .frame(width: width)
@@ -312,10 +312,11 @@ enum BannerChrome {
 
         Group {
             if let design = banner.design {
-                DesignRenderer.render(design: design, maxWidth: designWidth) { url in
-                    viewModel.trackClick(banner)
-                    onLinkTap(url)
-                }
+                DesignRenderer.render(
+                    design: design,
+                    maxWidth: designWidth,
+                    onLinkTap: linkTap(banner, viewModel: viewModel, onLinkTap: onLinkTap)
+                )
             }
         }
         .frame(maxWidth: .infinity)
@@ -371,6 +372,25 @@ enum BannerChrome {
             bottom: insets.bottom,
             trailing: insets.right
         )
+    }
+
+    // MARK: - Links
+
+    /// What a link tapped inside a banner's design does: run `close`, then report a click and route
+    /// the link. A popup or a flyout passes a `close` that takes it down without a `bannerClose`:
+    /// it is drawn above the app, so anything the link opens in the app would be under its dim. A
+    /// bar passes none and stays up.
+    static func linkTap(
+        _ banner: BannerResponse,
+        viewModel: BannerDisplayViewModel,
+        close: (() -> Void)? = nil,
+        onLinkTap: @escaping (String) -> Void
+    ) -> (String) -> Void {
+        { url in
+            close?()
+            viewModel.trackClick(banner)
+            onLinkTap(url)
+        }
     }
 
     // MARK: - Static Banner
