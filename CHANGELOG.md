@@ -85,6 +85,12 @@ All notable changes to this project will be documented in this file.
 - **A popup dims the rest of the screen black at 50%, as in sdk-react-native.** The design's
   `popupOverlay_backgroundColor` and the `overlayColor` style key are no longer read; the card
   itself is unchanged.
+- **`BannerPresenter` lays bars out as the SwiftUI modifier does, as in sdk-react-native.** The
+  bars are drawn in one layer over the host's view with the modifier's layout: a top bar starts at
+  the host's safe-area top with no inset in its card, a centred bar is centred between there and
+  the bottom edge, and a bottom bar runs to the bottom edge with the bottom inset inside its card,
+  where the presenter's bars used to end at the safe-area bottom. The layer passes touches beside
+  a narrowed or moved card through to the host.
 
 ### Fixed
 

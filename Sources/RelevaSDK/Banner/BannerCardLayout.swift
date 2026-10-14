@@ -43,25 +43,24 @@ struct BarCardLayout: Equatable {
     var layerAlignment: HorizontalAlignment { horizontal == .end ? .trailing : .leading }
 
     /// - Parameters:
-    ///   - container: the window, which percentages resolve against and whose width the layer spans.
+    ///   - container: the box the bars are drawn over (the window, or a presenter's host view),
+    ///     which percentages resolve against and whose width the layer spans.
     ///   - safeArea: the parts of the box the layer is positioned in that are under system UI.
     ///   - touchesEdge: whether this bar is the one flush with its edge (the first top bar, the
     ///     last bottom bar); only a bottom bar's edge meets system UI, the home indicator.
-    ///   - canSpanHeight: `false` where the container has no height to span (a presenter slot).
     init(
         style: BannerCardStyle,
         displayPosition: String?,
         container: CGSize,
         safeArea: EdgeInsets,
-        touchesEdge: Bool,
-        canSpanHeight: Bool = true
+        touchesEdge: Bool
     ) {
         let anchors = style.anchors(for: .bar, displayPosition: displayPosition)
         horizontal = anchors.horizontal
         vertical = anchors.vertical
         cardWidth = style.width?.resolved(in: container.width)
         cardHeight = style.height?.resolved(in: container.height)
-        spansHeight = canSpanHeight && anchors.vertical == .center
+        spansHeight = anchors.vertical == .center
 
         let width = cardWidth ?? container.width
         let minX: CGFloat

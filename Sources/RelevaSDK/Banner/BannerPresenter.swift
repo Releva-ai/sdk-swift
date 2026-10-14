@@ -51,7 +51,9 @@ public final class BannerPresenter {
     /// do not complete in this package's test host, so the presenter's side of a dismissal is
     /// observable there and UIKit's is not.
     private(set) var overlayController: UIHostingController<BannerOverlayView>?
-    private var barSlots: [BarSlot] = []
+    /// The bar layer over the host's view, or `nil` when the presenter is stopped. Internal so a
+    /// test can read where the bars were laid out.
+    private(set) var barLayer: BarLayer?
 
     /// - Parameters:
     ///   - host: The view controller the banners are shown over. Held weakly.
@@ -78,7 +80,7 @@ public final class BannerPresenter {
     public func start() {
         guard cancellable == nil, let host = host else { return }
 
-        installBarSlots(in: host)
+        installBarLayer(in: host)
         viewModel.start(tracker: tracker, targetSelector: "", overlayOnly: true, onLinkTap: onLinkTap)
 
         // `receive(on:)` so a reconcile sees the view model's committed state: `@Published`
@@ -87,7 +89,7 @@ public final class BannerPresenter {
             .combineLatest(viewModel.$flyoutBanner, viewModel.$barBanners)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] popup, flyout, _ in
-                self?.reconcile(hasOverlay: popup != nil || flyout != nil)
+                self?.syncOverlay(isNeeded: popup != nil || flyout != nil)
             }
     }
 
@@ -122,7 +124,7 @@ public final class BannerPresenter {
             // recovers from a declined dismissal is the next `start()` *of this presenter*: the
             // reference is still the live one, so its first reconcile keeps the overlay and the
             // presenter can take it down again when the banner is closed. Nothing runs in
-            // between — the subscription is cancelled above, so `reconcile` cannot fire — which
+            // between — the subscription is cancelled above, so `syncOverlay` cannot fire — which
             // means a presenter that is never started again leaves the overlay up, the same
             // outcome as the missing `deinit` in this method's doc comment.
             controller.presentingViewController?.dismiss(animated: false)
@@ -131,20 +133,15 @@ public final class BannerPresenter {
             }
         }
 
-        for slot in barSlots {
-            slot.controller.willMove(toParent: nil)
-            slot.controller.view.removeFromSuperview()
-            slot.controller.removeFromParent()
+        if let barLayer = barLayer {
+            barLayer.controller.willMove(toParent: nil)
+            barLayer.view.removeFromSuperview()
+            barLayer.controller.removeFromParent()
         }
-        barSlots = []
+        barLayer = nil
     }
 
     // MARK: - Reconciliation
-
-    private func reconcile(hasOverlay: Bool) {
-        syncOverlay(isNeeded: hasOverlay)
-        measureBars()
-    }
 
     /// Puts the overlay up or takes it down so that what is on screen matches the view model.
     ///
@@ -219,84 +216,45 @@ public final class BannerPresenter {
     // MARK: - Bar Banners
 
     /// A bar banner cannot be a modal — that would block the whole screen for a strip of
-    /// chrome — so each placement (the top edge, the middle, the bottom edge) gets a child view
-    /// controller that is empty, and therefore zero-height and untouchable, until a bar for it
-    /// arrives.
-    private struct BarSlot {
-        let controller: UIHostingController<BannerBarStackView>
-        /// Only set below iOS 16, where `UIHostingController.sizingOptions` does not exist.
-        let heightConstraint: NSLayoutConstraint?
+    /// chrome — so the bars are drawn in a layer over the host's view: a child view controller
+    /// laying them out exactly as the overlay window does (`BannerBarLayer`), against the host
+    /// view's edges and its safe area. The layer passes every touch through except on a bar's
+    /// card or close control.
+    struct BarLayer {
+        let view: BannerBarPassThroughView
+        let controller: BannerBarLayerHostingController
     }
 
-    private func installBarSlots(in host: UIViewController) {
-        let guide = host.view.safeAreaLayoutGuide
+    private func installBarLayer(in host: UIViewController) {
+        let geometry = BannerBarLayerGeometry()
+        let layerView = BannerBarPassThroughView()
+        layerView.translatesAutoresizingMaskIntoConstraints = false
+        layerView.backgroundColor = .clear
 
-        for placement in [BannerCardStyle.Anchor.start, .center, .end] {
-            let controller = UIHostingController(
-                rootView: BannerBarStackView(viewModel: viewModel, placement: placement, onLinkTap: onLinkTap)
-            )
-            controller.view.backgroundColor = .clear
-            controller.view.translatesAutoresizingMaskIntoConstraints = false
-
-            host.addChild(controller)
-            host.view.addSubview(controller.view)
-
-            var heightConstraint: NSLayoutConstraint?
-            if #available(iOS 16.0, *) {
-                controller.sizingOptions = .intrinsicContentSize
-            } else {
-                heightConstraint = controller.view.heightAnchor.constraint(equalToConstant: 0)
-            }
-
-            let vertical: NSLayoutConstraint
-            switch placement {
-            case .end: vertical = controller.view.bottomAnchor.constraint(equalTo: guide.bottomAnchor)
-            case .center: vertical = controller.view.centerYAnchor.constraint(equalTo: guide.centerYAnchor)
-            case .start, .stretch: vertical = controller.view.topAnchor.constraint(equalTo: guide.topAnchor)
-            }
-            var constraints = [
-                controller.view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
-                controller.view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-                vertical
-            ]
-            if let heightConstraint = heightConstraint {
-                constraints.append(heightConstraint)
-            }
-            NSLayoutConstraint.activate(constraints)
-
-            controller.didMove(toParent: host)
-            barSlots.append(BarSlot(controller: controller, heightConstraint: heightConstraint))
+        let rootView = BannerPresenterBarView(viewModel: viewModel, geometry: geometry, onLinkTap: onLinkTap) { [weak layerView] frames in
+            layerView?.interactiveFrames = frames
         }
-    }
+        let controller = BannerBarLayerHostingController(rootView: rootView)
+        controller.geometry = geometry
+        controller.view.backgroundColor = .clear
+        controller.view.isOpaque = false
+        controller.view.translatesAutoresizingMaskIntoConstraints = false
 
-    /// Below iOS 16 the bar's height has to be measured, because `sizingOptions` is
-    /// unavailable and nothing else invalidates the hosting view's size when its content
-    /// changes. A no-op from iOS 16 up, where every slot's `heightConstraint` is `nil` — checked
-    /// before forcing layout below, so the modern path is not made to pay for a measurement it
-    /// has no use for on every reconcile (every popup show, dismissal and bar add/remove).
-    ///
-    /// Forces layout first and bails out on a zero width rather than measuring against it: this
-    /// can run from `start()`'s first reconcile, one main-queue hop after `viewWillAppear`,
-    /// which may be before the host's first layout pass — and a `stop()` / `start()` round trip
-    /// can leave `barBanners` already populated when that happens. A skipped measurement here is
-    /// caught by the next reconcile once layout has happened.
-    ///
-    /// Known gap, not fixable without a simulator to observe: `sizeThatFits(in:)` is called in
-    /// the same run-loop turn the `@Published` banner change was observed, so whether it sees
-    /// the new content or the previous turn's has not been verified here.
-    private func measureBars() {
-        guard barSlots.contains(where: { $0.heightConstraint != nil }), let host = host else { return }
-        host.view.layoutIfNeeded()
-        let width = host.view.safeAreaLayoutGuide.layoutFrame.width
-        guard width > 0 else { return }
-
-        for slot in barSlots {
-            guard let heightConstraint = slot.heightConstraint else { continue }
-            let fitted = slot.controller.sizeThatFits(
-                in: CGSize(width: width, height: .greatestFiniteMagnitude)
-            )
-            heightConstraint.constant = fitted.height
-        }
+        host.view.addSubview(layerView)
+        host.addChild(controller)
+        layerView.addSubview(controller.view)
+        NSLayoutConstraint.activate([
+            layerView.leadingAnchor.constraint(equalTo: host.view.leadingAnchor),
+            layerView.trailingAnchor.constraint(equalTo: host.view.trailingAnchor),
+            layerView.topAnchor.constraint(equalTo: host.view.topAnchor),
+            layerView.bottomAnchor.constraint(equalTo: host.view.bottomAnchor),
+            controller.view.leadingAnchor.constraint(equalTo: layerView.leadingAnchor),
+            controller.view.trailingAnchor.constraint(equalTo: layerView.trailingAnchor),
+            controller.view.topAnchor.constraint(equalTo: layerView.topAnchor),
+            controller.view.bottomAnchor.constraint(equalTo: layerView.bottomAnchor)
+        ])
+        controller.didMove(toParent: host)
+        barLayer = BarLayer(view: layerView, controller: controller)
     }
 }
 
@@ -328,37 +286,54 @@ struct BannerOverlayView: View {
     }
 }
 
-/// Every bar banner at one placement, stacked in arrival order. The slot is pinned to the safe
-/// area, so a bar here overlaps no system UI and pads for none.
-struct BannerBarStackView: View {
-    @ObservedObject var viewModel: BannerDisplayViewModel
-    let placement: BannerCardStyle.Anchor
-    let onLinkTap: (String) -> Void
+/// The safe-area insets of the host's view, as the bar layer covering it sees them.
+@MainActor
+final class BannerBarLayerGeometry: ObservableObject {
+    @Published var safeArea = EdgeInsets()
+}
 
-    private var banners: [BannerResponse] {
-        viewModel.barBanners.filter { BannerCardStyle.barVerticalAnchor($0) == placement }
+/// Publishes its view's safe-area insets, which are the host view's, to the bar layer.
+final class BannerBarLayerHostingController: UIHostingController<BannerPresenterBarView> {
+    var geometry: BannerBarLayerGeometry?
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        publishSafeArea()
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        publishSafeArea()
+    }
+
+    private func publishSafeArea() {
+        let insets = EdgeInsets(view.safeAreaInsets)
+        if geometry?.safeArea != insets { geometry?.safeArea = insets }
+    }
+}
+
+/// A view that only claims touches inside `interactiveFrames`, which are in window coordinates.
+final class BannerBarPassThroughView: UIView {
+    var interactiveFrames: [CGRect] = []
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let inWindow = convert(point, to: nil)
+        guard interactiveFrames.contains(where: { $0.contains(inWindow) }) else { return nil }
+        return super.hitTest(point, with: event)
+    }
+}
+
+/// The presenter's bar layer: the overlay window's `BannerBarLayer`, given the host view's safe
+/// area, reporting the frames that claim touches.
+struct BannerPresenterBarView: View {
+    let viewModel: BannerDisplayViewModel
+    @ObservedObject var geometry: BannerBarLayerGeometry
+    let onLinkTap: (String) -> Void
+    let onFramesChange: ([CGRect]) -> Void
+
     var body: some View {
-        // The slot sizes itself to its bars, so percentages and the design's width read the screen.
-        let container = UIScreen.main.bounds.size
-        VStack(spacing: 0) {
-            ForEach(banners, id: \.token) { banner in
-                BannerChrome.bar(
-                    banner,
-                    viewModel: viewModel,
-                    layout: BarCardLayout(
-                        style: BannerCardStyle(banner),
-                        displayPosition: banner.displayPosition,
-                        container: container,
-                        safeArea: EdgeInsets(),
-                        touchesEdge: false,
-                        canSpanHeight: false
-                    ),
-                    containerWidth: container.width,
-                    onLinkTap: onLinkTap
-                )
-            }
-        }
+        let safeArea = geometry.safeArea
+        BannerBarLayer(viewModel: viewModel, safeArea: { safeArea }, onLinkTap: onLinkTap)
+            .onPreferenceChange(BannerFramesKey.self) { onFramesChange($0) }
     }
 }

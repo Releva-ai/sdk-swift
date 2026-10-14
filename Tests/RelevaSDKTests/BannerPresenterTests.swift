@@ -123,10 +123,10 @@ final class BannerPresenterTests: XCTestCase {
         drainMainQueue()
 
         XCTAssertEqual(fixture.tracker.impressions, ["bar-1"])
-        // A modal would black the whole screen out for a strip of chrome, so bars go in a child
-        // controller per placement instead: the top edge, the middle and the bottom edge.
+        // A modal would black the whole screen out for a strip of chrome, so bars go in one child
+        // controller laid over the host's view instead.
         XCTAssertNil(fixture.host.presentedViewController)
-        XCTAssertEqual(fixture.host.children.count, 3)
+        XCTAssertEqual(fixture.host.children.count, 1)
     }
 
     @MainActor
@@ -239,7 +239,7 @@ final class BannerPresenterTests: XCTestCase {
             overlay == nil || overlay === stale,
             "a stopped presenter must not put anything back on screen"
         )
-        XCTAssertTrue(fixture.host.children.isEmpty, "the bar slots must come off with the presenter")
+        XCTAssertTrue(fixture.host.children.isEmpty, "the bar layer must come off with the presenter")
 
         BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
         drainMainQueue()
@@ -323,7 +323,113 @@ final class BannerPresenterTests: XCTestCase {
         XCTAssertEqual(card.maxY, 874, accuracy: 0.5)
     }
 
+    /// The presenter lays bars out exactly as the overlay window does: top bars from the host's
+    /// safe-area top with no inset in the card, a centred bar centred between there and the bottom
+    /// edge, and bottom bars up from the bottom edge with the bottom inset inside the last card.
+    @MainActor
+    func testBarsAreLaidOutAsTheOverlayWindowLaysThemOut() throws {
+        let extraInsets = UIEdgeInsets(top: 59, left: 0, bottom: 34, right: 0)
+        let bars = [
+            bar("top-1", position: "top"),
+            bar("top-2", position: "top", keys: ["cardPositionHorizontal": "center", "cardWidth": "240px"]),
+            bar("centre", position: "top", keys: ["cardPositionVertical": "center", "cardWidth": "200px"]),
+            bar("bottom-1", position: "bottom", keys: ["cardHeight": "10%"]),
+            bar("bottom-2", position: "bottom", keys: ["cardBackgroundColor": "#ff00ff"])
+        ]
+        let expected = overlayBarFrames(bars, extraInsets: extraInsets)
+
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+        fixture.host.additionalSafeAreaInsets = extraInsets
+        fixture.presenter.start()
+        fixture.presenter.viewModel.barBanners = bars
+        drainMainQueue(turns: 6)
+        fixture.window.layoutIfNeeded()
+        drainMainQueue(turns: 6)
+
+        let layer = try XCTUnwrap(fixture.presenter.barLayer)
+        let frames = layer.view.interactiveFrames
+        XCTAssertEqual(frames.count, 10, "a card and a close control per bar, got \(frames)")
+        XCTAssertEqual(sorted(frames).count, sorted(expected).count)
+        for (got, want) in zip(sorted(frames), sorted(expected)) {
+            assertFrame(got, want, "the presenter's bar frame matches the overlay window's")
+        }
+
+        let safeTop = fixture.host.view.safeAreaInsets.top
+        let bounds = fixture.host.view.bounds
+        let cards = frames.filter { $0.width >= 200 }
+        XCTAssertEqual(cards.map(\.minY).min() ?? -1, safeTop, accuracy: 0.5, "the first top bar starts at the safe-area top")
+        XCTAssertEqual(cards.map(\.maxY).max() ?? -1, bounds.maxY, accuracy: 0.5, "the last bottom bar runs to the bottom edge")
+    }
+
+    /// Touches beside a bar reach the host; touches on its card are the bar's. The host's view is
+    /// offset in its window, since the bars report their frames in window coordinates.
+    @MainActor
+    func testTheBarLayerPassesTouchesBesideABarThroughToTheHost() throws {
+        let container = UIViewController()
+        let window = makeVisibleWindow(rootViewController: container)
+        defer { window.isHidden = true }
+        let host = UIViewController()
+        container.addChild(host)
+        container.view.addSubview(host.view)
+        host.view.frame = container.view.bounds.inset(by: UIEdgeInsets(top: 100, left: 30, bottom: 0, right: 0))
+        host.didMove(toParent: container)
+        let presenter = BannerPresenter(host: host, tracker: BannerTrackerSpy()) { _ in }
+        presenter.start()
+        defer { presenter.stop() }
+        presenter.viewModel.barBanners = [
+            bar("narrow", position: "top", keys: ["cardPositionHorizontal": "center", "cardWidth": "200px"])
+        ]
+        drainMainQueue(turns: 6)
+        window.layoutIfNeeded()
+        drainMainQueue(turns: 6)
+
+        let layer = try XCTUnwrap(presenter.barLayer).view
+        let card = try XCTUnwrap(layer.interactiveFrames.max { $0.width < $1.width })
+        XCTAssertEqual(card.minY, 100, accuracy: 0.5, "the bar sits at the host view's top")
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { layer.convert(CGPoint(x: x, y: y), from: nil) }
+        XCTAssertNotNil(layer.hitTest(point(card.midX, card.midY), with: nil), "the card takes a touch")
+        XCTAssertNil(layer.hitTest(point(card.minX - 20, card.midY), with: nil), "beside the card the touch passes through")
+        XCTAssertNil(layer.hitTest(point(card.midX, card.maxY + 100), with: nil), "below the bar the touch passes through")
+    }
+
     // MARK: - Fixtures
+
+    private func bar(_ token: String, position: String, keys: [String: JSONValue] = [:]) -> BannerResponse {
+        BannerResponse(
+            token: token,
+            displayType: "bar",
+            displayPosition: position,
+            cssStyles: keys,
+            design: BannerDisplayViewModelTests.minimalDesign
+        )
+    }
+
+    private func sorted(_ frames: [CGRect]) -> [CGRect] {
+        frames.sorted { ($0.minY, $0.minX, $0.width) < ($1.minY, $1.minX, $1.width) }
+    }
+
+    /// The frames the overlay window reports for `bars`, laid out in a window like the fixture's.
+    @MainActor
+    private func overlayBarFrames(_ bars: [BannerResponse], extraInsets: UIEdgeInsets) -> [CGRect] {
+        let viewModel = BannerDisplayViewModel()
+        viewModel.barBanners = bars
+        let host = BannerOverlayHost.shared
+        host.attach(viewModel) { _ in }
+        let controller = BannerOverlayHostingController(rootView: BannerOverlayRoot(host: host))
+        controller.host = host
+        controller.view.backgroundColor = .clear
+        controller.additionalSafeAreaInsets = extraInsets
+        let window = makeVisibleWindow(rootViewController: controller)
+        window.layoutIfNeeded()
+        drainMainQueue(turns: 6)
+        window.layoutIfNeeded()
+        defer {
+            host.detach(viewModel)
+            window.isHidden = true
+        }
+        return host.interactiveFrames
+    }
 
     /// A banner with the least a presenter will accept: `shouldDisplay` drops one with no
     /// design, on both paths.

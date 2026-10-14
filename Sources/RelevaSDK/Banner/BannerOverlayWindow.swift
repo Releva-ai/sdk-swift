@@ -223,46 +223,14 @@ private struct BannerOverlayContent: View {
     @ObservedObject var viewModel: BannerDisplayViewModel
     let host: BannerOverlayHost
 
-    /// The bars at each placement, in arrival order.
-    private func bars(at anchor: BannerCardStyle.Anchor) -> [BannerResponse] {
-        viewModel.barBanners.filter { BannerCardStyle.barVerticalAnchor($0) == anchor }
-    }
-
     var body: some View {
         ZStack {
             if !viewModel.barBanners.isEmpty {
-                // Bars are positioned in the window below the status bar, as sdk-react-native
-                // positions them in the host's content, which starts below it on iOS: top bars
-                // stacked down from the safe-area top, bottom bars up from the window's bottom
-                // edge, a centred bar in a layer spanning that height. Only the bottom bar flush
-                // with the edge meets the system UI, and pads by the home indicator inside its
-                // card. Percentages resolve against the window, as sdk-react-native's do.
-                GeometryReader { geometry in
-                    let safeArea = BannerChrome.barSafeArea(host.safeAreaInsets)
-                    let top = bars(at: .start)
-                    let bottom = bars(at: .end)
-                    ZStack {
-                        VStack(spacing: 0) {
-                            ForEach(Array(top.enumerated()), id: \.element.token) { index, banner in
-                                bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: index == 0)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-                        ForEach(bars(at: .center), id: \.token) { banner in
-                            bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: false)
-                        }
-
-                        VStack(spacing: 0) {
-                            ForEach(Array(bottom.enumerated()), id: \.element.token) { index, banner in
-                                bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: index == bottom.count - 1)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    }
-                    .padding(.top, safeArea.top)
-                }
-                .ignoresSafeArea()
+                BannerBarLayer(
+                    viewModel: viewModel,
+                    safeArea: { BannerChrome.barSafeArea(host.safeAreaInsets) },
+                    onLinkTap: host.onLinkTap
+                )
             }
 
             if let flyout = viewModel.flyoutBanner {
@@ -286,8 +254,57 @@ private struct BannerOverlayContent: View {
     }
 
     private var coversScreen: Bool { viewModel.popupBanner != nil || viewModel.flyoutBanner != nil }
+}
 
-    /// - Parameter safeArea: the window's; the bars' box starts at its top, so no bar meets it there.
+/// The bar banners of a view model, laid out in the container they are drawn over.
+///
+/// Bars are positioned below the container's safe-area top, as sdk-react-native positions them in
+/// the host's content, which starts below the status bar on iOS: top bars stacked down from the
+/// safe-area top, bottom bars up from the container's bottom edge, a centred bar in a layer
+/// spanning that height. Only the bottom bar flush with the edge meets the system UI, and pads by
+/// the bottom inset inside its card. Percentages resolve against the container. The overlay window
+/// and `BannerPresenter` both draw bars with this view.
+struct BannerBarLayer: View {
+    @ObservedObject var viewModel: BannerDisplayViewModel
+    /// The container's safe-area insets, read when the layer is laid out.
+    let safeArea: () -> EdgeInsets
+    let onLinkTap: (String) -> Void
+
+    /// The bars at each placement, in arrival order.
+    private func bars(at anchor: BannerCardStyle.Anchor) -> [BannerResponse] {
+        viewModel.barBanners.filter { BannerCardStyle.barVerticalAnchor($0) == anchor }
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let safeArea = safeArea()
+            let top = bars(at: .start)
+            let bottom = bars(at: .end)
+            ZStack {
+                VStack(spacing: 0) {
+                    ForEach(Array(top.enumerated()), id: \.element.token) { index, banner in
+                        bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: index == 0)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                ForEach(bars(at: .center), id: \.token) { banner in
+                    bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: false)
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(Array(bottom.enumerated()), id: \.element.token) { index, banner in
+                        bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: index == bottom.count - 1)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
+            .padding(.top, safeArea.top)
+        }
+        .ignoresSafeArea()
+    }
+
+    /// - Parameter safeArea: the container's; the bars' box starts at its top, so no bar meets it there.
     private func bar(_ banner: BannerResponse, in container: CGSize, safeArea: EdgeInsets, touchesEdge: Bool) -> some View {
         BannerChrome.bar(
             banner,
@@ -300,7 +317,7 @@ private struct BannerOverlayContent: View {
                 touchesEdge: touchesEdge
             ),
             containerWidth: container.width,
-            onLinkTap: host.onLinkTap
+            onLinkTap: onLinkTap
         )
     }
 }
