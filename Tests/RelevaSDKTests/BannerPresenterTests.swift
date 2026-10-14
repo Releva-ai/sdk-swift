@@ -11,6 +11,50 @@ private struct BannerFixture {
     let presenter: BannerPresenter
 }
 
+/// Rows of plain cells, in sections whose headers pin in a plain table when `headers` is set.
+private final class TableRows: NSObject, UITableViewDataSource {
+    let sections: Int
+    let rowsPerSection: Int
+    let headers: Bool
+
+    init(sections: Int, rowsPerSection: Int, headers: Bool) {
+        self.sections = sections
+        self.rowsPerSection = rowsPerSection
+        self.headers = headers
+    }
+
+    func numberOfSections(in tableView: UITableView) -> Int { sections }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rowsPerSection }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        cell.textLabel?.text = "row \(indexPath.row)"
+        return cell
+    }
+
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        headers ? "Section \(section)" : nil
+    }
+}
+
+/// Plain cells, enough to scroll.
+private final class CollectionItems: NSObject, UICollectionViewDataSource {
+    private static let reuseIdentifier = "item"
+
+    init(registeringOn collectionView: UICollectionView) {
+        collectionView.register(UICollectionViewCell.self, forCellWithReuseIdentifier: Self.reuseIdentifier)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { 200 }
+
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: Self.reuseIdentifier, for: indexPath)
+        cell.backgroundColor = .systemGray
+        return cell
+    }
+}
+
 /// `BannerPresenter` draws nothing of its own and tracks nothing of its own: it hosts the same
 /// SwiftUI chrome the modifier does, and every impression, click and dismissal goes through the
 /// `BannerDisplayViewModel` both paths share. So these tests cover what the presenter adds —
@@ -421,16 +465,8 @@ final class BannerPresenterTests: XCTestCase {
     /// table scrolls.
     @MainActor
     func testBarsOverATableViewHostStayOnScreenWhenItScrolls() throws {
-        final class Rows: NSObject, UITableViewDataSource {
-            func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { 200 }
-            func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-                let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-                cell.textLabel?.text = "row \(indexPath.row)"
-                return cell
-            }
-        }
         let host = UITableViewController(style: .plain)
-        let rows = Rows()
+        let rows = TableRows(sections: 1, rowsPerSection: 200, headers: false)
         host.tableView.dataSource = rows
         let window = makeVisibleWindow(rootViewController: UINavigationController(rootViewController: host))
         defer { window.isHidden = true }
@@ -474,6 +510,131 @@ final class BannerPresenterTests: XCTestCase {
         settle()
         XCTAssertEqual(cards().first?.minY ?? -1, (before.first?.minY ?? 0) + 40, accuracy: 0.5, "the top bar follows the safe-area top")
         XCTAssertEqual(cards().last?.maxY ?? -1, visible.maxY, accuracy: 0.5, "the bottom bar stays at the bottom edge")
+    }
+
+    /// A table passes its subviews the safe-area edges it does not take into its content inset:
+    /// none of the top with `.automatic`, all of it with `.never`, and the sides with either. The
+    /// bars over it count the safe area once, so they are laid out exactly as over a plain view
+    /// controller in the same place, before and after the table scrolls.
+    @MainActor
+    func testBarsOverATableViewHostCountTheSafeAreaOnce() throws {
+        let bars = [bar("top", position: "top"), bar("bottom", position: "bottom")]
+        let portrait = UIEdgeInsets(top: 0, left: 0, bottom: 34, right: 0)
+        let landscape = UIEdgeInsets(top: 0, left: 59, bottom: 21, right: 59)
+        for extraInsets in [portrait, landscape] {
+            let expected = sorted(plainHostBarFrames(bars, extraInsets: extraInsets))
+            XCTAssertEqual(expected.count, 4, "a card and a close control per bar over the plain host, got \(expected)")
+            for behaviour in [UIScrollView.ContentInsetAdjustmentBehavior.automatic, .never] {
+                let context = "\(extraInsets), contentInsetAdjustmentBehavior \(behaviour.rawValue)"
+                let host = UITableViewController(style: .plain)
+                let rows = TableRows(sections: 1, rowsPerSection: 200, headers: false)
+                host.tableView.dataSource = rows
+                host.tableView.contentInsetAdjustmentBehavior = behaviour
+                let window = showInNavigationController(host, extraInsets: extraInsets)
+                defer { window.isHidden = true }
+                let presenter = BannerPresenter(host: host, tracker: BannerTrackerSpy()) { _ in }
+                presenter.start()
+                defer { presenter.stop() }
+                presenter.viewModel.barBanners = bars
+                settleLayout(window)
+
+                let table = try XCTUnwrap(host.tableView)
+                let layer = try XCTUnwrap(presenter.barLayer).view
+                let visible = table.convert(table.bounds, to: nil)
+                XCTAssertGreaterThan(table.safeAreaInsets.top, 0, "the navigation bar is over the table")
+                for scrolled in [false, true] {
+                    if scrolled {
+                        table.contentOffset.y += 600
+                        settleLayout(window)
+                    }
+                    let frames = sorted(layer.interactiveFrames)
+                    XCTAssertEqual(frames.count, expected.count, "\(context), scrolled \(scrolled): got \(frames)")
+                    for (got, want) in zip(frames, expected) {
+                        assertFrame(got, want, "\(context), scrolled \(scrolled): the bar frame matches a plain host's")
+                    }
+                    let cards = frames.filter { $0.width > 100 }
+                    XCTAssertEqual(cards.map(\.minY).min() ?? -1, visible.minY + table.safeAreaInsets.top, accuracy: 0.5, "\(context), scrolled \(scrolled): the top bar starts at the safe-area top")
+                    XCTAssertEqual(cards.map(\.maxY).max() ?? -1, visible.maxY, accuracy: 0.5, "\(context), scrolled \(scrolled): the bottom bar runs to the window bottom")
+                }
+            }
+        }
+    }
+
+    /// A plain table adds its section headers above the bar layer as it scrolls, and pins one at
+    /// the top under the top bar. The layer stays above every header, so the bars are drawn over
+    /// them and take the touches on their cards; a touch on a row below still reaches the table.
+    @MainActor
+    func testBarsOverATableViewHostStayAboveItsPinnedSectionHeaders() throws {
+        let host = UITableViewController(style: .plain)
+        let rows = TableRows(sections: 60, rowsPerSection: 4, headers: true)
+        host.tableView.dataSource = rows
+        let window = showInNavigationController(host, extraInsets: .zero)
+        defer { window.isHidden = true }
+        let presenter = BannerPresenter(host: host, tracker: BannerTrackerSpy()) { _ in }
+        presenter.start()
+        defer { presenter.stop() }
+        presenter.viewModel.barBanners = [bar("top", position: "top"), bar("bottom", position: "bottom")]
+        settleLayout(window)
+
+        let table = try XCTUnwrap(host.tableView)
+        let layer = try XCTUnwrap(presenter.barLayer).view
+        for step in 1...3 {
+            table.contentOffset.y += 600
+            settleLayout(window)
+
+            let headers = table.subviews.filter { $0 is UITableViewHeaderFooterView }
+            let topCard = try XCTUnwrap(layer.interactiveFrames.filter { $0.width > 100 }.min { $0.minY < $1.minY })
+            XCTAssertTrue(
+                headers.contains { $0.convert($0.bounds, to: nil).intersects(topCard) },
+                "step \(step): a pinned header is under the top bar"
+            )
+            let layerIndex = try XCTUnwrap(table.subviews.firstIndex(of: layer))
+            let lastHeader = try XCTUnwrap(table.subviews.lastIndex { $0 is UITableViewHeaderFooterView })
+            XCTAssertGreaterThan(layerIndex, lastHeader, "step \(step): the bars are drawn above the headers")
+
+            let onBar = window.hitTest(CGPoint(x: topCard.midX, y: topCard.midY), with: nil)
+            XCTAssertTrue(onBar?.isDescendant(of: layer) ?? false, "step \(step): the top bar takes a touch on its card, got \(String(describing: onBar))")
+            let onRow = window.hitTest(CGPoint(x: topCard.midX, y: window.bounds.midY), with: nil)
+            XCTAssertFalse(onRow?.isDescendant(of: layer) ?? true, "step \(step): a touch on a row passes through")
+            XCTAssertTrue(onRow?.isDescendant(of: table) ?? false, "step \(step): the row takes it, got \(String(describing: onRow))")
+        }
+    }
+
+    /// A collection view controller in a navigation controller: the bars sit as over a plain view
+    /// controller in the same place, and stay there when the collection view scrolls.
+    @MainActor
+    func testBarsOverACollectionViewHostStayOnScreenWhenItScrolls() throws {
+        let bars = [bar("top", position: "top"), bar("bottom", position: "bottom")]
+        let extraInsets = UIEdgeInsets(top: 0, left: 0, bottom: 34, right: 0)
+        let expected = sorted(plainHostBarFrames(bars, extraInsets: extraInsets))
+        let layout = UICollectionViewFlowLayout()
+        layout.itemSize = CGSize(width: 100, height: 100)
+        let host = UICollectionViewController(collectionViewLayout: layout)
+        let items = CollectionItems(registeringOn: host.collectionView)
+        host.collectionView.dataSource = items
+        let window = showInNavigationController(host, extraInsets: extraInsets)
+        defer { window.isHidden = true }
+        let presenter = BannerPresenter(host: host, tracker: BannerTrackerSpy()) { _ in }
+        presenter.start()
+        defer { presenter.stop() }
+        presenter.viewModel.barBanners = bars
+        settleLayout(window)
+
+        let collectionView = try XCTUnwrap(host.collectionView)
+        let layer = try XCTUnwrap(presenter.barLayer).view
+        let before = sorted(layer.interactiveFrames)
+        XCTAssertEqual(before.count, expected.count, "got \(before)")
+        for (got, want) in zip(before, expected) {
+            assertFrame(got, want, "the bar frame matches a plain host's")
+        }
+
+        collectionView.contentOffset.y += 600
+        settleLayout(window)
+        XCTAssertGreaterThan(collectionView.contentOffset.y, 400, "the collection view scrolled")
+        XCTAssertEqual(sorted(layer.interactiveFrames), before, "the bars do not scroll with the items")
+        let topCard = try XCTUnwrap(before.first { $0.width > 100 })
+        let onBar = window.hitTest(CGPoint(x: topCard.midX, y: topCard.midY), with: nil)
+        XCTAssertTrue(onBar?.isDescendant(of: layer) ?? false, "the top bar takes a touch on its card, got \(String(describing: onBar))")
     }
 
     /// Touches beside a bar reach the host; touches on its card are the bar's. The host's view is
@@ -613,6 +774,42 @@ final class BannerPresenterTests: XCTestCase {
             window.isHidden = true
         }
         return host.interactiveFrames
+    }
+
+    /// `host` as the root of a navigation controller in a visible window, with `extraInsets` added
+    /// to the navigation controller's safe area.
+    @MainActor
+    private func showInNavigationController(_ host: UIViewController, extraInsets: UIEdgeInsets) -> UIWindow {
+        let navigation = UINavigationController(rootViewController: host)
+        navigation.additionalSafeAreaInsets = extraInsets
+        let window = makeVisibleWindow(rootViewController: navigation)
+        window.layoutIfNeeded()
+        return window
+    }
+
+    @MainActor
+    private func settleLayout(_ window: UIWindow) {
+        drainMainQueue(turns: 6)
+        window.layoutIfNeeded()
+        drainMainQueue(turns: 6)
+        window.layoutIfNeeded()
+    }
+
+    /// The frames a presenter's bars claim over a plain view controller shown as
+    /// `showInNavigationController` shows it.
+    @MainActor
+    private func plainHostBarFrames(_ bars: [BannerResponse], extraInsets: UIEdgeInsets) -> [CGRect] {
+        let host = UIViewController()
+        let window = showInNavigationController(host, extraInsets: extraInsets)
+        let presenter = BannerPresenter(host: host, tracker: BannerTrackerSpy()) { _ in }
+        presenter.start()
+        presenter.viewModel.barBanners = bars
+        settleLayout(window)
+        defer {
+            presenter.stop()
+            window.isHidden = true
+        }
+        return presenter.barLayer?.view.interactiveFrames ?? []
     }
 
     /// A banner with the least a presenter will accept: `shouldDisplay` drops one with no

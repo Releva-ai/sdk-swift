@@ -222,9 +222,10 @@ public final class BannerPresenter {
     /// A bar banner cannot be a modal — that would block the whole screen for a strip of
     /// chrome — so the bars are drawn in a layer over the host's view: a child view controller
     /// laying them out exactly as the overlay window does (`BannerBarLayer`), against the host
-    /// view's edges and its safe area. Over a scroll view (a table or collection view controller's
-    /// view) the layer covers its visible frame, so the bars do not scroll. The layer passes every
-    /// touch through except on a bar's card or close control.
+    /// view's edges and its safe area. Over a scroll view (a table view controller's view) the layer
+    /// covers its visible frame and stays above the scroll view's other subviews, so the bars neither
+    /// scroll nor go under a pinned section header. The layer passes every touch through except on a
+    /// bar's card or close control.
     struct BarLayer {
         let view: BannerBarPassThroughView
         let controller: BannerBarLayerHostingController
@@ -261,8 +262,9 @@ public final class BannerPresenter {
             controller.view.bottomAnchor.constraint(equalTo: layerView.bottomAnchor)
         ])
         if let scrollView = host.view as? UIScrollView {
-            // A scroll view gives its subviews no safe area: a hidden view pinned to its safe-area
-            // guide measures it for the layer.
+            // A scroll view passes its subviews only the safe area it does not take into its
+            // content inset: a hidden view pinned to its safe-area guide measures all of it, and
+            // the bars are laid out by that alone.
             let safeAreaGuide = UIView()
             safeAreaGuide.isHidden = true
             safeAreaGuide.translatesAutoresizingMaskIntoConstraints = false
@@ -276,8 +278,13 @@ public final class BannerPresenter {
             ])
             layerView.safeAreaGuide = safeAreaGuide
             layerView.onSafeAreaChange = { [weak controller] insets in
-                if controller?.additionalSafeAreaInsets != insets { controller?.additionalSafeAreaInsets = insets }
+                controller?.measuredSafeArea = insets
             }
+            // The scroll view adds section headers above the layer as it scrolls or loads rows.
+            layerView.scrollObservations = [
+                scrollView.observe(\.contentOffset) { [weak layerView] _, _ in layerView?.setNeedsLayout() },
+                scrollView.observe(\.contentSize) { [weak layerView] _, _ in layerView?.setNeedsLayout() }
+            ]
         }
         controller.didMove(toParent: host)
         barLayer = BarLayer(view: layerView, controller: controller)
@@ -343,6 +350,10 @@ final class BannerBarLayerGeometry: ObservableObject {
 /// Publishes its view's safe-area insets, which are the host view's, to the bar layer.
 final class BannerBarLayerHostingController: UIHostingController<BannerPresenterBarView> {
     var geometry: BannerBarLayerGeometry?
+    /// Over a scroll view: the scroll view's safe area, published in place of the view's own.
+    var measuredSafeArea: UIEdgeInsets? {
+        didSet { publishSafeArea() }
+    }
 
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
@@ -355,7 +366,7 @@ final class BannerBarLayerHostingController: UIHostingController<BannerPresenter
     }
 
     private func publishSafeArea() {
-        let insets = EdgeInsets(view.safeAreaInsets)
+        let insets = EdgeInsets(measuredSafeArea ?? view.safeAreaInsets)
         if geometry?.safeArea != insets { geometry?.safeArea = insets }
     }
 }
@@ -367,10 +378,17 @@ final class BannerBarPassThroughView: UIView {
     var safeAreaGuide: UIView?
     /// Called on each layout with the insets `safeAreaGuide` measures.
     var onSafeAreaChange: ((UIEdgeInsets) -> Void)?
+    /// Over a scroll view: lays this view out again when the scroll view scrolls or its content
+    /// changes size.
+    var scrollObservations: [NSKeyValueObservation] = []
 
     override func layoutSubviews() {
         super.layoutSubviews()
         guard let guide = safeAreaGuide?.frame else { return }
+        // Back above what the scroll view added since, for drawing and for touches.
+        if let superview = superview, superview.subviews.last !== self {
+            superview.bringSubviewToFront(self)
+        }
         onSafeAreaChange?(UIEdgeInsets(
             top: max(guide.minY, 0),
             left: max(guide.minX, 0),
