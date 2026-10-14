@@ -137,6 +137,7 @@ struct NpsSurveyView: View {
         // a dark-mode app shows a white card in a near-black sheet.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(bgColor.ignoresSafeArea())
+        .bannerAccessibilityContainer(NpsAccessibilityID.sheet(nps.token))
         .onDisappear {
             dismissTimer?.invalidate()
         }
@@ -187,6 +188,7 @@ struct NpsSurveyView: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier(NpsAccessibilityID.score(score))
                 }
             }
 
@@ -217,6 +219,7 @@ struct NpsSurveyView: View {
                             .font(.system(size: 14))
                             .foregroundColor(textColor.opacity(0.5))
                     }
+                    .accessibilityIdentifier(NpsAccessibilityID.skip)
                     Spacer()
                 }
             }
@@ -237,6 +240,9 @@ struct NpsSurveyView: View {
 
             TextEditor(text: $comment)
                 .frame(minHeight: 80, maxHeight: 120)
+                // On a container around the editor: an identifier set on a TextEditor does not
+                // reach the UITextView it is drawn with.
+                .bannerAccessibilityContainer(NpsAccessibilityID.comment)
                 .padding(8)
                 // TextEditor paints the system background under the survey's text colour; give it
                 // the survey's own colours.
@@ -268,6 +274,7 @@ struct NpsSurveyView: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: buttonCornerRadius(for: nps.appearance.buttonStyle, height: 48)))
             .disabled(!submitButtonEnabled)
+            .accessibilityIdentifier(NpsAccessibilityID.submit)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
@@ -338,6 +345,23 @@ struct NpsSurveyView: View {
         default: return 0
         }
     }
+}
+
+// MARK: - Accessibility identifiers
+
+/// The accessibility identifiers device QA reads; the same ids sdk-react-native sets as testIDs.
+enum NpsAccessibilityID {
+    /// The skip control.
+    static let skip = "releva-nps-skip"
+    /// The follow-up comment input.
+    static let comment = "releva-nps-comment"
+    /// The follow-up submit button.
+    static let submit = "releva-nps-submit"
+
+    /// The sheet, named by the survey it is asking.
+    static func sheet(_ token: String) -> String { "releva-nps-\(token)" }
+    /// One score button, 0 to 10.
+    static func score(_ score: Int) -> String { "releva-nps-score-\(score)" }
 }
 
 // MARK: - Types

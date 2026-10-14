@@ -11,70 +11,17 @@ import XCTest
 /// SwiftUI builds that tree only while accessibility is on, so each test turns on the automation
 /// mode XCUITest itself uses, and turns it off afterwards.
 final class BannerAccessibilityIdentifierTests: XCTestCase {
-    /// One element of the accessibility tree, with its children.
-    private struct AXNode {
-        let identifier: String
-        let label: String
-        let frame: CGRect
-        let isElement: Bool
-        let traits: UIAccessibilityTraits
-        let children: [AXNode]
-
-        /// This node and every node below it, depth first.
-        var flattened: [AXNode] { [self] + children.flatMap(\.flattened) }
-
-        func nodes(_ identifier: String) -> [AXNode] { flattened.filter { $0.identifier == identifier } }
-    }
-
     private static let windowSize = CGSize(width: 393, height: 852)
     private static let copy = "Hello from the banner"
 
     override func setUp() {
         super.setUp()
-        Self.setAutomation(enabled: true)
+        AccessibilityTree.setAutomation(enabled: true)
     }
 
     override func tearDown() {
-        Self.setAutomation(enabled: false)
+        AccessibilityTree.setAutomation(enabled: false)
         super.tearDown()
-    }
-
-    /// `_AXSSetAutomationEnabled`, which XCUITest calls to make an app build its accessibility tree.
-    private static func setAutomation(enabled: Bool) {
-        guard let handle = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW),
-              let symbol = dlsym(handle, "_AXSSetAutomationEnabled") else {
-            return XCTFail("libAccessibility's _AXSSetAutomationEnabled is unavailable, so the accessibility tree cannot be read")
-        }
-        typealias SetEnabled = @convention(c) (Int32) -> Void
-        unsafeBitCast(symbol, to: SetEnabled.self)(enabled ? 1 : 0)
-    }
-
-    private static func tree(of object: NSObject) -> AXNode {
-        var children: [NSObject] = []
-        let count = object.accessibilityElementCount()
-        if let elements = object.accessibilityElements as? [NSObject] {
-            children = elements
-        } else if count != NSNotFound, count > 0 {
-            children = (0..<count).compactMap { object.accessibilityElement(at: $0) as? NSObject }
-        } else if let view = object as? UIView {
-            children = view.subviews
-        }
-        let identifier = object.responds(to: NSSelectorFromString("accessibilityIdentifier"))
-            ? object.value(forKey: "accessibilityIdentifier") as? String
-            : nil
-        return AXNode(
-            identifier: identifier ?? "",
-            label: object.accessibilityLabel ?? "",
-            frame: object.accessibilityFrame,
-            isElement: object.isAccessibilityElement,
-            traits: object.accessibilityTraits,
-            children: children.map { tree(of: $0) }
-        )
-    }
-
-    private static func describe(_ node: AXNode, depth: Int = 0) -> String {
-        let line = "\(String(repeating: "  ", count: depth))id=\(node.identifier) label=\(node.label) frame=\(node.frame)"
-        return ([line] + node.children.map { describe($0, depth: depth + 1) }).joined(separator: "\n")
     }
 
     // MARK: - Harness
@@ -109,10 +56,10 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
         }
 
         let safeArea = controller.view.convert(controller.view.safeAreaLayoutGuide.layoutFrame, to: window)
-        let tree = Self.tree(of: window)
+        let tree = AccessibilityTree.tree(of: window)
         let failuresBefore = testRun?.totalFailureCount ?? 0
         defer {
-            if (testRun?.totalFailureCount ?? 0) > failuresBefore { print(Self.describe(tree)) }
+            if (testRun?.totalFailureCount ?? 0) > failuresBefore { print(AccessibilityTree.describe(tree)) }
         }
         try check(tree, host.interactiveFrames, safeArea)
     }
@@ -192,12 +139,6 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
             file: file,
             line: line
         )
-    }
-
-    private func assertFrame(_ frame: CGRect, _ expected: CGRect, _ message: String, file: StaticString = #filePath, line: UInt = #line) {
-        let matches = abs(frame.minX - expected.minX) <= 0.5 && abs(frame.minY - expected.minY) <= 0.5
-            && abs(frame.width - expected.width) <= 0.5 && abs(frame.height - expected.height) <= 0.5
-        XCTAssertTrue(matches, "\(message): got \(frame), want \(expected)", file: file, line: line)
     }
 
     // MARK: - Popup
@@ -400,10 +341,10 @@ final class BannerAccessibilityIdentifierTests: XCTestCase {
         window.layoutIfNeeded()
         defer { window.isHidden = true }
 
-        let tree = Self.tree(of: window)
+        let tree = AccessibilityTree.tree(of: window)
         XCTAssertFalse(measured.frame.isNull, "the static banner was not laid out")
         let matches = tree.nodes(BannerAccessibilityID.banner("static-1"))
-        XCTAssertEqual(matches.count, 1, "releva-banner-static-1 on exactly one element\n\(Self.describe(tree))")
+        XCTAssertEqual(matches.count, 1, "releva-banner-static-1 on exactly one element\n\(AccessibilityTree.describe(tree))")
         let container = try XCTUnwrap(matches.first)
         XCTAssertFalse(container.isElement, "a container, so the views inside stay reachable")
         assertFrame(container.frame, measured.frame, "releva-banner-static-1 has the banner's frame")

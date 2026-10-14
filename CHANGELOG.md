@@ -19,8 +19,22 @@ All notable changes to this project will be documented in this file.
   `releva-banner-close` on the close control's whole tap target, `releva-banner-<token>` on the
   popup or flyout card, the bar's positioning layer and a static banner, and
   `releva-banner-placement` on the box a popup or a sized flyout is placed in.
+- **Stories and the NPS survey carry the accessibility identifiers sdk-react-native sets as
+  testIDs.** The story viewer: `releva-story-<token>` on the viewer, `releva-story-close` on the
+  close control, `releva-story-slide-<index>` on the slide surface (the 0-based index of the slide
+  on screen, so it changes as the story advances) and `releva-story-action` on the action button.
+  The survey: `releva-nps-<token>` on the sheet, `releva-nps-score-<n>` on each score from 0 to
+  10, `releva-nps-skip`, and on the follow-up step `releva-nps-comment` and `releva-nps-submit`.
+  The viewer, the sheet and the slide are containers, so the views inside stay reachable; labels
+  and traits are unchanged. `releva-nps-comment` is on a container framed by the comment's text
+  view, because an identifier set on a `TextEditor` does not reach the `UITextView` it is drawn
+  with. The story close control's whole 28 pt frame is now its tap target.
 
 ### Changed
+
+- **`BannerDisplayController.showBanner(_:)` returns whether a display surface received the
+  banner** (`@discardableResult`, so existing calls compile unchanged): `false` when nothing is
+  subscribed to `bannerPublisher`.
 
 - **A bar is a layer and a card, as in sdk-react-native.** The layer spans the window, pinned to
   the edge `cardPositionVertical` (else `displayPosition`) names, or spans its height with the card
@@ -49,6 +63,16 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **A popup or a flyout is shown once per session, as in sdk-react-native.**
+  `BannerManagerService` forgot what it had shown on every push response, so a popup the server
+  delivers again was shown again each time its screen was re-entered. The tokens of popups and
+  flyouts that were shown are now kept for the session and shared by every manager instance;
+  `initialize` and `dispose()` leave them alone. Bars and static banners, which only a new
+  response can put back on screen, are still shown by every response that carries them. A popup
+  counts as shown only if a display surface was subscribed when it fired, so one emitted before
+  any surface existed keeps its showing. The memory is cleared when a new session starts (cold
+  start, or a return after more than 30 minutes in the background) and when the client is shut
+  down, since a replacement client continues the device session instead of starting one.
 - **A positive offset moves a card AWAY from the edge it is anchored to.** `cardOffsetVertical`
   and `cardOffsetHorizontal` are a gap from an anchored edge, not a translation, so an `end`
   anchor (`bottom` / `right`) negates: `24px` on a bottom-anchored card lifts it 24 points off

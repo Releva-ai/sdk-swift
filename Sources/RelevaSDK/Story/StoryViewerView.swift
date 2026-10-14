@@ -83,7 +83,9 @@ public struct StoryViewerView: View {
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundColor(activeColor)
                                 .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
                         }
+                        .accessibilityIdentifier(StoryAccessibilityID.close)
                         .padding(.leading, 4)
                     }
                     .padding(.horizontal, 8)
@@ -133,6 +135,7 @@ public struct StoryViewerView: View {
                         )
                     }
                     .frame(maxHeight: .infinity)
+                    .bannerAccessibilityMarker(StoryAccessibilityID.slide(currentSlideIndex))
 
                     // Action button
                     if let actionType = currentSlide.actionType,
@@ -150,12 +153,14 @@ public struct StoryViewerView: View {
                                 .background(Color.white)
                                 .cornerRadius(8)
                         }
+                        .accessibilityIdentifier(StoryAccessibilityID.action)
                         .padding(.horizontal, 24)
                         .padding(.bottom, 24)
                     }
                 }
             }
         }
+        .bannerAccessibilityContainer(StoryAccessibilityID.story(story.token))
         .onAppear {
             trackSlideView()
             startSlideTimer()
@@ -271,6 +276,22 @@ public struct StoryViewerView: View {
     private func trackSlideClick() {
         client.storyAction(story, action: "storySlideClick", slideId: currentSlide.id)
     }
+}
+
+// MARK: - Accessibility identifiers
+
+/// The accessibility identifiers device QA reads; the same ids sdk-react-native sets as testIDs.
+enum StoryAccessibilityID {
+    /// The close control. Its frame is the whole tap target.
+    static let close = "releva-story-close"
+    /// The current slide's action button.
+    static let action = "releva-story-action"
+
+    /// The viewer, named by the story it is showing.
+    static func story(_ token: String) -> String { "releva-story-\(token)" }
+    /// The slide surface, named by the 0-based index of the slide on screen. Its frame is the
+    /// tap region that steps back and forward.
+    static func slide(_ index: Int) -> String { "releva-story-slide-\(index)" }
 }
 
 // MARK: - Progress Bar Segment
