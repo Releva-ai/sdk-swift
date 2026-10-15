@@ -91,16 +91,41 @@ final class DesignRendererParsingTests: XCTestCase {
         XCTAssertNil(DesignRenderer.parseColor("   "))
         XCTAssertNil(DesignRenderer.parseColor(42), "a non-string value is not a colour")
         XCTAssertNil(DesignRenderer.parseColor("red"), "named CSS colours are not supported")
-        XCTAssertNil(DesignRenderer.parseColor("rgb(255, 0, 0)"), "only the four-argument rgba form is supported")
-        XCTAssertNil(DesignRenderer.parseColor("rgba(255, 0, 0)"), "an rgba missing its alpha is not usable")
+        XCTAssertNil(DesignRenderer.parseColor("rgb(255, 0)"), "two channels are not a colour")
+        XCTAssertNil(DesignRenderer.parseColor("rgba(255, 0, 0, 1, 1)"), "five arguments are not a colour")
+        XCTAssertNil(DesignRenderer.parseColor("rgb(255, x, 0)"))
+        XCTAssertNil(DesignRenderer.parseColor("hsl(0, 100%, 50%)"), "only rgb()/rgba() are supported")
         XCTAssertNil(DesignRenderer.parseColor("#nothex"))
+        XCTAssertNil(DesignRenderer.parseColor("#12zz56"), "a partly-hex string is not a colour")
     }
 
-    func testParseColorDoesNotSupportThreeDigitHexShorthand() {
-        XCTAssertNil(
-            DesignRenderer.parseColor("#fff"),
-            "#fff scans as a valid hex number but only 6- and 8-digit forms are mapped"
-        )
+    /// `#000` and `#fff` are what the banner editor writes by default, so shorthand must read.
+    func testParseColorReadsThreeDigitHexShorthand() throws {
+        try assertColor(DesignRenderer.parseColor("#fff"), red: 1, green: 1, blue: 1)
+        try assertColor(DesignRenderer.parseColor("#f80"), red: 1, green: 136.0 / 255, blue: 0)
+    }
+
+    /// Four digits is `#rgba` with alpha LAST, CSS order: `#f008` is half-ish-transparent red.
+    func testParseColorReadsFourDigitHexWithAlphaLast() throws {
+        try assertColor(DesignRenderer.parseColor("#f008"), red: 1, green: 0, blue: 0, alpha: 136.0 / 255)
+    }
+
+    /// Eight digits is `#rrggbbaa`, not Android's `#aarrggbb`: `#ffff00ff` is opaque yellow, not
+    /// magenta, and `#ff000080` half-transparent red, not navy.
+    func testParseColorReadsEightDigitHexInCssOrder() throws {
+        try assertColor(DesignRenderer.parseColor("#ffff00ff"), red: 1, green: 1, blue: 0)
+        try assertColor(DesignRenderer.parseColor("#ff000080"), red: 1, green: 0, blue: 0, alpha: 128.0 / 255)
+    }
+
+    func testParseColorReadsFunctionalRgbAndIsCaseInsensitive() throws {
+        try assertColor(DesignRenderer.parseColor("rgb(0, 160, 0)"), red: 0, green: 160.0 / 255, blue: 0)
+        try assertColor(DesignRenderer.parseColor("RGBA(255, 255, 255, 1)"), red: 1, green: 1, blue: 1)
+        try assertColor(DesignRenderer.parseColor("#FFF"), red: 1, green: 1, blue: 1)
+    }
+
+    func testParseColorReadsTransparent() throws {
+        try assertColor(DesignRenderer.parseColor("transparent"), red: 0, green: 0, blue: 0, alpha: 0)
+        try assertColor(DesignRenderer.parseColor(" Transparent "), red: 0, green: 0, blue: 0, alpha: 0)
     }
 
     // MARK: - colorFromHex
@@ -111,9 +136,11 @@ final class DesignRendererParsingTests: XCTestCase {
     }
 
     func testColorFromHexRejectsUnsupportedLengths() {
-        XCTAssertNil(DesignRenderer.colorFromHex("#ffff"), "4 hex digits is not a supported form")
+        XCTAssertNil(DesignRenderer.colorFromHex("#ff"), "2 hex digits is not a supported form")
+        XCTAssertNil(DesignRenderer.colorFromHex("#fffff"), "5 hex digits is not a supported form")
         XCTAssertNil(DesignRenderer.colorFromHex("#ffffffff0"), "9 hex digits is not a supported form")
-        XCTAssertNil(DesignRenderer.colorFromHex("#zzzzzz"), "non-hex characters cannot be scanned")
+        XCTAssertNil(DesignRenderer.colorFromHex("#zzzzzz"), "non-hex characters are not a colour")
+        XCTAssertNil(DesignRenderer.colorFromHex("#+fffff"), "a sign is not a hex digit")
     }
 
     // MARK: - parseDimensionRaw

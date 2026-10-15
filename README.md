@@ -1013,11 +1013,11 @@ Stories with a scroll trigger use the same report. Both `reportScrollPercentage(
 | Type | Description |
 |------|-------------|
 | **Popup** | Centered modal dialog with overlay backdrop and close button. Supports full-screen mode. |
-| **Bar** | Fixed position bar at top or bottom with close button and shadow. |
-| **Flyout** | Side panel sliding in from left or right with scrollable content. |
+| **Bar** | A card at the top or bottom edge, or in the middle, of the screen, with a close button. Unpainted unless the card is given a colour; the rest of the screen stays usable. |
+| **Flyout** | Side panel, 80% of the screen wide, from the left or right edge with scrollable content and the close button on its inner edge. Full height unless sized; the rest of the screen is dimmed, and a tap there closes it. |
 | **Static** | Inline content injected before or after the wrapped view (afterbegin, beforeend, afterend, replace). |
 
-All banner styling, positioning, and content are configured in the Releva dashboard using the Unlayer editor.
+All banner styling, positioning, and content are configured in the Releva dashboard using the Unlayer editor. The card keys the editor writes (`cardBackgroundColor`, `cardWidth`, `cardHeight`, `cardBorderRadius`, `contentVerticalAlign`, `cardPositionVertical`, `cardPositionHorizontal`, `cardOffsetVertical`, `cardOffsetHorizontal`) apply to popups, flyouts and bars alike, and lay a banner out as the React Native SDK does.
 
 ### Automatic Tracking
 
@@ -1025,6 +1025,8 @@ The SDK automatically tracks:
 - **Banner impressions** — when a banner is displayed
 - **Banner clicks** — when user taps a link or button within a banner
 - **Banner dismissals** — when user closes a banner
+
+A link tapped in a popup or a flyout reports a click, calls `onLinkTap` and closes the banner without reporting a dismissal, where the React Native SDK leaves it up; a bar stays up. This SDK draws popups and flyouts in their own window above the app (a modal with `BannerPresenter`), so anything a link opens inside the app would appear under the dim; closing keeps it reachable.
 
 ## Stories
 
@@ -1311,8 +1313,8 @@ Popup, flyout and bar banners are displayed. **Static and replace banners are no
 
 How they are presented:
 
-- Popups and flyouts share one `.overFullScreen` modal, presented from the frontmost view controller. A banner arriving while your app already has a sheet up appears over it instead of failing to present, and two banners arriving together stack inside that one modal exactly as they do in SwiftUI.
-- Bar banners are child view controllers pinned to the top or bottom safe area, so the rest of the screen stays usable while a bar is up.
+- Popups and flyouts share one `.overFullScreen` modal, presented from the frontmost view controller. A banner arriving while your app already has a sheet up appears over it instead of failing to present, and a newer popup or flyout replaces the one inside that modal, as it does in SwiftUI.
+- Bar banners are drawn in a layer over your view controller's view, laid out as in SwiftUI, so the rest of the screen stays usable while a bar is up. When that view is a scroll view, as a `UITableViewController`'s is, the layer covers the scroll view's visible frame and stays above its rows and section headers, so the bars neither scroll nor go under a pinned header.
 
 ### NPS Surveys in UIKit
 

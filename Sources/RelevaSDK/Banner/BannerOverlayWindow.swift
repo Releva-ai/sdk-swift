@@ -9,8 +9,8 @@ import Combine
 /// positions these banners `fixed` over the whole page; this is the UIKit equivalent. Static
 /// banners stay inline in the host view.
 ///
-/// The window passes touches through wherever no banner is drawn. A popup covers the screen with
-/// its dimmed overlay and takes every touch.
+/// The window passes touches through wherever no banner is drawn. A popup or a flyout covers the
+/// screen with its dimmed overlay and takes every touch.
 @MainActor
 final class BannerOverlayHost: ObservableObject {
     static let shared = BannerOverlayHost()
@@ -21,12 +21,19 @@ final class BannerOverlayHost: ObservableObject {
     /// The overlay window's safe-area insets, published from UIKit's layout pass; a
     /// `GeometryReader` that ignores the safe area can report zero.
     @Published fileprivate(set) var safeAreaInsets: UIEdgeInsets = .zero
+    /// The overlay window's height, published from the same layout pass.
+    @Published fileprivate(set) var height: CGFloat = 0
 
-    /// Screen-space frames of the bars and flyout currently drawn; touches outside them fall
-    /// through to the app. Updated by `BannerOverlayRoot` from a preference.
+    /// Screen-space frames of the bar cards, their close controls and the flyout card currently
+    /// drawn; touches outside them fall through to the app. Updated by `BannerOverlayRoot` from a
+    /// preference.
     var interactiveFrames: [CGRect] = []
-    /// `true` while a popup is shown: its overlay owns the whole screen.
+    /// `true` while a popup or a flyout is shown: its overlay owns the whole screen.
     var coversScreen = false
+    /// When a closed popup or flyout finishes leaving; the window stays up until then.
+    private(set) var overlayLeavesAt: Date?
+    /// Whether the view model drawn last had a popup or a flyout up.
+    private var showedOverlay = false
 
     private var window: BannerOverlayWindow?
     private var cancellable: AnyCancellable?
@@ -69,6 +76,8 @@ final class BannerOverlayHost: ObservableObject {
         cancellable = nil
         interactiveFrames = []
         coversScreen = false
+        showedOverlay = false
+        overlayLeavesAt = nil
         updateVisibility()
     }
 
@@ -132,6 +141,7 @@ final class BannerOverlayHost: ObservableObject {
                     .compactMap { $0 } + vm.barBanners.map { "bar \($0.token)" }
             }()
             let hasContent = !shown.isEmpty
+            let leaving = self.trackOverlayExit()
             if hasContent && self.window == nil {
                 // A banner arrived before any scene was connected at attach time; try again now.
                 self.ensureWindow()
@@ -141,11 +151,31 @@ final class BannerOverlayHost: ObservableObject {
                 if hasContent { relevaLog("RelevaSDK: BannerOverlay - \(shown.joined(separator: ", ")) pending, no window yet") }
                 return
             }
-            if window.isHidden == hasContent {
-                relevaLog("RelevaSDK: BannerOverlay - \(hasContent ? "showing" : "hiding") window (\(shown.joined(separator: ", ")))")
+            let visible = hasContent || leaving
+            if window.isHidden == visible {
+                relevaLog("RelevaSDK: BannerOverlay - \(visible ? "showing" : "hiding") window (\(shown.joined(separator: ", ")))")
             }
-            window.isHidden = !hasContent
+            window.isHidden = !visible
         }
+    }
+
+    /// Starts the exit when the popup or flyout closed with nothing taking its place, and says
+    /// whether one is still leaving.
+    private func trackOverlayExit() -> Bool {
+        let hasOverlay = viewModel?.popupBanner != nil || viewModel?.flyoutBanner != nil
+        if showedOverlay && !hasOverlay {
+            let duration = BannerChrome.modalTransitionDuration
+            overlayLeavesAt = Date().addingTimeInterval(duration)
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in self?.updateVisibility() }
+        } else if hasOverlay {
+            overlayLeavesAt = nil
+        }
+        showedOverlay = hasOverlay
+        guard let leavesAt = overlayLeavesAt, leavesAt > Date() else {
+            overlayLeavesAt = nil
+            return false
+        }
+        return true
     }
 }
 
@@ -156,11 +186,13 @@ final class BannerOverlayHostingController: UIHostingController<BannerOverlayRoo
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         host?.safeAreaInsets = view.safeAreaInsets
+        if host?.height != view.bounds.height { host?.height = view.bounds.height }
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         if host?.safeAreaInsets != view.safeAreaInsets { host?.safeAreaInsets = view.safeAreaInsets }
+        if host?.height != view.bounds.height { host?.height = view.bounds.height }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .default }
@@ -197,15 +229,16 @@ extension View {
     }
 }
 
-/// The root view of the overlay window: bars pinned to the screen edges, then the popup and
-/// flyout, all drawn with the same `BannerChrome` views the presenter uses.
+/// The root view of the overlay window: bars pinned below the status bar and to the screen's
+/// bottom edge, then the popup and flyout, all drawn with the same `BannerChrome` views the
+/// presenter uses.
 struct BannerOverlayRoot: View {
     @ObservedObject var host: BannerOverlayHost
 
     var body: some View {
-        // Not `ignoresSafeArea()` here: the popup and flyout centre their card inside the safe
-        // area (their dimmed overlay extends past it on its own), so a tall card never puts its
-        // close button under the status bar. The bars pin themselves to the screen edges below.
+        // Not `ignoresSafeArea()` here: the popup centres its card inside the safe area (its
+        // dimmed overlay extends past it on its own), so a tall card never puts its close button
+        // under the status bar. The bars and the flyout position themselves in the whole window.
         ZStack {
             if let viewModel = host.viewModel {
                 BannerOverlayContent(viewModel: viewModel, host: host)
@@ -220,73 +253,136 @@ struct BannerOverlayRoot: View {
 private struct BannerOverlayContent: View {
     @ObservedObject var viewModel: BannerDisplayViewModel
     let host: BannerOverlayHost
-
-    private var topBars: [BannerResponse] { viewModel.barBanners.filter { $0.displayPosition != "bottom" } }
-    private var bottomBars: [BannerResponse] { viewModel.barBanners.filter { $0.displayPosition == "bottom" } }
+    /// How the popup or flyout came in when the overlay last opened; `nil` while it is closed.
+    @State private var openedWith: BannerChrome.ModalTransition?
 
     var body: some View {
+        let transition = openedWith ?? opening
         ZStack {
-            if !topBars.isEmpty {
-                GeometryReader { geometry in
-                    VStack(spacing: 0) {
-                        ForEach(topBars, id: \.token) { banner in
-                            BannerChrome.bar(
-                                banner,
-                                viewModel: viewModel,
-                                isBottom: false,
-                                safeAreaInset: host.safeAreaInsets.top,
-                                width: geometry.size.width,
-                                onLinkTap: host.onLinkTap
-                            )
-                        }
-                    }
-                    .reportBannerFrame()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                }
-                .ignoresSafeArea()
-            }
-
-            if !bottomBars.isEmpty {
-                GeometryReader { geometry in
-                    VStack(spacing: 0) {
-                        ForEach(bottomBars, id: \.token) { banner in
-                            BannerChrome.bar(
-                                banner,
-                                viewModel: viewModel,
-                                isBottom: true,
-                                safeAreaInset: host.safeAreaInsets.bottom,
-                                width: geometry.size.width,
-                                onLinkTap: host.onLinkTap
-                            )
-                        }
-                    }
-                    .reportBannerFrame()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                }
-                .ignoresSafeArea()
-            }
-
-            if let flyout = viewModel.flyoutBanner {
-                // The flyout reports its own panel frame; the GeometryReader around it is
-                // screen-sized and must not claim touches. It ignores the bottom safe area so
-                // the sheet reaches the screen bottom; the inset keeps content above the
-                // home indicator.
-                BannerChrome.flyout(
-                    flyout,
+            if !viewModel.barBanners.isEmpty {
+                BannerBarLayer(
                     viewModel: viewModel,
-                    bottomInset: host.safeAreaInsets.bottom,
+                    safeArea: { BannerChrome.barSafeArea(host.safeAreaInsets) },
                     onLinkTap: host.onLinkTap
                 )
-                .ignoresSafeArea(.container, edges: .bottom)
             }
 
-            if let popup = viewModel.popupBanner {
-                BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: host.onLinkTap)
+            // The popup or flyout and its dim leave as they came in when the overlay opened, as
+            // sdk-react-native's Modal does: fading with a popup, sliding up and down with a
+            // flyout. A popup and a flyout replacing each other swap in place. One leaving takes
+            // no touches.
+            ZStack {
+                if let flyout = viewModel.flyoutBanner {
+                    // Spans the window with its dimmed overlay.
+                    BannerChrome.flyout(
+                        flyout,
+                        viewModel: viewModel,
+                        safeArea: EdgeInsets(host.safeAreaInsets),
+                        onLinkTap: host.onLinkTap
+                    )
+                    .ignoresSafeArea()
+                    .transition(transition == .slide ? slide : .opacity)
+                }
+
+                if let popup = viewModel.popupBanner {
+                    BannerChrome.popup(popup, viewModel: viewModel, onLinkTap: host.onLinkTap)
+                        .transition(transition == .slide ? slide : .opacity)
+                }
             }
+            .allowsHitTesting(coversScreen)
+            .animation(BannerChrome.modalSpring, value: coversScreen)
         }
-        .onAppear { host.coversScreen = viewModel.popupBanner != nil }
-        .onChange(of: viewModel.popupBanner?.token) { _ in
-            host.coversScreen = viewModel.popupBanner != nil
+        .onAppear {
+            host.coversScreen = coversScreen
+            if coversScreen { openedWith = opening }
         }
+        .onChange(of: viewModel.popupBanner?.token) { _ in host.coversScreen = coversScreen }
+        .onChange(of: viewModel.flyoutBanner?.token) { _ in host.coversScreen = coversScreen }
+        .onChange(of: coversScreen) { covers in openedWith = covers ? opening : nil }
+    }
+
+    /// How the overlay comes in with what it shows now.
+    private var opening: BannerChrome.ModalTransition {
+        BannerChrome.ModalTransition(opensWithFlyout: viewModel.flyoutBanner != nil)
+    }
+
+    /// Down by the window's height, as a `.coverVertical` modal moves. `move(edge:)` stops short of
+    /// that where the view reaches past the safe area, as a popup's or a flyout's dim does.
+    private var slide: AnyTransition {
+        host.height > 0 ? .offset(y: host.height) : .move(edge: .bottom)
+    }
+
+    private var coversScreen: Bool { viewModel.popupBanner != nil || viewModel.flyoutBanner != nil }
+}
+
+/// The bar banners of a view model, laid out in the container they are drawn over.
+///
+/// Bars are positioned below the container's safe-area top, as sdk-react-native positions them in
+/// the host's content, which starts below the status bar on iOS: top bars stacked down from the
+/// safe-area top, bottom bars up from the container's bottom edge, a centred bar in a layer
+/// spanning that height. Only the bottom bar flush with the edge meets the system UI, and pads by
+/// the bottom inset inside its card. Percentages resolve against the container. The overlay window
+/// and `BannerPresenter` both draw bars with this view.
+struct BannerBarLayer: View {
+    @ObservedObject var viewModel: BannerDisplayViewModel
+    /// The container's safe-area insets, read when the layer is laid out.
+    let safeArea: () -> EdgeInsets
+    let onLinkTap: (String) -> Void
+
+    /// The bars at each placement, in arrival order.
+    private func bars(at anchor: BannerCardStyle.Anchor) -> [BannerResponse] {
+        viewModel.barBanners.filter { BannerCardStyle.barVerticalAnchor($0) == anchor }
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let safeArea = safeArea()
+            let top = bars(at: .start)
+            let bottom = bars(at: .end)
+            ZStack {
+                VStack(spacing: 0) {
+                    ForEach(Array(top.enumerated()), id: \.element.token) { index, banner in
+                        bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: index == 0)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                ForEach(bars(at: .center), id: \.token) { banner in
+                    bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: false)
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(Array(bottom.enumerated()), id: \.element.token) { index, banner in
+                        bar(banner, in: geometry.size, safeArea: safeArea, touchesEdge: index == bottom.count - 1)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
+            .padding(.top, safeArea.top)
+        }
+        .ignoresSafeArea()
+    }
+
+    /// - Parameter safeArea: the container's; the bars' box starts at its top, so no bar meets it there.
+    private func bar(_ banner: BannerResponse, in container: CGSize, safeArea: EdgeInsets, touchesEdge: Bool) -> some View {
+        BannerChrome.bar(
+            banner,
+            viewModel: viewModel,
+            layout: BarCardLayout(
+                style: BannerCardStyle(banner),
+                displayPosition: banner.displayPosition,
+                container: container,
+                safeArea: EdgeInsets(top: 0, leading: safeArea.leading, bottom: safeArea.bottom, trailing: safeArea.trailing),
+                touchesEdge: touchesEdge
+            ),
+            containerWidth: container.width,
+            onLinkTap: onLinkTap
+        )
+    }
+}
+
+extension EdgeInsets {
+    init(_ insets: UIEdgeInsets) {
+        self.init(top: insets.top, leading: insets.left, bottom: insets.bottom, trailing: insets.right)
     }
 }

@@ -92,6 +92,7 @@ class SessionService {
         storage.saveSession(Session(sessionId: sessionId, timestamp: Date()))
 
         npsManager?.startNewSession()
+        BannerManagerService.startNewSession()
     }
 
     /// Returns the current session ID from storage.

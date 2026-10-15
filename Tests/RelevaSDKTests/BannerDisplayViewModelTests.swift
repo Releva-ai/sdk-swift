@@ -28,7 +28,7 @@ final class BannerDisplayViewModelTests: XCTestCase {
         "body": ["rows": [["columns": [["contents": [["type": "text", "values": ["text": "x"]]]]]]]]
     ]
 
-    // MARK: - empty designs and popup queueing
+    // MARK: - empty designs and the popup slot
 
     @MainActor
     func testDesignWithoutContentIsNotShownOrCounted() {
@@ -42,68 +42,88 @@ final class BannerDisplayViewModelTests: XCTestCase {
         XCTAssertTrue(tracker.impressions.isEmpty)
     }
 
+    /// As in sdk-react-native's single `popupBanner` slot: a newer popup replaces the one on
+    /// screen, both are counted, and the replaced one is not closed, so no close is tracked.
     @MainActor
-    func testSecondPopupWaitsForTheFirstAndIsCountedWhenShown() {
+    func testANewerPopupReplacesTheOneOnScreenWithoutTrackingAClose() {
         let viewModel = BannerDisplayViewModel()
         let tracker = BannerTrackerSpy()
         defer { viewModel.stop() }
         viewModel.start(tracker: tracker, targetSelector: "", onLinkTap: nil)
-        let first = banner("p1", displayType: "popup")
-        let second = banner("p2", displayType: "popup")
-        BannerDisplayController.shared.showBanner(first)
-        BannerDisplayController.shared.showBanner(second)
+        BannerDisplayController.shared.showBanner(banner("p1", displayType: "popup"))
+        BannerDisplayController.shared.showBanner(banner("p2", displayType: "popup"))
         drainMainQueue()
 
-        XCTAssertEqual(viewModel.popupBanner?.token, "p1", "the first stays up")
-        XCTAssertEqual(tracker.impressions, ["p1"], "the waiting one is not counted yet")
-
-        viewModel.dismissPopup(first)
-        XCTAssertEqual(viewModel.popupBanner?.token, "p2", "the second follows")
+        XCTAssertEqual(viewModel.popupBanner?.token, "p2", "the newest is on screen")
         XCTAssertEqual(tracker.impressions, ["p1", "p2"])
-        XCTAssertEqual(tracker.actions, ["p1:bannerClose"])
+        XCTAssertEqual(tracker.actions, [], "the replaced popup was not closed")
+
+        viewModel.dismissPopup(banner("p2", displayType: "popup"))
+        XCTAssertNil(viewModel.popupBanner, "the replaced popup does not come back")
+        XCTAssertEqual(tracker.actions, ["p2:bannerClose"])
     }
 
-    /// `stop()` clears `queuedPopups`/`queuedFlyouts` (a tab switch cancels the pending queue)
-    /// but, before this fix, left the dropped banner's token in `displayedBanners` with nothing
-    /// left to ever remove it — so `BannerManagerService.initialize` re-arming and re-triggering
-    /// the same banner on the next screen view was silently dropped by the guard in
-    /// `handleBanner`, and it could never re-enter the queue at all, even after the popup ahead
-    /// of it was eventually dismissed. `stop()` deliberately leaves `popupBanner` itself alone
-    /// (a currently-showing popup is not "never shown"), so the re-triggered banner is expected
-    /// to land back in the queue, not to display immediately. This pins the synchronous half of
-    /// the fix (the queue-drop path); the cancelled-prefetch half needs a controllable async
-    /// image load to pin the same way and is covered by inspection.
+    /// A popup and a flyout share that one slot, so each replaces the other.
     @MainActor
-    func testStopReleasesAQueuedPopupSoARetriggerCanQueueItAgain() {
+    func testAPopupAndAFlyoutReplaceEachOther() {
         let viewModel = BannerDisplayViewModel()
         let tracker = BannerTrackerSpy()
-        viewModel.start(tracker: tracker, targetSelector: "", onLinkTap: nil)
-        let first = banner("p1", displayType: "popup")
-        let second = banner("p2", displayType: "popup")
-        BannerDisplayController.shared.showBanner(first)
-        BannerDisplayController.shared.showBanner(second)
-        drainMainQueue()
-        XCTAssertEqual(viewModel.popupBanner?.token, "p1")
-        XCTAssertEqual(tracker.impressions, ["p1"], "p2 is still queued, not shown")
-
-        // Tab switch: the queue is torn down while p1 is still showing and p2 is still waiting.
-        viewModel.stop()
-
-        // The next screen view re-arms and re-triggers the same banner.
-        viewModel.start(tracker: tracker, targetSelector: "", onLinkTap: nil)
         defer { viewModel.stop() }
-        BannerDisplayController.shared.showBanner(second)
+        viewModel.start(tracker: tracker, targetSelector: "", onLinkTap: nil)
+        BannerDisplayController.shared.showBanner(banner("popup-1", displayType: "popup"))
+        BannerDisplayController.shared.showBanner(banner("flyout-1", displayType: "flyout"))
+        drainMainQueue()
+        XCTAssertNil(viewModel.popupBanner)
+        XCTAssertEqual(viewModel.flyoutBanner?.token, "flyout-1")
+
+        BannerDisplayController.shared.showBanner(banner("popup-2", displayType: "popup"))
+        drainMainQueue()
+        XCTAssertEqual(viewModel.popupBanner?.token, "popup-2")
+        XCTAssertNil(viewModel.flyoutBanner)
+        XCTAssertEqual(tracker.impressions, ["popup-1", "flyout-1", "popup-2"])
+        XCTAssertEqual(tracker.actions, [])
+    }
+
+    /// A replaced popup is released, so a later trigger of the same banner shows it again.
+    @MainActor
+    func testAReplacedPopupCanBeShownAgain() {
+        let viewModel = BannerDisplayViewModel()
+        let tracker = BannerTrackerSpy()
+        defer { viewModel.stop() }
+        viewModel.start(tracker: tracker, targetSelector: "", onLinkTap: nil)
+        BannerDisplayController.shared.showBanner(banner("p1", displayType: "popup"))
+        BannerDisplayController.shared.showBanner(banner("p2", displayType: "popup"))
+        BannerDisplayController.shared.showBanner(banner("p1", displayType: "popup"))
         drainMainQueue()
 
-        // p1 is untouched by stop(), so p2 re-queues behind it rather than showing immediately —
-        // the point is that it is queued at all, where before the fix it was dropped for good.
-        XCTAssertEqual(viewModel.popupBanner?.token, "p1", "p1 was never dismissed")
-        XCTAssertEqual(tracker.impressions, ["p1"], "p2 has re-queued, not shown yet")
+        XCTAssertEqual(viewModel.popupBanner?.token, "p1")
+        XCTAssertEqual(tracker.impressions, ["p1", "p2", "p1"])
+    }
 
-        viewModel.dismissPopup(first)
+    /// Arrival order decides, not the order image prefetches finish in: a popup that waited for
+    /// its images does not replace a newer one already on screen. It is still counted.
+    @MainActor
+    func testAnOlderPopupWhosePrefetchFinishesLastDoesNotReplaceANewerOne() {
+        let viewModel = BannerDisplayViewModel()
+        let tracker = BannerTrackerSpy()
+        defer { viewModel.stop() }
+        viewModel.start(tracker: tracker, targetSelector: "", onLinkTap: nil)
+        let withImage: [String: JSONValue] = [
+            "body": ["rows": [["columns": [["contents": [
+                ["type": "image", "values": ["src": ["url": "https://example.invalid/banner.jpg"]]]
+            ]]]]]]
+        ]
+        BannerDisplayController.shared.showBanner(BannerResponse(token: "older", displayType: "popup", design: withImage))
+        BannerDisplayController.shared.showBanner(banner("newer", displayType: "popup"))
+        drainMainQueue()
+        XCTAssertEqual(viewModel.popupBanner?.token, "newer")
 
-        XCTAssertEqual(viewModel.popupBanner?.token, "p2", "p2 must have re-entered the queue to be shown here")
-        XCTAssertEqual(tracker.impressions, ["p1", "p2"])
+        waitUntil("the older popup's prefetch finished", timeout: BannerDisplayViewModel.imagePrefetchTimeout + 3) {
+            tracker.impressions.count == 2
+        }
+        XCTAssertEqual(viewModel.popupBanner?.token, "newer", "the newer popup stays up")
+        XCTAssertEqual(tracker.impressions, ["newer", "older"])
+        XCTAssertEqual(tracker.actions, [])
     }
 
     // MARK: - overlayOnly (BannerPresenter's mode)
@@ -120,7 +140,7 @@ final class BannerDisplayViewModelTests: XCTestCase {
         BannerDisplayController.shared.showBanner(banner("bar-ol", displayType: "bar"))
         drainMainQueue()
 
-        XCTAssertEqual(viewModel.popupBanner?.token, "popup-ol")
+        XCTAssertNil(viewModel.popupBanner, "the flyout replaced the popup in their shared slot")
         XCTAssertEqual(viewModel.flyoutBanner?.token, "flyout-ol")
         XCTAssertEqual(viewModel.barBanners.map(\.token), ["bar-ol"])
         XCTAssertEqual(Set(tracker.impressions), ["popup-ol", "flyout-ol", "bar-ol"])

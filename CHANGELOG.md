@@ -2,6 +2,156 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.2.0] - 2026-10-04
+
+### Added
+
+- **The banner editor's card chrome and position keys are honoured on every display type.** A
+  popup, a flyout and a bar read the nine `cssStyles` keys the editor writes —
+  `cardBackgroundColor`, `cardWidth`, `cardHeight`, `cardBorderRadius`, `contentVerticalAlign`,
+  `cardPositionVertical`, `cardPositionHorizontal`, `cardOffsetVertical`, `cardOffsetHorizontal` —
+  so a card the author coloured, rounded, sized, moved or nudged renders that way. Every key is
+  resolved against its documented default, compared trimmed and lower-cased, and a key at its
+  default runs the path it ran before. Bars and flyouts are laid out as sdk-react-native lays them
+  out on iOS, which is the reference for every mobile SDK (see Changed below). A bar reads the
+  horizontal keys too, as sdk-react-native, sdk-kotlin and sdk-flutter do; the web SDK does not.
+- **Banners carry the accessibility identifiers sdk-react-native sets as testIDs**:
+  `releva-banner-close` on the close control's whole tap target, `releva-banner-<token>` on the
+  popup or flyout card, the bar's positioning layer and a static banner, and
+  `releva-banner-placement` on the box a popup or a sized flyout is placed in.
+- **Stories and the NPS survey carry the accessibility identifiers sdk-react-native sets as
+  testIDs.** The story viewer: `releva-story-<token>` on the viewer, `releva-story-close` on the
+  close control, `releva-story-slide-<index>` on the slide surface (the 0-based index of the slide
+  on screen, so it changes as the story advances) and `releva-story-action` on the action button.
+  The survey: `releva-nps-<token>` on the sheet, `releva-nps-score-<n>` on each score from 0 to
+  10, `releva-nps-skip`, and on the follow-up step `releva-nps-comment` and `releva-nps-submit`.
+  The viewer, the sheet and the slide are containers, so the views inside stay reachable; labels
+  and traits are unchanged. `releva-nps-comment` is on a container framed by the comment's text
+  view, because an identifier set on a `TextEditor` does not reach the `UITextView` it is drawn
+  with. The story close control's whole 28 pt frame is now its tap target.
+
+### Changed
+
+- **A Releva push that arrives in the foreground is also listed in Notification Center**
+  (`willPresent` answers `[.banner, .list, .sound, .badge]`), as sdk-react-native's foreground
+  pushes are, so it can still be opened after the banner goes away.
+
+- **`BannerDisplayController.showBanner(_:)` returns whether a display surface received the
+  banner** (`@discardableResult`, so existing calls compile unchanged): `false` when nothing is
+  subscribed to `bannerPublisher`.
+
+- **A bar is a layer and a card, as in sdk-react-native.** The layer spans the window below the
+  status bar, pinned to the edge `cardPositionVertical` (else `displayPosition`) names, or spans
+  that height with the card centred in it for `center`. The card is `cardWidth` wide (or the full width) at the side
+  `cardPositionHorizontal` names, `cardHeight` tall (or as tall as its content), rounded by
+  `cardBorderRadius`, with `contentVerticalAlign` placing the design in it, and the offset keys
+  translate it after layout. The card pads the design 16 on the leading side and 12 above and
+  below, and pads by the home indicator when it is the bottom bar flush with that edge.
+  Touches beside a narrowed or moved card reach the app.
+- **A bar's card is unpainted unless `cardBackgroundColor` is authored.** It no longer paints the
+  first row's colour or the system background behind the design, and draws no shadow, so a design
+  that paints nothing shows the app through it, and `cardBackgroundColor` at its default
+  `#fefefe`, in either letter case, draws exactly what no key draws.
+- **A flyout is 80% of the window wide**, against the side `cardPositionHorizontal` (else
+  `displayPosition`) names, where it was its content's width capped at 72%. With no size key it
+  runs from the top of the screen to the bottom and insets its content and close control by the
+  status bar and the home indicator; with `cardWidth` or `cardHeight` it is placed inside the safe
+  area. `cardHeight` hangs it off `cardPositionVertical` (top, centre or bottom), the offset keys
+  move it with the sign of the side it is docked to, `cardBorderRadius` clips it and
+  `contentVerticalAlign` places the design in it.
+- **The close control is placed and drawn as in sdk-react-native.** Its visible button sits 8 in
+  from a popup's or a flyout's top corner and 4 in from a bar's content corner (above the content
+  on a bottom bar), and the 44 pt tap target grows outward around it. A right-hand flyout's
+  control sits on its inner, left edge. The ✕ is two 2 pt strokes `closeFontSize` long, with no
+  shadow.
+- **A newer popup or flyout replaces the one on screen, as in sdk-react-native.** A popup and a
+  flyout share one slot: the newest to arrive is shown and the one it replaces goes away without a
+  `bannerClose`, where a second one used to wait until the first was closed. Every one that
+  arrives is counted, including one replaced at once. Arrival order decides, so a popup that waited
+  for its images does not replace a newer one already on screen.
+- **A tap on a bar's card outside its design does nothing, as in sdk-react-native.** It used to
+  close the bar. The ✕ and links inside the design are unchanged, and touches beside a narrowed or
+  moved card still reach the app.
+- **A flyout dims the rest of the screen and closes on a tap there, as in sdk-react-native.** The
+  dim is black at 50% over the whole window, the app's bars included, and the tap reports a
+  `bannerClose`, as the ✕ does. The page beside a flyout used to stay usable.
+- **A top bar starts below the status bar, as in sdk-react-native.** sdk-react-native draws a bar
+  inside the host's content, which on iOS starts below the status bar, so its card has no
+  status-bar padding. A top bar now starts at the safe-area top, a centred bar is centred between
+  there and the screen's bottom, and a `cardHeight` of 120 is 120 points of content area that
+  `contentVerticalAlign` aligns in. A bottom bar still reaches the screen's bottom edge with the
+  home indicator padded inside its card, as sdk-react-native's does. Percentages still resolve
+  against the window.
+- **A popup dims the rest of the screen black at 50%, as in sdk-react-native.** The design's
+  `popupOverlay_backgroundColor` and the `overlayColor` style key are no longer read; the card
+  itself is unchanged.
+- **`BannerPresenter` lays bars out as the SwiftUI modifier does, as in sdk-react-native.** The
+  bars are drawn in one layer over the host's view with the modifier's layout: a top bar starts at
+  the host's safe-area top with no inset in its card, a centred bar is centred between there and
+  the bottom edge, and a bottom bar runs to the bottom edge with the bottom inset inside its card,
+  where the presenter's bars used to end at the safe-area bottom. Over a scroll view, such as a
+  `UITableViewController`'s table, the layer covers its visible frame, also when the table moves
+  its own offset as sections are inserted or deleted above the rows on screen, and stays above the
+  rows and section headers, so the bars neither scroll nor go under a pinned header. The layer
+  passes touches beside a narrowed or moved card through to the host.
+- **A flyout slides up from the bottom of the screen when it opens and back down when it closes,
+  and a popup fades in and out, as in sdk-react-native**, whose `Modal` is
+  `animationType="slide"` for a flyout and `"fade"` for a popup. The banner and its dim move or
+  fade together, with the spring UIKit gives a `.coverVertical` or `.crossDissolve` modal, half a
+  second each way; the SwiftUI modifier's popup used to appear and vanish at once. The way in is
+  chosen when the overlay opens and is the way out, as a Modal keeps the style it was presented
+  with: a popup and a flyout replacing each other swap in place, and the overlay then leaves as
+  it came in. `BannerPresenter` sets its overlay's transition style once, when it presents it, and
+  keeps drawing a closed popup or flyout while the overlay goes. Bars keep their transitions.
+  Reduce Motion is not consulted, as sdk-react-native does not consult it.
+
+### Fixed
+
+- **A popup or a flyout is shown once per session, as in sdk-react-native.**
+  `BannerManagerService` forgot what it had shown on every push response, so a popup the server
+  delivers again was shown again each time its screen was re-entered. The tokens of popups and
+  flyouts that were shown are now kept for the session and shared by every manager instance;
+  `initialize` and `dispose()` leave them alone. Bars and static banners, which only a new
+  response can put back on screen, are still shown by every response that carries them. A popup
+  counts as shown only if a display surface was subscribed when it fired, so one emitted before
+  any surface existed keeps its showing. The memory is cleared when a new session starts (cold
+  start, or a return after more than 30 minutes in the background) and when the client is shut
+  down, since a replacement client continues the device session instead of starting one.
+- **A positive offset moves a card AWAY from the edge it is anchored to.** `cardOffsetVertical`
+  and `cardOffsetHorizontal` are a gap from an anchored edge, not a translation, so an `end`
+  anchor (`bottom` / `right`) negates: `24px` on a bottom-anchored card lifts it 24 points off
+  the bottom, and a negative value is what lets a card bleed past its edge. This SDK translated
+  the raw value, which moved a bottom-anchored card further down and off screen. The contract is
+  `constants/banner-chrome-css-styles.md`; magellan-sdk-js, sdk-kotlin and sdk-flutter read it
+  this way.
+- **The close control no longer covers the copy.** It is drawn over the content, so a design laid
+  out to the full width ran underneath it and the tail of a headline was painted beneath the ✕.
+  Each display type now keeps clear the space sdk-react-native keeps: a popup and a flyout a band
+  at the top of their content (the control's 8 pt inset, its visible button and 8 of clearance —
+  48 pt at the default size), a bar a gutter on its trailing side (4, the button and 8 — 44 pt).
+  Both grow with `closeFontSize`. When `cardHeight` is authored the band comes out of that height,
+  so the card keeps the size it asked for and `contentVerticalAlign: bottom` copy stays inside it;
+  a content-sized popup grows by the band.
+- **A flyout's reserved band is painted with the first row's colour, not the last.** The strip
+  the band opens above the content sat over the `ZStack`'s own background, which is the colour
+  computed for the bottom of the drawer; a drawer whose first row is dark and whose last row is
+  pale showed a pale strip above a dark first row. It now paints with the colour already computed
+  for the top.
+- **The close button is styled from `cssStyles`, the way the web draws it.** `closeButtonColor`
+  and `closeButtonBackgroundColor` now accept every CSS form the editor writes — `#rgb`, `#rgba`,
+  `#rrggbb`, `#rrggbbaa` (alpha last), `rgb()`, `rgba()`, `transparent` — so the admin default
+  `#000` on `#fff` is no longer dropped. `closeButtonBorder` is read as the CSS shorthand
+  (`2px solid #e00000`): its width and colour are drawn as a solid stroke, and an absent, empty,
+  `none` or colourless value draws NO border, replacing the fixed grey ring this SDK drew.
+  `closeFontSize` sizes the glyph (clamped to 8–26 pt; the visible button is
+  `max(32, size + 18)`, so at most 44, and the tap target stays at least 44 pt) and
+  `closeButtonBorderRadius` its corners (capped at half the side, so the default 20 is a circle).
+  The web-only keys (`closeButtonSymbol`, `…Padding`, `…FontWeight`, `…LineHeight`,
+  `…TopPosition`, `…RightPosition`) are ignored, and the design's `popupCloseButton_*` values are
+  no longer read. A banner at the server defaults now shows a BLACK ✕ on a white circle with no
+  ring, where it showed a dark-grey ✕ with a grey ring — intended: it is what the web shows.
+  `DesignRenderer.parseColor(css:)` gained the same colour forms for design colours too.
+
 ## [5.1.0] - 2026-09-09
 
 Everything here comes from the first pass over the SDK on a physical iPhone (iOS 26) since 1.0.2, run through the example app (`Releva-ai/example-swift`).

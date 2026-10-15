@@ -376,24 +376,33 @@ public struct DesignRenderer {
         parseColor(css: value?.stringValue)
     }
 
-    /// Parse a CSS colour string: `#rgb`, `#rrggbb`, `#rrggbbaa`, or `rgba(r, g, b, a)`.
+    /// Parse a CSS colour string: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` (alpha LAST, CSS order),
+    /// `rgb(r, g, b)`, `rgba(r, g, b, a)` with `a` in 0...1, or `transparent`. Trimmed and
+    /// case-insensitive; anything else is `nil`.
     ///
     /// Colours that arrive already typed as `String` (story progress indicators, NPS appearance)
     /// call this directly rather than boxing themselves into a `JSONValue`.
     public static func parseColor(css value: String?) -> Color? {
-        guard let str = value?.trimmingCharacters(in: .whitespaces), !str.isEmpty else { return nil }
+        guard let str = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !str.isEmpty else { return nil }
 
-        // rgba(r, g, b, a)
-        if str.hasPrefix("rgba("), str.hasSuffix(")") {
-            let inner = str.dropFirst(5).dropLast(1)
-            let parts = inner.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-            if parts.count == 4,
-               let r = Double(parts[0]),
-               let g = Double(parts[1]),
-               let b = Double(parts[2]),
-               let a = Double(parts[3]) {
-                return Color(red: r / 255, green: g / 255, blue: b / 255, opacity: a)
-            }
+        if str == "transparent" {
+            return Color(red: 0, green: 0, blue: 0, opacity: 0)
+        }
+
+        // rgb(r, g, b) / rgba(r, g, b, a) — either name with either arity, as CSS Color 4 allows.
+        if let open = str.firstIndex(of: "("), str.hasSuffix(")") {
+            let name = str[..<open].trimmingCharacters(in: .whitespaces)
+            guard name == "rgb" || name == "rgba" else { return nil }
+            let inner = str[str.index(after: open)..<str.index(before: str.endIndex)]
+            let parts = inner
+                .split(separator: ",", omittingEmptySubsequences: false)
+                .map { Double($0.trimmingCharacters(in: .whitespaces)) }
+            guard parts.count == 3 || parts.count == 4 else { return nil }
+            let numbers = parts.compactMap { $0 }.filter { $0.isFinite }
+            guard numbers.count == parts.count else { return nil }
+            let channel = { (value: Double) -> Double in min(max(value, 0), 255) / 255 }
+            let alpha = numbers.count == 4 ? min(max(numbers[3], 0), 1) : 1
+            return Color(red: channel(numbers[0]), green: channel(numbers[1]), blue: channel(numbers[2]), opacity: alpha)
         }
 
         // hex color
@@ -404,12 +413,23 @@ public struct DesignRenderer {
         return nil
     }
 
+    /// `rgb`, `rgba`, `rrggbb` or `rrggbbaa`, with or without the leading `#`. Alpha is the LAST
+    /// component, in CSS order — not Android's `#AARRGGBB`.
     static func colorFromHex(_ hex: String) -> Color? {
         var hexStr = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if hexStr.hasPrefix("#") { hexStr.removeFirst() }
 
-        var rgb: UInt64 = 0
-        guard Scanner(string: hexStr).scanHexInt64(&rgb) else { return nil }
+        // Every character must be an ASCII hex digit: `Scanner` stops at the first non-hex one,
+        // which let `#12zz56` read as a colour, and `UInt64(_:radix:)` accepts a sign.
+        let hexDigits = Set("0123456789abcdefABCDEF")
+        guard hexStr.allSatisfy({ hexDigits.contains($0) }) else { return nil }
+
+        // Shorthand forms double each digit: `#f80` is `#ff8800`, `#f808` is `#ff880088`.
+        if hexStr.count == 3 || hexStr.count == 4 {
+            hexStr = hexStr.map { "\($0)\($0)" }.joined()
+        }
+
+        guard let rgb = UInt64(hexStr, radix: 16) else { return nil }
 
         switch hexStr.count {
         case 6:
