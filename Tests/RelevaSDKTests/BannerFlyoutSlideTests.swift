@@ -182,7 +182,9 @@ final class BannerFlyoutSlideTests: XCTestCase {
             file: file,
             line: line
         )
-        assertFollowsTheSpring(edges.map(Double.init)[...], from: 0, to: Double(end), tolerance: 3, file: file, line: line)
+        // Only the frames with a dim drawn are positions; once it is gone `dimEdge` is a sentinel.
+        let drawn = frames.prefix { $0.showsDim }.count
+        assertFollowsTheSpring(edges.map(Double.init)[..<drawn], from: 0, to: Double(end), tolerance: 3, file: file, line: line)
         XCTAssertFalse(frames.last?.showsDim ?? true, "the dim is gone once the slide has run", file: file, line: line)
     }
 
