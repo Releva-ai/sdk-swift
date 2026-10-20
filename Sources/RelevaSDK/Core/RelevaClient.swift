@@ -24,7 +24,10 @@ public class RelevaClient {
     private let storage: StorageService
 
     /// Network service
-    private let networkService: NetworkService
+    ///
+    /// Internal (not private) so tests can install one backed by a stubbed `URLSession` and
+    /// assert on what the client puts on the wire.
+    var networkService: NetworkService
 
     /// Session manager
     private let sessionManager: SessionManager
@@ -296,9 +299,11 @@ public class RelevaClient {
             InboxService.shared.updateProfileId(profileId)
         }
 
-        // Re-bind the push token to the new profile. `refreshPushToken` is a no-op without a
-        // provider, and its throttle lets a profile change through (see completePushTokenRefresh).
-        if self.profileChanged && pushTokenProvider != nil {
+        // Re-bind the push token to the new profile. A first identification counts too, unlike
+        // `profileChanged`, which the server reads as "merge the previous profile": while
+        // anonymous the token was filed under the deviceId. `refreshPushToken` is a no-op without
+        // a provider, and its throttle lets a profile change through (see completePushTokenRefresh).
+        if previousId != profileId && pushTokenProvider != nil {
             refreshPushToken()
         }
     }
@@ -791,6 +796,11 @@ public class RelevaClient {
     ///
     /// Returns `Void` rather than the `Bool` the 4.x completion handler carried: that flag was
     /// `true` on every path that reached it, so `throws` already says everything it said.
+    ///
+    /// Before the host calls `setProfileId`, the token is filed under the deviceId: the endpoint
+    /// requires a profile id, and the deviceId is the id `/push` gives this device's anonymous
+    /// profile. The stored profile id stays nil, so the first `setProfileId` still counts as a
+    /// change and re-files the token under the host's id.
     /// - Parameters:
     ///   - token: FCM token
     ///   - deviceType: Device type (defaults to current)
@@ -819,7 +829,7 @@ public class RelevaClient {
                 token,
                 deviceType: deviceType,
                 deviceId: deviceId,
-                profileId: profileId
+                profileId: profileId ?? deviceId
             )
         } catch {
             if config.enableDebugLogging {
@@ -829,6 +839,8 @@ public class RelevaClient {
         }
 
         storage.savePushTokenUploadedAt(Date())
+        // The host id, not the id that was sent: nil while anonymous, so the first `setProfileId`
+        // reads as a change and re-files the token under the real id.
         storage.savePushTokenProfileId(profileId)
 
         if config.enableDebugLogging {

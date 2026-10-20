@@ -151,6 +151,17 @@ All notable changes to this project will be documented in this file.
   no longer read. A banner at the server defaults now shows a BLACK ✕ on a white circle with no
   ring, where it showed a dark-grey ✕ with a grey ring — intended: it is what the web shows.
   `DesignRenderer.parseColor(css:)` gained the same colour forms for design colours too.
+- **A device whose user is not identified yet can register its push token.**
+  `POST /api/v0/appPush/tokens` requires `profileId` and answers 400 without one, so every
+  registration made before the host called `setProfileId` was rejected and the token was never
+  stored — an anonymous install could not be reached by push at all. While the user is
+  unidentified the SDK now sends the deviceId as the `profileId`: that is the profile `/push`
+  creates for such a device (`userId = deviceId`), so the token is filed under the same profile
+  the device's events go to. What is stored is unchanged — the SDK's own profile id stays nil,
+  and the token is still recorded as uploaded for no profile — so the host's first `setProfileId`
+  re-registers it under the real id. That re-registration now also fires on the first
+  `setProfileId`; it previously only fired when one id replaced another, which never happens to a
+  device that was anonymous.
 
 ## [5.1.0] - 2026-09-09
 
