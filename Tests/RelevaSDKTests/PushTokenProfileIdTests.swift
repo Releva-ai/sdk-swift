@@ -137,5 +137,12 @@ final class PushTokenProfileIdTests: XCTestCase {
 
         let payload = try tokenRequestBody()
         XCTAssertEqual(payload["profileId"] as? String, "u1")
+
+        // The stub answers before the registration resumes and records it; wait for that so the
+        // write cannot land after `tearDown` has restored the defaults.
+        for _ in 0..<200 where storage.getPushTokenProfileId() != "u1" {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(storage.getPushTokenProfileId(), "u1", "the re-filing is recorded")
     }
 }

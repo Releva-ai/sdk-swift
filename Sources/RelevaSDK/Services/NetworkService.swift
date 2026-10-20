@@ -174,23 +174,23 @@ public class NetworkService {
     /// Register push token
     ///
     /// The endpoint requires `profileId` — it files the token under that profile and answers 400
-    /// without one — so the parameter is not optional. `RelevaClient` resolves which id to send.
+    /// without one — so a nil one is sent as the deviceId, the id `/push` gives an anonymous device.
     /// - Parameters:
     ///   - token: Push notification token
     ///   - deviceType: Device type
     ///   - deviceId: Device ID
-    ///   - profileId: Profile the token is filed under
+    ///   - profileId: Profile the token is filed under (the deviceId when nil)
     public func registerPushToken(
         _ token: String,
         deviceType: DeviceType,
         deviceId: String,
-        profileId: String
+        profileId: String?
     ) async throws {
         let payload: [String: Any] = [
             "pushToken": token,
             "deviceType": deviceType.rawValue,
             "deviceId": deviceId,
-            "profileId": profileId
+            "profileId": profileId ?? deviceId
         ]
 
         _ = try await performRequest(
@@ -521,5 +521,5 @@ public class NetworkService {
 // MARK: - SDK Version
 
 struct SDKVersion {
-    static let current = "5.2.0"
+    static let current = "5.2.1"
 }

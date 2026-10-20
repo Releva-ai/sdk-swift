@@ -823,13 +823,17 @@ public class RelevaClient {
             relevaLog("RelevaSDK: Registering push token for \(deviceType.rawValue)...")
         }
 
+        // Read once: `setProfileId` can run while the request is in flight, and what is stored
+        // must be what was sent.
+        let hostProfileId = profileId
+
         // Register with backend
         do {
             try await networkService.registerPushToken(
                 token,
                 deviceType: deviceType,
                 deviceId: deviceId,
-                profileId: profileId ?? deviceId
+                profileId: hostProfileId
             )
         } catch {
             if config.enableDebugLogging {
@@ -841,7 +845,7 @@ public class RelevaClient {
         storage.savePushTokenUploadedAt(Date())
         // The host id, not the id that was sent: nil while anonymous, so the first `setProfileId`
         // reads as a change and re-files the token under the real id.
-        storage.savePushTokenProfileId(profileId)
+        storage.savePushTokenProfileId(hostProfileId)
 
         if config.enableDebugLogging {
             relevaLog("RelevaSDK: ✓ Successfully registered push token for \(deviceType.rawValue)")

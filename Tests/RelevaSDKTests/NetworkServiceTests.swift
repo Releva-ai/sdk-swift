@@ -126,7 +126,7 @@ final class NetworkServiceTests: XCTestCase {
 
         // Returning normally is the success signal now that the `Bool` is gone; it was
         // `true` on every path that reached the old completion handler.
-        try await service.registerPushToken("fcm-token", deviceType: .ios, deviceId: "device-1", profileId: "user-1")
+        try await service.registerPushToken("fcm-token", deviceType: .ios, deviceId: "device-1", profileId: nil)
 
         let request = try XCTUnwrap(StubURLProtocol.receivedRequests.first)
         XCTAssertEqual(request.url?.absoluteString, "https://us.releva.ai/api/v0/appPush/tokens")
@@ -136,7 +136,11 @@ final class NetworkServiceTests: XCTestCase {
         XCTAssertEqual(payload["pushToken"] as? String, "fcm-token")
         XCTAssertEqual(payload["deviceType"] as? String, "ios")
         XCTAssertEqual(payload["deviceId"] as? String, "device-1")
-        XCTAssertEqual(payload["profileId"] as? String, "user-1", "the endpoint rejects a request without a profileId")
+        XCTAssertEqual(
+            payload["profileId"] as? String,
+            "device-1",
+            "the endpoint rejects a request without a profileId, so a nil one is sent as the deviceId"
+        )
     }
 
     func testInboxUnreadCountPercentEncodesUserIdAndReadsCount() async throws {
