@@ -145,4 +145,44 @@ final class PushTokenProfileIdTests: XCTestCase {
         }
         XCTAssertEqual(storage.getPushTokenProfileId(), "u1", "the re-filing is recorded")
     }
+
+    func testSetProfileIdWhileUploadInFlightReplaysTheRefreshInstead() async throws {
+        let releaseFirstRequest = DispatchSemaphore(value: 0)
+        let firstRequestStarted = expectation(description: "the anonymous upload reaches the network")
+        let secondRequestLanded = expectation(description: "the replayed refresh lands")
+        var callCount = 0
+
+        StubURLProtocol.stub { _ in
+            callCount += 1
+            if callCount == 1 {
+                firstRequestStarted.fulfill()
+                releaseFirstRequest.wait()
+            } else {
+                secondRequestLanded.fulfill()
+            }
+            return .response(statusCode: 200, body: Data("{}".utf8))
+        }
+
+        let client = makeClient()
+        client.setDeviceId("device-1")
+        client.pushTokenProvider = { completion in completion("fcm-token") }
+
+        // Starts the anonymous upload; it blocks in the stub until released, holding the
+        // in-flight guard open the whole time.
+        client.refreshPushToken()
+        await fulfillment(of: [firstRequestStarted], timeout: 2)
+
+        // Lands on the in-flight guard while the first request is still suspended on the network.
+        // Without the replay, this identification would be dropped until the next foreground.
+        client.setProfileId("u1")
+
+        releaseFirstRequest.signal()
+        await fulfillment(of: [secondRequestLanded], timeout: 2)
+
+        let requests = StubURLProtocol.receivedRequests
+        XCTAssertEqual(requests.count, 2, "the dropped refresh is replayed as a second request")
+        let body = try XCTUnwrap(requests.last?.httpBody)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(payload["profileId"] as? String, "u1", "the replay carries the identity that arrived mid-upload")
+    }
 }

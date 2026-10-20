@@ -103,6 +103,11 @@ public class RelevaClient {
     /// cycle cannot enqueue overlapping provider callbacks and produce duplicate uploads.
     private var isRefreshingPushToken = false
 
+    /// Set when `refreshPushToken()` is called while `isRefreshingPushToken` is already true, so a
+    /// `setProfileId` that lands mid-upload (see `completePushTokenRefresh`) is not dropped but
+    /// replayed once the in-flight request finishes.
+    private var pendingPushTokenRefresh = false
+
     // MARK: - Initializers
 
     /// Initialize Releva client
@@ -844,8 +849,13 @@ public class RelevaClient {
 
         storage.savePushTokenUploadedAt(Date())
         // The host id, not the id that was sent: nil while anonymous, so the first `setProfileId`
-        // reads as a change and re-files the token under the real id.
-        storage.savePushTokenProfileId(hostProfileId)
+        // reads as a change and re-files the token under the real id. Only write it back if
+        // `profileId` hasn't moved since we read `hostProfileId`: otherwise an overlapping
+        // registration (started before this one) would overwrite a newer identification's marker
+        // with a stale one.
+        if profileId == hostProfileId {
+            storage.savePushTokenProfileId(hostProfileId)
+        }
 
         if config.enableDebugLogging {
             relevaLog("RelevaSDK: ✓ Successfully registered push token for \(deviceType.rawValue)")
@@ -871,8 +881,9 @@ public class RelevaClient {
         }
 
         guard !isRefreshingPushToken else {
+            pendingPushTokenRefresh = true
             if config.enableDebugLogging {
-                relevaLog("RelevaSDK: refreshPushToken skipped - refresh already in flight")
+                relevaLog("RelevaSDK: refreshPushToken skipped - refresh already in flight, will replay")
             }
             return
         }
@@ -891,7 +902,13 @@ public class RelevaClient {
     /// including the `throws` from `registerPushToken`, which the 4.x nested-completion
     /// version only managed because its completion fired on both branches.
     private func completePushTokenRefresh(_ token: String?) async {
-        defer { isRefreshingPushToken = false }
+        defer {
+            isRefreshingPushToken = false
+            if pendingPushTokenRefresh {
+                pendingPushTokenRefresh = false
+                refreshPushToken()
+            }
+        }
 
         // The provider call that led here is asynchronous, so `shutdown()` can land while it is
         // in flight; re-checking here (not just in `refreshPushToken`) is what keeps a

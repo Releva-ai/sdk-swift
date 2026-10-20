@@ -18,8 +18,12 @@ All notable changes to this project will be documented in this file.
   no profile — so the host's first `setProfileId` re-registers it under the real id. That
   re-registration now also fires on the first `setProfileId`; it previously only fired when one id
   replaced another, which never happens to a device that was anonymous. The profile id stored
-  with the upload is the one that was sent, so an identification that lands while the request is
-  in flight is not recorded as filed.
+  with the upload is the one that was sent, and the write is skipped if the host identified the
+  user while the request was in flight, so a slower overlapping upload can no longer overwrite a
+  newer identification's record with a stale one. `setProfileId` landing while an upload triggered
+  by `refreshPushToken()` is still in flight no longer gets swallowed by that call's in-flight
+  guard either: it is queued and replayed as soon as the in-flight request completes, so the token
+  is still re-filed under the real id instead of waiting for the next foreground.
 
 ## [5.2.0] - 2026-10-04
 
