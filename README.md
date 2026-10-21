@@ -668,19 +668,50 @@ extension AppDelegate: MessagingDelegate {
     }
 }
 
-// Handle notification taps
+```
+
+#### Keeping your own `UNUserNotificationCenterDelegate`
+
+`enablePushEngagementTracking()` makes the SDK the notification center's delegate, and
+remembers the delegate your app had installed at that moment. Every callback the SDK does
+not own is forwarded to it, so set your delegate **before** calling
+`enablePushEngagementTracking()` — usually both happen in
+`application(_:didFinishLaunchingWithOptions:)`:
+
+```swift
+UNUserNotificationCenter.current().delegate = self   // first
+// ... later, once the token is registered:
+client.enablePushEngagementTracking()                // second
+```
+
+What your delegate still receives:
+
+| Callback | Releva notification | Your own notification |
+|---|---|---|
+| `willPresent` (app in foreground) | Handled by the SDK: shown as a banner and tracked as delivered. Not forwarded. | Forwarded. Your answer decides how it is shown. Without a delegate it is not shown. |
+| `didReceive` (tap) | Navigation posted and tracking dispatched (it may still be pending), then forwarded. | Forwarded. |
+| `openSettingsFor` (Settings deep link) | Forwarded. | Forwarded. |
+
+Your delegate owns the completion handlers it is given. Because Releva taps are forwarded
+too, a delegate that routes every tap generically can skip them with `isRelevaMessage`:
+
+```swift
 func userNotificationCenter(_ center: UNUserNotificationCenter,
                           didReceive response: UNNotificationResponse,
                           withCompletionHandler completionHandler: @escaping () -> Void) {
     let userInfo = response.notification.request.content.userInfo
 
-    if client.isRelevaMessage(userInfo: userInfo) {
-        client.trackEngagement(userInfo: userInfo, type: .opened)
+    if !client.isRelevaMessage(userInfo: userInfo) {
+        // Your own push: route it. Releva taps are already tracked and routed by the SDK.
+        openCar(from: userInfo)
     }
 
     completionHandler()
 }
 ```
+
+You only need to call `trackEngagement` yourself if you do not call
+`enablePushEngagementTracking()` at all.
 
 ### 3. Add Notification Service Extension for Rich Notifications
 

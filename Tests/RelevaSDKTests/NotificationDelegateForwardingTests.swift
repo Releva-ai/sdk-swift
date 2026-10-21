@@ -1,0 +1,347 @@
+import UserNotifications
+import XCTest
+@testable import RelevaSDK
+
+/// `enablePushEngagementTracking()` installs the SDK as the notification-centre delegate. The
+/// host app's own delegate must keep receiving the callbacks the SDK does not own: taps, the
+/// presentation of its own notifications, and the Settings deep link.
+@MainActor
+final class NotificationDelegateForwardingTests: XCTestCase {
+    /// The test bundle has no host app, so `UNUserNotificationCenter.current()` cannot exist
+    /// here. The forwarding code only passes the centre through to the host, and the hosts below
+    /// never read it, so an arbitrary object stands in for it.
+    private let center = unsafeBitCast(NSObject(), to: UNUserNotificationCenter.self)
+    private var service: NotificationService!
+
+    override func tearDown() {
+        service = nil
+        super.tearDown()
+    }
+
+    /// Builds the service in the state `enablePushEngagementTracking()` leaves it: the SDK holds
+    /// the delegate slot and remembers `host` as whatever was there before.
+    private func install(host: UNUserNotificationCenterDelegate?) {
+        service = NotificationService(config: RelevaConfig(enableTracking: false, enablePushNotifications: true))
+        service.previousDelegate = host
+    }
+
+    // MARK: - Fixtures
+
+    private final class HostDelegate: NSObject, UNUserNotificationCenterDelegate {
+        var presented: [UNNotification] = []
+        var received: [UNNotificationResponse] = []
+        var settingsOpened = 0
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            willPresent notification: UNNotification,
+            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+        ) {
+            presented.append(notification)
+            completionHandler([.list])
+        }
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            didReceive response: UNNotificationResponse,
+            withCompletionHandler completionHandler: @escaping () -> Void
+        ) {
+            received.append(response)
+            completionHandler()
+        }
+
+        func userNotificationCenter(_ center: UNUserNotificationCenter, openSettingsFor notification: UNNotification?) {
+            settingsOpened += 1
+        }
+    }
+
+    /// A host that only handles taps, so the optional methods it lacks must not be forwarded.
+    private final class PresentOnlyHost: NSObject, UNUserNotificationCenterDelegate {
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            willPresent notification: UNNotification,
+            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+        ) {
+            completionHandler([.list])
+        }
+    }
+
+    /// Stands in for another push SDK whose chain leads back to the service under test.
+    private final class LoopingHost: NSObject, UNUserNotificationCenterDelegate {
+        var service: NotificationService?
+        var calls = 0
+        var presentCalls = 0
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            didReceive response: UNNotificationResponse,
+            withCompletionHandler completionHandler: @escaping () -> Void
+        ) {
+            calls += 1
+            service?.userNotificationCenter(center, didReceive: response, withCompletionHandler: completionHandler)
+        }
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            willPresent notification: UNNotification,
+            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+        ) {
+            presentCalls += 1
+            service?.userNotificationCenter(center, willPresent: notification, withCompletionHandler: completionHandler)
+        }
+    }
+
+    private final class DroppingHost: NSObject, UNUserNotificationCenterDelegate {
+        var calls = 0
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            didReceive response: UNNotificationResponse,
+            withCompletionHandler completionHandler: @escaping () -> Void
+        ) {
+            calls += 1
+        }
+    }
+
+    /// Resolves its completion handler from a background queue, as a host that awaits other work would.
+    private final class BackgroundHost: NSObject, UNUserNotificationCenterDelegate {
+        var calls = 0
+        let finished = XCTestExpectation(description: "background completion")
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            didReceive response: UNNotificationResponse,
+            withCompletionHandler completionHandler: @escaping () -> Void
+        ) {
+            calls += 1
+            DispatchQueue.global().async {
+                completionHandler()
+                self.finished.fulfill()
+            }
+        }
+    }
+
+    private final class TapOnlyHost: NSObject, UNUserNotificationCenterDelegate {
+        var received: [UNNotificationResponse] = []
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            didReceive response: UNNotificationResponse,
+            withCompletionHandler completionHandler: @escaping () -> Void
+        ) {
+            received.append(response)
+            completionHandler()
+        }
+    }
+
+    private func makeNotification(userInfo: [AnyHashable: Any], category: String = "") -> UNNotification {
+        let content = UNMutableNotificationContent()
+        content.userInfo = userInfo
+        content.categoryIdentifier = category
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        let type: NSObject.Type = UNNotification.self
+        // No public initializer; the framework's own decoder path sets these two keys.
+        guard let notification = type.init() as? UNNotification else { fatalError("UNNotification fixture") }
+        notification.setValue(request, forKey: "request")
+        notification.setValue(Date(), forKey: "date")
+        return notification
+    }
+
+    private func makeResponse(_ notification: UNNotification) -> UNNotificationResponse {
+        let type: NSObject.Type = UNNotificationResponse.self
+        guard let response = type.init() as? UNNotificationResponse else { fatalError("UNNotificationResponse fixture") }
+        response.setValue(notification, forKey: "notification")
+        response.setValue(UNNotificationDefaultActionIdentifier, forKey: "actionIdentifier")
+        return response
+    }
+
+    private let hostPayload: [AnyHashable: Any] = ["aps": ["alert": "SPARK"], "carId": "42"]
+    private let relevaPayload: [AnyHashable: Any] = ["aps": ["alert": "Hi"], "click_action": "RELEVA_OPEN_SCREEN"]
+
+    // MARK: - Settings deep link
+
+    func testOpenSettingsIsForwardedToTheHost() {
+        let host = HostDelegate()
+        install(host: host)
+
+        service.userNotificationCenter(center, openSettingsFor: nil)
+
+        XCTAssertEqual(host.settingsOpened, 1)
+    }
+
+    func testOpenSettingsWithNoHostDoesNothing() {
+        install(host: nil)
+        service.userNotificationCenter(center, openSettingsFor: nil) // must not crash
+    }
+
+    // MARK: - Foreground presentation
+
+    func testHostNotificationPresentationIsDecidedByTheHost() {
+        let host = HostDelegate()
+        install(host: host)
+        let notification = makeNotification(userInfo: hostPayload)
+
+        let done = expectation(description: "completion")
+        var options: UNNotificationPresentationOptions?
+        service.userNotificationCenter(center, willPresent: notification) { options = $0; done.fulfill() }
+        wait(for: [done], timeout: 2)
+
+        XCTAssertEqual(host.presented.count, 1)
+        XCTAssertTrue(host.presented.first === notification)
+        XCTAssertEqual(options, [.list], "the host's own answer reaches the system")
+    }
+
+    func testRelevaNotificationPresentationIsNotForwarded() {
+        let host = HostDelegate()
+        install(host: host)
+        let notification = makeNotification(userInfo: relevaPayload, category: "RELEVA_DEFAULT")
+
+        let done = expectation(description: "completion")
+        var options: UNNotificationPresentationOptions?
+        service.userNotificationCenter(center, willPresent: notification) { options = $0; done.fulfill() }
+        wait(for: [done], timeout: 2)
+
+        XCTAssertTrue(host.presented.isEmpty)
+        XCTAssertEqual(options, [.banner, .list, .sound, .badge])
+    }
+
+    func testHostNotificationWithNoForwardTargetIsSuppressedAsBefore() {
+        let host = TapOnlyHost() // strong: `previousDelegate` is weak, so an inline temporary would be gone before the assert
+        install(host: host)
+        let notification = makeNotification(userInfo: hostPayload)
+
+        let done = expectation(description: "completion")
+        var options: UNNotificationPresentationOptions?
+        service.userNotificationCenter(center, willPresent: notification) { options = $0; done.fulfill() }
+        wait(for: [done], timeout: 2)
+
+        XCTAssertNotNil(service.previousDelegate, "the host is alive, so the missing method is what is being tested")
+        XCTAssertEqual(options, [])
+    }
+
+    func testTapWithHostLackingDidReceiveStillCompletes() {
+        let host = PresentOnlyHost()
+        install(host: host)
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        var completions = 0
+        service.userNotificationCenter(center, didReceive: tap) { completions += 1 }
+
+        XCTAssertNotNil(service.previousDelegate)
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testForwardingBackToTheSdkDoesNotRecurse() {
+        let host = LoopingHost()
+        install(host: host)
+        host.service = service
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        var completions = 0
+        service.userNotificationCenter(center, didReceive: tap) { completions += 1 }
+
+        XCTAssertEqual(host.calls, 1, "the re-entrant call is not forwarded again")
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testPresentationForwardingBackToTheSdkDoesNotRecurse() {
+        let host = LoopingHost()
+        install(host: host)
+        host.service = service
+        let notification = makeNotification(userInfo: hostPayload)
+
+        let done = expectation(description: "completion")
+        var completions = 0
+        service.userNotificationCenter(center, willPresent: notification) { _ in
+            completions += 1
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 2)
+        let drained = expectation(description: "queued tasks drained")
+        Task { @MainActor in
+            await Task.yield()
+            drained.fulfill()
+        }
+        wait(for: [drained], timeout: 2)
+
+        XCTAssertEqual(host.presentCalls, 1, "the re-entrant call is not forwarded again")
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testReentrantTapDoesNotTrackOrNavigateTwice() {
+        let host = LoopingHost()
+        install(host: host)
+        host.service = service
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        var taps = 0
+        service.onNotificationTapped = { _ in taps += 1 }
+        service.userNotificationCenter(center, didReceive: tap) {}
+
+        XCTAssertEqual(taps, 1, "the chained-back call is a no-op")
+    }
+
+    func testDroppedCompletionHandlerDoesNotSwallowLaterTaps() {
+        let host = DroppingHost()
+        install(host: host)
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        service.userNotificationCenter(center, didReceive: tap) {}
+        service.forwardingTimeout = 0
+        service.userNotificationCenter(center, didReceive: tap) {}
+
+        XCTAssertEqual(host.calls, 2, "a key the host never released expires")
+    }
+
+    func testCompletionHandlerOffTheMainThreadReleasesTheKey() {
+        let host = BackgroundHost()
+        install(host: host)
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        service.userNotificationCenter(center, didReceive: tap) {}
+        wait(for: [host.finished], timeout: 2)
+        let settled = expectation(description: "release hopped to main")
+        DispatchQueue.main.async { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
+        service.userNotificationCenter(center, didReceive: tap) {}
+
+        XCTAssertEqual(host.calls, 2)
+    }
+
+    // MARK: - Taps
+
+    func testEveryTapIsForwardedToTheHost() {
+        let host = HostDelegate()
+        install(host: host)
+        let hostTap = makeResponse(makeNotification(userInfo: hostPayload))
+        let relevaTap = makeResponse(makeNotification(userInfo: relevaPayload, category: "RELEVA_DEFAULT"))
+
+        var completions = 0
+        service.userNotificationCenter(center, didReceive: hostTap) { completions += 1 }
+        service.userNotificationCenter(center, didReceive: relevaTap) { completions += 1 }
+
+        XCTAssertEqual(host.received.count, 2)
+        XCTAssertTrue(host.received[0] === hostTap)
+        XCTAssertTrue(host.received[1] === relevaTap, "Releva taps reach the host too, after tracking")
+        XCTAssertEqual(completions, 2, "the host's completion call is the system's")
+    }
+
+    func testTapWithNoHostStillCompletes() {
+        install(host: nil)
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        var completions = 0
+        service.userNotificationCenter(center, didReceive: tap) { completions += 1 }
+
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testTheSdkNeverForwardsToItself() {
+        install(host: nil)
+        service.previousDelegate = service // what a second `initialize()` would otherwise capture
+
+        XCTAssertNil(service.hostDelegate(
+            responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))
+        ))
+    }
+}
