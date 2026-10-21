@@ -30,6 +30,24 @@ public class NotificationService: NSObject {
         return previous
     }
 
+    /// Set while a forwarded call is on the stack. Another push SDK that chains to its predecessor
+    /// can end up forwarding back to this service (a second `initialize()` captures it as
+    /// `previousDelegate`), a cycle `previous !== self` cannot see; on re-entry nothing is forwarded.
+    private var isForwarding = false
+
+    /// Runs `call` against the host's delegate if it implements `selector` and this service is not
+    /// already forwarding. Returns whether it ran.
+    private func forwardToHost(
+        responding selector: Selector,
+        _ call: (UNUserNotificationCenterDelegate) -> Void
+    ) -> Bool {
+        guard !isForwarding, let host = hostDelegate(responding: selector) else { return false }
+        isForwarding = true
+        defer { isForwarding = false }
+        call(host)
+        return true
+    }
+
     /// Callback for notification taps
     public var onNotificationTapped: ((UNNotificationResponse) -> Void)?
 
@@ -335,12 +353,11 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 } else {
                     completionHandler([.alert, .sound, .badge])
                 }
-            } else if let host = self.hostDelegate(
-                responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))
-            ) {
+            } else if !self.forwardToHost(
+                responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:)),
                 // Not ours: the host decides how its own notification is shown.
-                host.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: completionHandler)
-            } else {
+                { $0.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: completionHandler) }
+            ) {
                 completionHandler([])
             }
         }
@@ -475,12 +492,15 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         }
 
         // Every tap is forwarded, Releva's included, so the host keeps one place to route taps
-        // from. The host then owns the completion handler.
-        if let host = hostDelegate(
+        // from. Navigation has been posted by now, but tracking is dispatched to the main actor and
+        // may still be pending, so the host must not rely on it having been recorded. The host
+        // then owns the completion handler.
+        let forwarded = forwardToHost(
             responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))
         ) {
-            host.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)
-        } else {
+            $0.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)
+        }
+        if !forwarded {
             completionHandler()
         }
     }
@@ -488,8 +508,11 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     /// The "Notification Settings" link in iOS Settings. The SDK has no settings screen, so this
     /// exists only to pass the call on to the host's delegate.
     public func userNotificationCenter(_ center: UNUserNotificationCenter, openSettingsFor notification: UNNotification?) {
-        hostDelegate(responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:openSettingsFor:)))?
-            .userNotificationCenter?(center, openSettingsFor: notification)
+        _ = forwardToHost(
+            responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:openSettingsFor:))
+        ) {
+            $0.userNotificationCenter?(center, openSettingsFor: notification)
+        }
     }
 
     /// Handle navigation from notification

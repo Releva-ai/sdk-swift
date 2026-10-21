@@ -56,6 +56,31 @@ final class NotificationDelegateForwardingTests: XCTestCase {
     }
 
     /// A host that only handles taps, so the optional methods it lacks must not be forwarded.
+    private final class PresentOnlyHost: NSObject, UNUserNotificationCenterDelegate {
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            willPresent notification: UNNotification,
+            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+        ) {
+            completionHandler([.list])
+        }
+    }
+
+    /// Stands in for another push SDK whose chain leads back to the service under test.
+    private final class LoopingHost: NSObject, UNUserNotificationCenterDelegate {
+        var service: NotificationService?
+        var calls = 0
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            didReceive response: UNNotificationResponse,
+            withCompletionHandler completionHandler: @escaping () -> Void
+        ) {
+            calls += 1
+            service?.userNotificationCenter(center, didReceive: response, withCompletionHandler: completionHandler)
+        }
+    }
+
     private final class TapOnlyHost: NSObject, UNUserNotificationCenterDelegate {
         var received: [UNNotificationResponse] = []
 
@@ -141,7 +166,8 @@ final class NotificationDelegateForwardingTests: XCTestCase {
     }
 
     func testHostNotificationWithNoForwardTargetIsSuppressedAsBefore() {
-        install(host: TapOnlyHost())
+        let host = TapOnlyHost() // strong: `previousDelegate` is weak, so an inline temporary would be gone before the assert
+        install(host: host)
         let notification = makeNotification(userInfo: hostPayload)
 
         let done = expectation(description: "completion")
@@ -149,7 +175,33 @@ final class NotificationDelegateForwardingTests: XCTestCase {
         service.userNotificationCenter(center, willPresent: notification) { options = $0; done.fulfill() }
         wait(for: [done], timeout: 2)
 
+        XCTAssertNotNil(service.previousDelegate, "the host is alive, so the missing method is what is being tested")
         XCTAssertEqual(options, [])
+    }
+
+    func testTapWithHostLackingDidReceiveStillCompletes() {
+        let host = PresentOnlyHost()
+        install(host: host)
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        var completions = 0
+        service.userNotificationCenter(center, didReceive: tap) { completions += 1 }
+
+        XCTAssertNotNil(service.previousDelegate)
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testForwardingBackToTheSdkDoesNotRecurse() {
+        let host = LoopingHost()
+        install(host: host)
+        host.service = service
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        var completions = 0
+        service.userNotificationCenter(center, didReceive: tap) { completions += 1 }
+
+        XCTAssertEqual(host.calls, 1, "the re-entrant call is not forwarded again")
+        XCTAssertEqual(completions, 1)
     }
 
     // MARK: - Taps

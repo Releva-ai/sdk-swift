@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
   The README's push section, which showed a `didReceive` implementation that could never run,
   now documents this instead.
 
+  **Upgrade note:** `didReceive` is forwarded for Releva taps too, and the SDK already tracks
+  the tap as opened. If your own `didReceive` calls `trackEngagement(userInfo:type: .opened)`
+  (the snippet the old README showed, which never ran while the SDK held the delegate slot),
+  remove that call, or each tap is counted twice.
+
 ## [5.2.0] - 2026-10-04
 
 ### Added
