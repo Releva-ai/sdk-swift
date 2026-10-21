@@ -136,7 +136,11 @@ final class NetworkServiceTests: XCTestCase {
         XCTAssertEqual(payload["pushToken"] as? String, "fcm-token")
         XCTAssertEqual(payload["deviceType"] as? String, "ios")
         XCTAssertEqual(payload["deviceId"] as? String, "device-1")
-        XCTAssertNil(payload["profileId"], "a nil profileId must be omitted, not sent as null")
+        XCTAssertEqual(
+            payload["profileId"] as? String,
+            "device-1",
+            "the endpoint rejects a request without a profileId, so a nil one is sent as the deviceId"
+        )
     }
 
     func testInboxUnreadCountPercentEncodesUserIdAndReadsCount() async throws {

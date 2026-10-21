@@ -172,26 +172,26 @@ public class NetworkService {
     }
 
     /// Register push token
+    ///
+    /// The endpoint requires `profileId` — it files the token under that profile and answers 400
+    /// without one — so a nil one is sent as the deviceId, the id `/push` gives an anonymous device.
     /// - Parameters:
     ///   - token: Push notification token
     ///   - deviceType: Device type
     ///   - deviceId: Device ID
-    ///   - profileId: Profile ID
+    ///   - profileId: Profile the token is filed under (the deviceId when nil)
     public func registerPushToken(
         _ token: String,
         deviceType: DeviceType,
         deviceId: String,
         profileId: String?
     ) async throws {
-        var payload: [String: Any] = [
+        let payload: [String: Any] = [
             "pushToken": token,
             "deviceType": deviceType.rawValue,
-            "deviceId": deviceId
+            "deviceId": deviceId,
+            "profileId": profileId ?? deviceId
         ]
-
-        if let profileId = profileId {
-            payload["profileId"] = profileId
-        }
 
         _ = try await performRequest(
             endpoint: "/api/v0/appPush/tokens",

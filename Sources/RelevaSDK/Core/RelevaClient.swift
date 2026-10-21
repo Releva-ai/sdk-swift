@@ -24,7 +24,10 @@ public class RelevaClient {
     private let storage: StorageService
 
     /// Network service
-    private let networkService: NetworkService
+    ///
+    /// Internal (not private) so tests can install one backed by a stubbed `URLSession` and
+    /// assert on what the client puts on the wire.
+    var networkService: NetworkService
 
     /// Session manager
     private let sessionManager: SessionManager
@@ -99,6 +102,11 @@ public class RelevaClient {
     /// In-flight guard for `refreshPushToken()` so a fast background→foreground→background→foreground
     /// cycle cannot enqueue overlapping provider callbacks and produce duplicate uploads.
     private var isRefreshingPushToken = false
+
+    /// Set when `refreshPushToken()` is called while `isRefreshingPushToken` is already true, so a
+    /// `setProfileId` that lands mid-upload (see `completePushTokenRefresh`) is not dropped but
+    /// replayed once the in-flight request finishes.
+    private var pendingPushTokenRefresh = false
 
     // MARK: - Initializers
 
@@ -296,9 +304,11 @@ public class RelevaClient {
             InboxService.shared.updateProfileId(profileId)
         }
 
-        // Re-bind the push token to the new profile. `refreshPushToken` is a no-op without a
-        // provider, and its throttle lets a profile change through (see completePushTokenRefresh).
-        if self.profileChanged && pushTokenProvider != nil {
+        // Re-bind the push token to the new profile. A first identification counts too, unlike
+        // `profileChanged`, which the server reads as "merge the previous profile": while
+        // anonymous the token was filed under the deviceId. `refreshPushToken` is a no-op without
+        // a provider, and its throttle lets a profile change through (see completePushTokenRefresh).
+        if previousId != profileId && pushTokenProvider != nil {
             refreshPushToken()
         }
     }
@@ -791,6 +801,11 @@ public class RelevaClient {
     ///
     /// Returns `Void` rather than the `Bool` the 4.x completion handler carried: that flag was
     /// `true` on every path that reached it, so `throws` already says everything it said.
+    ///
+    /// Before the host calls `setProfileId`, the token is filed under the deviceId: the endpoint
+    /// requires a profile id, and the deviceId is the id `/push` gives this device's anonymous
+    /// profile. The stored profile id stays nil, so the first `setProfileId` still counts as a
+    /// change and re-files the token under the host's id.
     /// - Parameters:
     ///   - token: FCM token
     ///   - deviceType: Device type (defaults to current)
@@ -813,13 +828,17 @@ public class RelevaClient {
             relevaLog("RelevaSDK: Registering push token for \(deviceType.rawValue)...")
         }
 
+        // Read once: `setProfileId` can run while the request is in flight, and what is stored
+        // must be what was sent.
+        let hostProfileId = profileId
+
         // Register with backend
         do {
             try await networkService.registerPushToken(
                 token,
                 deviceType: deviceType,
                 deviceId: deviceId,
-                profileId: profileId
+                profileId: hostProfileId
             )
         } catch {
             if config.enableDebugLogging {
@@ -829,7 +848,14 @@ public class RelevaClient {
         }
 
         storage.savePushTokenUploadedAt(Date())
-        storage.savePushTokenProfileId(profileId)
+        // The host id, not the id that was sent: nil while anonymous, so the first `setProfileId`
+        // reads as a change and re-files the token under the real id. Only write it back if
+        // `profileId` hasn't moved since we read `hostProfileId`: otherwise an overlapping
+        // registration (started before this one) would overwrite a newer identification's marker
+        // with a stale one.
+        if profileId == hostProfileId {
+            storage.savePushTokenProfileId(hostProfileId)
+        }
 
         if config.enableDebugLogging {
             relevaLog("RelevaSDK: ✓ Successfully registered push token for \(deviceType.rawValue)")
@@ -855,8 +881,9 @@ public class RelevaClient {
         }
 
         guard !isRefreshingPushToken else {
+            pendingPushTokenRefresh = true
             if config.enableDebugLogging {
-                relevaLog("RelevaSDK: refreshPushToken skipped - refresh already in flight")
+                relevaLog("RelevaSDK: refreshPushToken skipped - refresh already in flight, will replay")
             }
             return
         }
@@ -875,7 +902,13 @@ public class RelevaClient {
     /// including the `throws` from `registerPushToken`, which the 4.x nested-completion
     /// version only managed because its completion fired on both branches.
     private func completePushTokenRefresh(_ token: String?) async {
-        defer { isRefreshingPushToken = false }
+        defer {
+            isRefreshingPushToken = false
+            if pendingPushTokenRefresh {
+                pendingPushTokenRefresh = false
+                refreshPushToken()
+            }
+        }
 
         // The provider call that led here is asynchronous, so `shutdown()` can land while it is
         // in flight; re-checking here (not just in `refreshPushToken`) is what keeps a
