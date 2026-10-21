@@ -11,12 +11,24 @@ public class NotificationService: NSObject {
     /// Configuration
     private let config: RelevaConfig
 
-    /// Notification center
-    private let notificationCenter = UNUserNotificationCenter.current()
+    /// Notification center. Lazy so that a service built in a test bundle, where there is no
+    /// host app for `current()` to resolve, does not fail until something really needs it.
+    private lazy var notificationCenter = UNUserNotificationCenter.current()
 
     /// Whatever delegate the host app (or another SDK) had installed before `initialize()`
-    /// overwrote it, so `shutdown()` can hand it back instead of leaving the slot `nil`.
-    private weak var previousDelegate: UNUserNotificationCenterDelegate?
+    /// overwrote it. The SDK forwards every callback it does not own to it (see the
+    /// `UNUserNotificationCenterDelegate` extension), and `shutdown()` hands the slot back to it.
+    /// Internal so tests can install a host without touching the real notification centre.
+    weak var previousDelegate: UNUserNotificationCenterDelegate?
+
+    /// The host's delegate, when it implements `selector`. Every method of the protocol is
+    /// optional, so this is the one place that checks before forwarding.
+    func hostDelegate(responding selector: Selector) -> UNUserNotificationCenterDelegate? {
+        guard let previous = previousDelegate, previous !== self, previous.responds(to: selector) else {
+            return nil
+        }
+        return previous
+    }
 
     /// Callback for notification taps
     public var onNotificationTapped: ((UNNotificationResponse) -> Void)?
@@ -323,8 +335,12 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 } else {
                     completionHandler([.alert, .sound, .badge])
                 }
+            } else if let host = self.hostDelegate(
+                responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))
+            ) {
+                // Not ours: the host decides how its own notification is shown.
+                host.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: completionHandler)
             } else {
-                // Let other notifications through
                 completionHandler([])
             }
         }
@@ -457,7 +473,23 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         if config.enableDebugLogging {
             relevaLog("=== RELEVA SDK: NOTIFICATION TAP COMPLETE ===")
         }
-        completionHandler()
+
+        // Every tap is forwarded, Releva's included, so the host keeps one place to route taps
+        // from. The host then owns the completion handler.
+        if let host = hostDelegate(
+            responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))
+        ) {
+            host.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)
+        } else {
+            completionHandler()
+        }
+    }
+
+    /// The "Notification Settings" link in iOS Settings. The SDK has no settings screen, so this
+    /// exists only to pass the call on to the host's delegate.
+    public func userNotificationCenter(_ center: UNUserNotificationCenter, openSettingsFor notification: UNNotification?) {
+        hostDelegate(responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:openSettingsFor:)))?
+            .userNotificationCenter?(center, openSettingsFor: notification)
     }
 
     /// Handle navigation from notification

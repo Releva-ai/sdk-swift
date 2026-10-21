@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.2.1] - 2026-10-21
+
+### Fixed
+
+- **The host app's `UNUserNotificationCenterDelegate` keeps working after
+  `enablePushEngagementTracking()`.** The SDK takes the delegate slot and used to drop every
+  callback it did not own: taps on the app's own notifications never reached the app, the app's
+  own notifications were not shown while it was in the foreground, and the Settings deep link
+  (`userNotificationCenter(_:openSettingsFor:)`) went nowhere. The SDK now forwards to the
+  delegate that was installed when `enablePushEngagementTracking()` was called: `willPresent`
+  for non-Releva notifications, `didReceive` for every tap after the SDK has tracked it, and
+  `openSettingsFor` always. Set your delegate before calling `enablePushEngagementTracking()`.
+  The README's push section, which showed a `didReceive` implementation that could never run,
+  now documents this instead.
+
 ## [5.2.0] - 2026-10-04
 
 ### Added
