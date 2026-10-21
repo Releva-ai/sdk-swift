@@ -91,6 +91,36 @@ final class NotificationDelegateForwardingTests: XCTestCase {
         }
     }
 
+    private final class DroppingHost: NSObject, UNUserNotificationCenterDelegate {
+        var calls = 0
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            didReceive response: UNNotificationResponse,
+            withCompletionHandler completionHandler: @escaping () -> Void
+        ) {
+            calls += 1
+        }
+    }
+
+    /// Resolves its completion handler from a background queue, as a host that awaits other work would.
+    private final class BackgroundHost: NSObject, UNUserNotificationCenterDelegate {
+        var calls = 0
+        let finished = XCTestExpectation(description: "background completion")
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            didReceive response: UNNotificationResponse,
+            withCompletionHandler completionHandler: @escaping () -> Void
+        ) {
+            calls += 1
+            DispatchQueue.global().async {
+                completionHandler()
+                self.finished.fulfill()
+            }
+        }
+    }
+
     private final class TapOnlyHost: NSObject, UNUserNotificationCenterDelegate {
         var received: [UNNotificationResponse] = []
 
@@ -228,7 +258,10 @@ final class NotificationDelegateForwardingTests: XCTestCase {
         }
         wait(for: [done], timeout: 2)
         let drained = expectation(description: "queued tasks drained")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { drained.fulfill() }
+        Task { @MainActor in
+            await Task.yield()
+            drained.fulfill()
+        }
         wait(for: [drained], timeout: 2)
 
         XCTAssertEqual(host.presentCalls, 1, "the re-entrant call is not forwarded again")
@@ -246,6 +279,33 @@ final class NotificationDelegateForwardingTests: XCTestCase {
         service.userNotificationCenter(center, didReceive: tap) {}
 
         XCTAssertEqual(taps, 1, "the chained-back call is a no-op")
+    }
+
+    func testDroppedCompletionHandlerDoesNotSwallowLaterTaps() {
+        let host = DroppingHost()
+        install(host: host)
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        service.userNotificationCenter(center, didReceive: tap) {}
+        service.forwardingTimeout = 0
+        service.userNotificationCenter(center, didReceive: tap) {}
+
+        XCTAssertEqual(host.calls, 2, "a key the host never released expires")
+    }
+
+    func testCompletionHandlerOffTheMainThreadReleasesTheKey() {
+        let host = BackgroundHost()
+        install(host: host)
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        service.userNotificationCenter(center, didReceive: tap) {}
+        wait(for: [host.finished], timeout: 2)
+        let settled = expectation(description: "release hopped to main")
+        DispatchQueue.main.async { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
+        service.userNotificationCenter(center, didReceive: tap) {}
+
+        XCTAssertEqual(host.calls, 2)
     }
 
     // MARK: - Taps

@@ -35,8 +35,19 @@ public class NotificationService: NSObject {
     /// `initialize()` captures it as `previousDelegate`), a cycle `previous !== self` cannot see.
     /// A key lives until the callback's completion handler runs, not until the host returns:
     /// `willPresent` forwards from a `Task`, so the re-entrant call lands after the host's stack
-    /// has unwound. On re-entry nothing is forwarded.
-    private var forwarding = Set<String>()
+    /// has unwound. On re-entry nothing is forwarded. Only touched on the main thread, where the
+    /// delegate callbacks arrive; the value is when the key was taken.
+    private var forwarding = [String: Date]()
+
+    /// How long a key blocks re-entry. A host that never calls its completion handler would
+    /// otherwise leave the key behind and swallow every later callback with the same notification
+    /// identifier. Internal so tests can expire a key without waiting.
+    var forwardingTimeout: TimeInterval = 30
+
+    private func isForwarding(_ key: String) -> Bool {
+        guard let since = forwarding[key] else { return false }
+        return Date().timeIntervalSince(since) < forwardingTimeout
+    }
 
     /// Runs `call` against the host's delegate if it implements `selector` and `key` is not already
     /// being forwarded. `call` must invoke `release` once the host is done with the callback.
@@ -46,9 +57,17 @@ public class NotificationService: NSObject {
         key: String,
         _ call: (UNUserNotificationCenterDelegate, _ release: @escaping () -> Void) -> Void
     ) -> Bool {
-        guard !forwarding.contains(key), let host = hostDelegate(responding: selector) else { return false }
-        forwarding.insert(key)
-        call(host) { [weak self] in self?.forwarding.remove(key) }
+        guard !isForwarding(key), let host = hostDelegate(responding: selector) else { return false }
+        let since = Date()
+        forwarding[key] = since
+        call(host) { [weak self] in
+            // The host picks the thread its completion handler runs on.
+            let remove = {
+                // An expired key may since have been taken again by a later forward.
+                if self?.forwarding[key] == since { self?.forwarding[key] = nil }
+            }
+            if Thread.isMainThread { remove() } else { DispatchQueue.main.async(execute: remove) }
+        }
         return true
     }
 
@@ -387,7 +406,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         // A host chaining back to this service is the same tap arriving again, already tracked
         // and navigated on the way in.
-        if forwarding.contains(forwardKey) {
+        if isForwarding(forwardKey) {
             completionHandler()
             return
         }
@@ -534,6 +553,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:openSettingsFor:)),
             key: "openSettingsFor"
         ) { host, release in
+            // No completion handler, so the host is done when it returns.
             defer { release() }
             host.userNotificationCenter?(center, openSettingsFor: notification)
         }
