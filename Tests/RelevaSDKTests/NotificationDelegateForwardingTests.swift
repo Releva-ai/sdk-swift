@@ -70,6 +70,7 @@ final class NotificationDelegateForwardingTests: XCTestCase {
     private final class LoopingHost: NSObject, UNUserNotificationCenterDelegate {
         var service: NotificationService?
         var calls = 0
+        var presentCalls = 0
 
         func userNotificationCenter(
             _ center: UNUserNotificationCenter,
@@ -78,6 +79,15 @@ final class NotificationDelegateForwardingTests: XCTestCase {
         ) {
             calls += 1
             service?.userNotificationCenter(center, didReceive: response, withCompletionHandler: completionHandler)
+        }
+
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            willPresent notification: UNNotification,
+            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+        ) {
+            presentCalls += 1
+            service?.userNotificationCenter(center, willPresent: notification, withCompletionHandler: completionHandler)
         }
     }
 
@@ -202,6 +212,40 @@ final class NotificationDelegateForwardingTests: XCTestCase {
 
         XCTAssertEqual(host.calls, 1, "the re-entrant call is not forwarded again")
         XCTAssertEqual(completions, 1)
+    }
+
+    func testPresentationForwardingBackToTheSdkDoesNotRecurse() {
+        let host = LoopingHost()
+        install(host: host)
+        host.service = service
+        let notification = makeNotification(userInfo: hostPayload)
+
+        let done = expectation(description: "completion")
+        var completions = 0
+        service.userNotificationCenter(center, willPresent: notification) { _ in
+            completions += 1
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 2)
+        let drained = expectation(description: "queued tasks drained")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { drained.fulfill() }
+        wait(for: [drained], timeout: 2)
+
+        XCTAssertEqual(host.presentCalls, 1, "the re-entrant call is not forwarded again")
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testReentrantTapDoesNotTrackOrNavigateTwice() {
+        let host = LoopingHost()
+        install(host: host)
+        host.service = service
+        let tap = makeResponse(makeNotification(userInfo: hostPayload))
+
+        var taps = 0
+        service.onNotificationTapped = { _ in taps += 1 }
+        service.userNotificationCenter(center, didReceive: tap) {}
+
+        XCTAssertEqual(taps, 1, "the chained-back call is a no-op")
     }
 
     // MARK: - Taps

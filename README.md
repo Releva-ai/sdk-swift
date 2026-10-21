@@ -689,7 +689,7 @@ What your delegate still receives:
 | Callback | Releva notification | Your own notification |
 |---|---|---|
 | `willPresent` (app in foreground) | Handled by the SDK: shown as a banner and tracked as delivered. Not forwarded. | Forwarded. Your answer decides how it is shown. Without a delegate it is not shown. |
-| `didReceive` (tap) | Tracked as opened/clicked and navigation posted, then forwarded. | Forwarded. |
+| `didReceive` (tap) | Navigation posted and tracking dispatched (it may still be pending), then forwarded. | Forwarded. |
 | `openSettingsFor` (Settings deep link) | Forwarded. | Forwarded. |
 
 Your delegate owns the completion handlers it is given. Because Releva taps are forwarded

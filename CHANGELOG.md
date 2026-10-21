@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
   own notifications were not shown while it was in the foreground, and the Settings deep link
   (`userNotificationCenter(_:openSettingsFor:)`) went nowhere. The SDK now forwards to the
   delegate that was installed when `enablePushEngagementTracking()` was called: `willPresent`
-  for non-Releva notifications, `didReceive` for every tap after the SDK has tracked it, and
+  for non-Releva notifications, `didReceive` for every tap once the SDK has handled it, and
   `openSettingsFor` always. Set your delegate before calling `enablePushEngagementTracking()`.
   The README's push section, which showed a `didReceive` implementation that could never run,
   now documents this instead.
