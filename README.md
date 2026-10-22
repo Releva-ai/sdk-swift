@@ -530,9 +530,13 @@ let client = RelevaClient(
 
 // Set user identification
 client.setDeviceId(UIDevice.current.identifierForVendor?.uuidString ?? "")
-// This should be the id for the user that you use internally to identify this user
+
+// Only if the user is logged in. This should be the id for the user that you use
+// internally to identify this user
 client.setProfileId("user-123")
 ```
+
+Until a profile ID is set the visitor is anonymous: the SDK identifies them by the device ID, keeps tracking them, and the device can still receive push notifications. Call `setProfileId` when the user logs in — see [Profile Management and User Logout](#profile-management-and-user-logout).
 
 ## Profile Management and User Logout
 
@@ -547,23 +551,13 @@ let newAnonymousProfileId = UUID().uuidString
 // Set the new profile ID with skipMergeWithPreviousProfileId set to true
 // The second parameter can be passed as true or false without a label
 client.setProfileId(newAnonymousProfileId, true)
-
-// Re-register push token with the new anonymous profile
-// This is necessary because we skipped the merge, so the token needs to be explicitly registered
-// (Messaging.messaging() needs `import FirebaseMessaging` in the enclosing file.)
-Task {
-    do {
-        let fcmToken = try await Messaging.messaging().token()
-        try await client.registerPushToken(fcmToken, deviceType: .ios)
-    } catch {
-        print("Failed to re-register push token: \(error)")
-    }
-}
 ```
+
+You do not have to re-register the push token yourself as long as a `pushTokenProvider` is set (see [Register for Push Notifications](#register-for-push-notifications)): `setProfileId` re-registers the token under the new profile in the background, so pushes meant for the logged-out user stop reaching the device. A re-registration that fails — the device is offline, say — is retried on the next app launch or foreground. Without a `pushTokenProvider` the app has to call `registerPushToken` itself after every `setProfileId`.
 
 **Why is this important?**
 
-By default, when you change a profile ID, the SDK will merge the previous profile with the new one to maintain user behavior continuity. However, when a user logs out, you want to start fresh with a completely separate anonymous profile. Passing `true` as the second parameter ensures:
+By default, when you change a profile ID, the SDK will merge the previous profile — if one was set on this device — with the new one to maintain user behavior continuity. However, when a user logs out, you want to start fresh with a completely separate anonymous profile. Passing `true` as the second parameter ensures:
 
 - The logged-in user's profile data remains separate
 - The new anonymous profile starts with a clean slate
@@ -576,9 +570,11 @@ client.setProfileId(loggedInUserId)
 ```
 
 This default behavior is ideal for:
-- User login (merging anonymous behavior with logged-in profile)
+- User login, when this device already had a profile ID — for example the anonymous one created at the previous logout
 - Account linking
 - Profile migrations
+
+Only a profile ID that was previously set on this device is merged. A first login on a device that has never had one has nothing to merge.
 
 ### Replacing the client
 
@@ -603,6 +599,8 @@ AppDelegate.relevaClient = RelevaClient(realm: realm, accessToken: accessToken, 
 6. Check "Remote notifications"
 
 #### Register for Push Notifications
+
+A token can be registered before the user logs in. While no profile ID is set, the SDK sends the device ID in its place, so an anonymous device's token is filed under the same profile its events go to, and the token follows the user to their own profile as soon as `setProfileId` is called.
 
 ```swift
 import UserNotifications
@@ -636,6 +634,8 @@ func application(_ application: UIApplication, didRegisterForRemoteNotifications
     // Wire a token provider so the SDK can fetch the current FCM token on every app
     // launch / foreground. FCM rotates tokens silently — without this, the backend's
     // record drifts stale and test pushes start failing with "device token expired".
+    // It is also what lets `setProfileId` move the token to the new profile on login
+    // and logout.
     client.pushTokenProvider = { completion in
         Messaging.messaging().token { token, _ in
             completion(token)
@@ -1643,6 +1643,7 @@ effect needs no `_ =`.
 - Ensure Firebase is properly configured with your APNs certificates
 - Check device token is being registered with `client.registerPushToken()`
 - Verify notification permissions are granted
+- If a signed-out user still receives pushes, or a newly signed-in one does not, check that `pushTokenProvider` is set — it is what lets `setProfileId` move the token. If your app replaces its `RelevaClient` on login or logout, check that it calls `shutdown()` on the old one
 
 **Rich notifications (images/buttons) not showing:**
 - Confirm you've created the Notification Service Extension target
