@@ -81,6 +81,11 @@ public final class StoryPresenter {
     public func start() {
         guard cancellable == nil, host != nil else { return }
 
+        // The documented way back from a host that was off screen: a story that burned its
+        // whole retry budget while `stop()`-ed gets a fresh budget for this new on-screen run.
+        retryingStoryID = nil
+        presentRetryCount = 0
+
         viewModel.start(tracker: tracker)
 
         // `receive(on:)` so the presentation happens after the view model has committed the
@@ -159,7 +164,7 @@ public final class StoryPresenter {
                 story: story.story,
                 client: client,
                 onLinkTap: onLinkTap
-            ) { [weak self, weak viewerBox] in
+            ) { [weak self, viewerBox] in
                 guard let self = self, self.cancellable != nil else {
                     // Stopped, with a viewer `stop()` could not dismiss: nothing else will take
                     // it down, and the queue must not move on while the host is off screen.
