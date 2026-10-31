@@ -158,17 +158,19 @@ public final class StoryPresenter {
         }
         guard viewerController == nil, let host = host else { return }
 
-        let viewerBox = ViewerBox()
         let controller = UIHostingController(
             rootView: StoryViewerView(
                 story: story.story,
                 client: client,
                 onLinkTap: onLinkTap
-            ) { [weak self, viewerBox] in
-                guard let self = self, self.cancellable != nil else {
+            ) { [weak self] in
+                guard let self = self else { return }
+                guard self.cancellable != nil else {
                     // Stopped, with a viewer `stop()` could not dismiss: nothing else will take
                     // it down, and the queue must not move on while the host is off screen.
-                    viewerBox?.controller?.presentingViewController?.dismiss(animated: true)
+                    // `viewerController` is this controller or nil — `stop()` only lets go of it
+                    // once the dismissal took, and `sync` presents nothing while one is up.
+                    self.viewerController?.presentingViewController?.dismiss(animated: true)
                     return
                 }
                 // The viewer never takes itself off screen; the view model's queue waits for the
@@ -176,7 +178,6 @@ public final class StoryPresenter {
                 self.viewModel.storyClosed()
             }
         )
-        viewerBox.controller = controller
         controller.modalPresentationStyle = .overFullScreen
         viewerController = controller
         // Present from whatever is frontmost, as `BannerPresenter` does, so a story is not lost
@@ -193,10 +194,6 @@ public final class StoryPresenter {
                 self.sync(story)
             }
         }
-    }
-
-    private final class ViewerBox {
-        weak var controller: UIViewController?
     }
 
     private func dismissViewer() {
