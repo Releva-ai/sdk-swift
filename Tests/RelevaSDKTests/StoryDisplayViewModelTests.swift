@@ -5,11 +5,6 @@ import XCTest
 /// report that it has disappeared, and is counted exactly when it is handed to the cover.
 @MainActor
 final class StoryDisplayViewModelTests: XCTestCase {
-    private final class StoryTrackerSpy: StoryTracker {
-        var impressions: [String] = []
-        func storyImpression(_ story: StoryResponse) { impressions.append(story.token) }
-    }
-
     private func story(_ token: String) -> StoryResponse {
         StoryResponse(
             token: token,

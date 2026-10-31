@@ -134,27 +134,6 @@ final class NotificationDelegateForwardingTests: XCTestCase {
         }
     }
 
-    private func makeNotification(userInfo: [AnyHashable: Any], category: String = "") -> UNNotification {
-        let content = UNMutableNotificationContent()
-        content.userInfo = userInfo
-        content.categoryIdentifier = category
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        let type: NSObject.Type = UNNotification.self
-        // No public initializer; the framework's own decoder path sets these two keys.
-        guard let notification = type.init() as? UNNotification else { fatalError("UNNotification fixture") }
-        notification.setValue(request, forKey: "request")
-        notification.setValue(Date(), forKey: "date")
-        return notification
-    }
-
-    private func makeResponse(_ notification: UNNotification) -> UNNotificationResponse {
-        let type: NSObject.Type = UNNotificationResponse.self
-        guard let response = type.init() as? UNNotificationResponse else { fatalError("UNNotificationResponse fixture") }
-        response.setValue(notification, forKey: "notification")
-        response.setValue(UNNotificationDefaultActionIdentifier, forKey: "actionIdentifier")
-        return response
-    }
-
     private let hostPayload: [AnyHashable: Any] = ["aps": ["alert": "SPARK"], "carId": "42"]
     private let relevaPayload: [AnyHashable: Any] = ["aps": ["alert": "Hi"], "click_action": "RELEVA_OPEN_SCREEN"]
 

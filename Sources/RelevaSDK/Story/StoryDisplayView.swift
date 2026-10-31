@@ -96,6 +96,13 @@ class StoryDisplayViewModel: ObservableObject {
             }
     }
 
+    /// Stop taking in stories. For `StoryPresenter`, whose host can go off screen; the modifier
+    /// lives as long as the view it is on and never calls this.
+    func stop() {
+        cancellable?.cancel()
+        cancellable = nil
+    }
+
     /// The viewer asked to be taken off screen (close, or end behaviour "dismiss").
     func storyClosed() {
         activeStory = nil

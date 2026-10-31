@@ -18,9 +18,10 @@ Native iOS SDK for integrating Releva's AI-powered e-commerce personalization pl
 ### Push Notifications
 - **Firebase Integration** - Complete FCM push notification system
 - **Rich Notifications** - Images, action buttons, and deep linking support
-- **Navigation** - Automatic screen and URL navigation from notification taps
+- **Navigation** - Automatic screen and URL navigation from notification taps, as posts or as a typed callback
 - **Engagement Analytics** - Delivered, opened, clicked tracking
 - **Notification Service Extension** - Background processing for rich media
+- **Your delegate, your prompt** - keep your own notification delegate, hand taps to the SDK, ask for permission yourself
 
 ### In-App Banners
 - **Multiple Display Types** - Popup modals, bar overlays (top/bottom), flyout side panels, and static inline banners
@@ -713,6 +714,85 @@ func userNotificationCenter(_ center: UNUserNotificationCenter,
 You only need to call `trackEngagement` yourself if you do not call
 `enablePushEngagementTracking()` at all.
 
+#### Asking for permission yourself
+
+By default `enablePushEngagementTracking()` asks for notification permission when the status is
+still undetermined, with `[.alert, .badge, .sound]`. Set
+`requestsNotificationAuthorization: false` to ask yourself instead — with your own options, or at
+your own moment — and the SDK never prompts. Everything else about enabling tracking is
+unchanged: it still takes the delegate slot and registers its categories.
+
+This is the recommended launch order, and the only one that cannot lose a tap that launched the
+app: install your delegate and enable tracking **synchronously** in
+`application(_:didFinishLaunchingWithOptions:)`, then ask for permission whenever you like.
+
+```swift
+let client = RelevaClient(
+    realm: "your-realm",
+    accessToken: "your-token",
+    config: RelevaConfig(requestsNotificationAuthorization: false)
+)
+
+func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+) -> Bool {
+    UNUserNotificationCenter.current().delegate = self
+    client.enablePushEngagementTracking()
+    return true
+}
+
+// Later — from your onboarding screen, say — with whatever options you need.
+func askForNotifications() {
+    Task {
+        let granted = await client.requestPushAuthorization(
+            options: [.alert, .badge, .sound, .providesAppNotificationSettings]
+        )
+        print("notifications granted: \(granted)")
+    }
+}
+```
+
+`requestPushAuthorization(options:)` registers for remote notifications when permission is
+granted, and works whether or not `enablePushEngagementTracking()` has been called.
+
+#### Handing a tap to the SDK yourself
+
+iOS delivers a tap that launched a terminated app to whichever notification-centre delegate is
+installed by the time `application(_:didFinishLaunchingWithOptions:)` returns. If your app enables
+the SDK later than that — inside a permission-request completion, or after an async token
+fetch — the SDK is not that delegate yet and never sees the tap, so it is neither tracked nor
+navigated.
+
+`handleNotificationResponse(_:)` is the way in. Call it from your own `didReceive`:
+
+```swift
+func userNotificationCenter(_ center: UNUserNotificationCenter,
+                          didReceive response: UNNotificationResponse,
+                          withCompletionHandler completionHandler: @escaping () -> Void) {
+    if !client.handleNotificationResponse(response) {
+        // Not a Releva notification: route your own push.
+        openCar(from: response.notification.request.content.userInfo)
+    }
+
+    completionHandler()
+}
+```
+
+It runs the same handling the SDK's own delegate does — engagement tracking, navigation routing,
+`onNotificationTapped` — and returns whether the notification was Releva's. Two things make it
+safe to call from anywhere:
+
+- **It can be called before `enablePushEngagementTracking()`.** The tap is kept and processed as
+  soon as tracking is enabled, so a cold-launch tap is not lost.
+- **A tap is tracked and routed once.** The SDK forwards Releva taps to your delegate too, so your
+  `didReceive` may well be looking at a tap the SDK has already handled. Handing it back is a
+  no-op.
+
+You do not need this if you call `enablePushEngagementTracking()` synchronously in
+`application(_:didFinishLaunchingWithOptions:)` — the SDK is the delegate in time, and your own
+delegate is still forwarded every tap.
+
 ### 3. Add Notification Service Extension for Rich Notifications
 
 **For rich push notifications with images and custom buttons**, add a Notification Service Extension:
@@ -811,7 +891,53 @@ NotificationCenter.default.addObserver(
 }
 ```
 
-> **Note:** External URLs (`https://...`) are opened directly in Safari by the SDK. Only internal deep links (custom schemes) post a `RelevaNavigateToURL` notification.
+> **Note:** External URLs (`https://...`) are opened directly in Safari by the SDK. Only internal deep links (custom schemes) post a `RelevaNavigateToURL` notification. Set `urlHandler` (below) to take the https ones yourself.
+
+#### One typed callback instead of three observers
+
+`onNavigation` reports every push navigation on the main thread, as a `RelevaNavigation` value:
+
+```swift
+client.onNavigation = { navigation in
+    switch navigation {
+    case .screen(let name, let parameters):
+        router.open(screen: name, parameters: parameters)
+    case .url(let url):
+        router.open(url: url)
+    case .inbox(let messageId):
+        router.openInbox(messageId: messageId)
+    }
+}
+```
+
+The `RelevaNavigateToScreen` / `RelevaNavigateToURL` / `RelevaNavigateToInbox` posts above and
+`consumePendingNavigation()` are unchanged — the callback is in addition to them, so an app
+already observing them keeps working. Assigning a handler **replays the pending navigation once
+and consumes it**, so a handler installed after a cold-launch tap still receives it; assign it
+once, as you would a router.
+
+An http/https URL the SDK opens externally is not reported here, because it is not posted either,
+and neither is one `urlHandler` claims.
+
+#### Keeping universal links in the app
+
+A push whose target is a URL is handed to `urlHandler` first, for **every** scheme, https
+included. Return `true` to say your app handled it, and the SDK does nothing more with it:
+
+```swift
+client.urlHandler = { url in
+    guard url.host == "shop.example.com" else { return false }
+    router.open(url: url)   // your universal-link route
+    return true
+}
+```
+
+This is the only way to keep a universal link inside the app. iOS does not route an app's own
+universal link back into that app when the app itself opens it, so the https links the SDK opens
+end up in Safari.
+
+Return `false`, or set no handler, and the behaviour is exactly as it was: a custom scheme posts
+`RelevaNavigateToURL`, an http/https URL is opened externally.
 
 ### Navigation Types Supported
 
@@ -1298,7 +1424,7 @@ The inbox also refreshes automatically when the app returns to the foreground (v
 
 ## UIKit Integration
 
-Every visual feature works from a plain `UIViewController` — no SwiftUI view hierarchy required. Banners and NPS surveys have presenters that mirror the SwiftUI modifiers; stories and inbox messages are SwiftUI views you host yourself in a `UIHostingController`.
+Every visual feature works from a plain `UIViewController` — no SwiftUI view hierarchy required. Banners, stories and NPS surveys have presenters that mirror the SwiftUI modifiers; inbox messages are SwiftUI views you host yourself in a `UIHostingController`.
 
 Each snippet below is complete and compiles as written, given the imports shown.
 
@@ -1383,54 +1509,32 @@ The survey dismisses itself when the user skips it, and two seconds after the th
 
 ### Stories in UIKit
 
-There is no story presenter: a story is a full-screen takeover, so hosting `StoryViewerView` yourself is both shorter and gives you control over how it is presented.
-
-`StoryViewerView` tracks slide views, slide clicks, completion and close on its own. The one event it does not track is the story impression — the SwiftUI `.storyDisplay(client:onLinkTap:)` modifier does that before opening the viewer, so a UIKit host has to call `storyImpression(_:)` itself:
+`StoryPresenter` is the UIKit counterpart of `.storyDisplay(client:onLinkTap:)`. It presents the same `StoryViewerView` full screen and queues stories through the same code, so impressions, slide views, slide clicks, completion and close are reported identically on both paths:
 
 ```swift
-import Combine
 import RelevaSDK
-import SwiftUI
 import UIKit
 
 final class FeedViewController: UIViewController {
-    private var subscriptions = Set<AnyCancellable>()
+    private var stories: StoryPresenter?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        guard let client = RelevaClient.shared else { return }
+
+        stories = StoryPresenter(host: self, client: client) { [weak self] url in
+            self?.handleDeepLink(url)
+        }
+    }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-
-        StoryDisplayController.shared.storyPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] story in
-                self?.presentStory(story)
-            }
-            .store(in: &subscriptions)
+        stories?.start()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        // Drops every subscription in the set. Without this, a popped controller keeps
-        // receiving stories, and re-subscribes on its way back in.
-        subscriptions.removeAll()
-    }
-
-    private func presentStory(_ story: StoryResponse) {
-        guard let client = RelevaClient.shared else { return }
-
-        client.storyImpression(story)
-
-        let viewer = UIHostingController(rootView: StoryViewerView(
-            story: story,
-            client: client,
-            onLinkTap: { [weak self] url in
-                self?.handleDeepLink(url)
-            },
-            onClose: { [weak self] in
-                self?.dismiss(animated: true)
-            }
-        ))
-        viewer.modalPresentationStyle = .fullScreen
-        present(viewer, animated: true)
+        stories?.stop()
     }
 
     private func handleDeepLink(_ url: String) {
@@ -1439,9 +1543,11 @@ final class FeedViewController: UIViewController {
 }
 ```
 
-`onClose` fires when the user taps the close button, and when the story ends with the dashboard's end behaviour set to `dismiss`. The viewer never takes itself off screen — dismissing is up to you.
+As with `BannerPresenter`, `start()` and `stop()` are the UIKit equivalents of SwiftUI's `onAppear` and `onDisappear` — call them from the appearance callbacks, or the presenter keeps showing stories over a screen the user has already left. Stories play one at a time: the next one waits for the viewer on screen to go, and is counted when it is actually shown.
 
-`NpsDisplayController.shared.npsPublisher` and `BannerDisplayController.shared.bannerPublisher` follow the same shape if you want to bypass the presenters and drive the display yourself. Note that the presenters already subscribe on your behalf, so you would then be responsible for reporting impressions, clicks and dismissals through `RelevaClient`.
+The viewer is presented `.overFullScreen` from the frontmost view controller, so a story is not lost behind a modal your app already had up.
+
+If you would rather drive the presentation yourself, `StoryDisplayController.shared.storyPublisher` still emits every story — as do `NpsDisplayController.shared.npsPublisher` and `BannerDisplayController.shared.bannerPublisher`. Host `StoryViewerView` in a `UIHostingController` of your own, dismiss it from its `onClose`, and report the impression with `client.storyImpression(story)`: the viewer tracks slide views, slide clicks, completion and close itself, but the impression is the presenter's (and the modifier's) to report.
 
 ### Inbox Messages in UIKit
 
@@ -1555,7 +1661,10 @@ let config = RelevaConfig(
     requestTimeoutInterval: 30.0,
     maxRetryAttempts: 3,
     engagementBatchSize: 10,
-    engagementBatchInterval: 30.0
+    engagementBatchInterval: 30.0,
+    // Leave this at its default to let `enablePushEngagementTracking()` ask for notification
+    // permission; set it to false to ask yourself with `requestPushAuthorization(options:)`.
+    requestsNotificationAuthorization: true
 )
 ```
 
@@ -1595,6 +1704,11 @@ completion handler.
 | `refreshPushToken()` | sync | Re-fetch via `pushTokenProvider` and re-upload if stale |
 | `pushTokenProvider` | property | Closure the SDK calls on launch/foreground to get the current token |
 | `enablePushEngagementTracking()` | sync | Enable push engagement tracking |
+| `handleNotificationResponse(_:)` | sync | Hand a tap to the SDK; returns whether it is a Releva notification |
+| `requestPushAuthorization(options:)` | `async -> Bool` | Ask for notification permission with your own options |
+| `consumePendingNavigation()` | sync | The navigation from the last tap the app has not handled yet |
+| `onNavigation` | property | Called with every push navigation, typed, on the main thread |
+| `urlHandler` | property | First refusal on a push URL; `true` means your app handled it |
 | `trackEngagement(userInfo:type:)` | sync | Track push engagement |
 | `isRelevaMessage(userInfo:)` | sync | Check if notification is from Releva |
 | `bannerImpression(_:)` | sync | Track banner impression |

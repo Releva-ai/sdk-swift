@@ -34,6 +34,12 @@ public struct RelevaConfig {
     /// Batch interval for engagement events in seconds
     public let engagementBatchInterval: TimeInterval
 
+    /// Let `enablePushEngagementTracking()` ask for notification authorization. Set it to `false`
+    /// to ask yourself — with your own options, or at your own moment — through
+    /// `RelevaClient.requestPushAuthorization(options:)`. Everything else about enabling tracking
+    /// is unchanged: the SDK still takes the delegate slot and registers its categories.
+    public let requestsNotificationAuthorization: Bool
+
     // MARK: - Initializers
 
     /// Initialize with custom configuration
@@ -47,7 +53,8 @@ public struct RelevaConfig {
         requestTimeoutInterval: TimeInterval = 30.0,
         maxRetryAttempts: Int = 3,
         engagementBatchSize: Int = 10,
-        engagementBatchInterval: TimeInterval = 30.0
+        engagementBatchInterval: TimeInterval = 30.0,
+        requestsNotificationAuthorization: Bool = true
     ) {
         self.enableTracking = enableTracking
         self.enableScreenTracking = enableScreenTracking
@@ -59,6 +66,7 @@ public struct RelevaConfig {
         self.maxRetryAttempts = maxRetryAttempts
         self.engagementBatchSize = engagementBatchSize
         self.engagementBatchInterval = engagementBatchInterval
+        self.requestsNotificationAuthorization = requestsNotificationAuthorization
     }
 
     // MARK: - Preset Configurations
