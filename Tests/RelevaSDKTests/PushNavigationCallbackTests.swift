@@ -143,4 +143,19 @@ final class PushNavigationCallbackTests: XCTestCase {
         client.onNavigation = { received.append($0) }
         XCTAssertEqual(received.count, 1, "replayed once")
     }
+
+    /// A router that reassigns the callback (on every `onAppear`, say) must not be sent back to
+    /// a destination it was already given.
+    func testReassigningTheCallbackDoesNotReplayANavigationItAlreadyReceived() {
+        let client = makeClient()
+        var first: [RelevaNavigation] = []
+        var second: [RelevaNavigation] = []
+        client.onNavigation = { first.append($0) }
+
+        client.handleNotificationResponse(makeRelevaTap(["target": "screen", "navigate_to_screen": "cart"]))
+        client.onNavigation = { second.append($0) }
+
+        XCTAssertEqual(first.count, 1)
+        XCTAssertTrue(second.isEmpty, "the previous handler already received it")
+    }
 }

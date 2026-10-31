@@ -8,40 +8,6 @@ import XCTest
 /// `RelevaClient.requestPushAuthorization(options:)` instead.
 @MainActor
 final class NotificationAuthorizationTests: XCTestCase {
-    /// Stands in for `UNUserNotificationCenter.current()`, which needs a host app this bundle has
-    /// none of.
-    private final class CenterSpy: UserNotificationCentering {
-        weak var delegate: UNUserNotificationCenterDelegate?
-        var granted = false
-        var settingsRequests = 0
-        var authorizationRequests: [UNAuthorizationOptions] = []
-        private(set) var categories: Set<UNNotificationCategory> = []
-
-        /// Never answered: `UNNotificationSettings` has no initializer a test can reach. What the
-        /// service does with the answer is the authorization request recorded below, so the count
-        /// is what says whether the SDK went looking for permission at all.
-        func getNotificationSettings(completionHandler: @escaping (UNNotificationSettings) -> Void) {
-            settingsRequests += 1
-        }
-
-        func getNotificationCategories(completionHandler: @escaping (Set<UNNotificationCategory>) -> Void) {
-            completionHandler(categories)
-        }
-
-        func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {
-            self.categories = categories
-        }
-
-        func add(_ request: UNNotificationRequest, withCompletionHandler completionHandler: ((Error?) -> Void)?) {
-            completionHandler?(nil)
-        }
-
-        func requestAuthorization(options: UNAuthorizationOptions, completionHandler: @escaping (Bool, Error?) -> Void) {
-            authorizationRequests.append(options)
-            completionHandler(granted, nil)
-        }
-    }
-
     func testInitializeGoesLookingForPermissionByDefault() {
         let center = CenterSpy()
         let service = NotificationService(config: RelevaConfig(), center: center)

@@ -1053,19 +1053,16 @@ public class RelevaClient {
     /// are unchanged.
     ///
     /// Assigning a handler replays the pending navigation — the one `consumePendingNavigation()`
-    /// would have returned — once, and consumes it, so a handler installed after a cold-launch
-    /// tap still receives it. Assign it once, in that case: a second assignment has nothing left
-    /// to replay, but one made between two taps would replay the second tap's navigation again.
+    /// would have returned — and consumes it, so a handler installed after a cold-launch tap still
+    /// receives it. A navigation a handler has already received is not replayed to the next one.
     ///
     /// An http/https URL the SDK opens externally is not reported here, as it is not posted
     /// either, and neither is a URL `urlHandler` claims.
     public var onNavigation: ((RelevaNavigation) -> Void)? {
         didSet {
             notificationService?.onNavigation = onNavigation
-            guard let handler = onNavigation,
-                  let pending = consumePendingNavigation(),
-                  let navigation = RelevaNavigation(pending) else { return }
-            handler(navigation)
+            guard let handler = onNavigation else { return }
+            notificationService?.replayPendingNavigation(to: handler)
         }
     }
 
@@ -1093,7 +1090,8 @@ public class RelevaClient {
     /// tracked and routed once, by whichever path sees it first.
     ///
     /// - Returns: Whether this is a Releva notification. A tap that is not one is still run
-    ///   through the same handling, which has nothing to do for it, and is not kept.
+    ///   through the same handling once tracking is enabled — `onNotificationTapped` still fires
+    ///   for it — but is not kept while it is not.
     @discardableResult
     public func handleNotificationResponse(_ response: UNNotificationResponse) -> Bool {
         let content = response.notification.request.content

@@ -45,8 +45,8 @@ compiles unchanged and behaves exactly as it did on 5.2.1.
   `.url(_:)`, `.inbox(messageId:)`): every push navigation, typed, on the main thread, in
   addition to the `RelevaNavigateToScreen` / `RelevaNavigateToURL` / `RelevaNavigateToInbox`
   posts and `consumePendingNavigation()`, which are all unchanged. Assigning a handler replays
-  the pending navigation once and consumes it, so a handler installed after a cold-launch tap
-  still receives it. An http/https URL the SDK opens externally is not reported, as it is not
+  the pending navigation and consumes it, so a handler installed after a cold-launch tap still
+  receives it; a navigation a handler already received is not replayed to the next one. An http/https URL the SDK opens externally is not reported, as it is not
   posted either, and neither is one `urlHandler` claims.
 
 - **`StoryPresenter`**, the UIKit counterpart of the `.storyDisplay(client:onLinkTap:)` modifier,

@@ -20,26 +20,35 @@ final class NotificationResponseHandlingTests: XCTestCase {
     }
 
     override func tearDown() {
+        clients.forEach { $0.shutdown() }
+        clients = []
         RelevaClient.shared = savedShared
         super.tearDown()
     }
 
-    /// A client with nothing enabled on it yet and no server behind it.
+    private var clients: [RelevaClient] = []
+
+    /// A client with nothing enabled on it yet and no server behind it. Shut down in `tearDown`
+    /// so the engagement service `enablePushEngagementTracking()` starts stops its batch timer.
     private func makeClient() -> RelevaClient {
-        RelevaClient(
+        let client = RelevaClient(
             realm: "test",
             accessToken: "test-token",
             config: RelevaConfig(enableTracking: false, enablePushNotifications: true, customEndpoint: "http://127.0.0.1:9")
         )
+        clients.append(client)
+        return client
     }
 
-    /// Installs the notification service `enablePushEngagementTracking()` would. That method
-    /// itself cannot run here: it resolves `UNUserNotificationCenter.current()`, which needs a
-    /// host app this bundle has none of.
+    /// Runs the real `enablePushEngagementTracking()`. The notification service is installed
+    /// first, over a spy centre, because the method builds one only when it has none and the real
+    /// one resolves `UNUserNotificationCenter.current()`, which needs a host app this bundle has
+    /// none of.
     @discardableResult
     private func enableTracking(on client: RelevaClient) -> NotificationService {
-        let service = NotificationService(config: client.config)
+        let service = NotificationService(config: client.config, center: CenterSpy())
         client.notificationService = service
+        client.enablePushEngagementTracking()
         return service
     }
 
@@ -51,7 +60,7 @@ final class NotificationResponseHandlingTests: XCTestCase {
 
     // MARK: - Tests
 
-    func testATapIsTrackedAndRoutedAndReportedAsReleva() {
+    func testATapIsRoutedAndReportedAsReleva() {
         let client = makeClient()
         let service = enableTracking(on: client)
         let recorder = NavigationPostRecorder()
@@ -84,11 +93,46 @@ final class NotificationResponseHandlingTests: XCTestCase {
         XCTAssertTrue(recorder.names.isEmpty, "nothing is routed while there is nothing to track it with")
 
         enableTracking(on: client)
-        client.processBufferedNotificationResponses()
         XCTAssertEqual(recorder.names, ["RelevaNavigateToScreen"])
 
         client.handleNotificationResponse(tap)
         XCTAssertEqual(recorder.names, ["RelevaNavigateToScreen"], "the buffered tap was already handled")
+    }
+
+    /// What an app that sets both before enabling tracking relies on: the service the method
+    /// builds or reuses is handed them, so a universal link stays in the app and a handler
+    /// installed early sees the buffered tap's destination.
+    func testHandlersSetBeforeTrackingIsEnabledAreHonoured() {
+        let client = makeClient()
+        var claimed: [URL] = []
+        var received: [RelevaNavigation] = []
+        client.urlHandler = { url in
+            claimed.append(url)
+            return true
+        }
+        client.onNavigation = { received.append($0) }
+
+        client.handleNotificationResponse(makeRelevaTap(["target": "url", "navigate_to_url": "https://shop.example.com/p/1"]))
+        enableTracking(on: client)
+        client.handleNotificationResponse(makeRelevaTap(screenPush))
+
+        XCTAssertEqual(claimed.map(\.absoluteString), ["https://shop.example.com/p/1"])
+        XCTAssertEqual(received.count, 1, "the claimed URL is not reported; the screen tap is")
+    }
+
+    /// An app that never calls `handleNotificationResponse` sees every tap through the SDK's
+    /// delegate, including two on one request identifier — as on 5.2.1.
+    func testTheDelegateAloneHandlesEveryTap() {
+        let client = makeClient()
+        let service = enableTracking(on: client)
+        var taps = 0
+        service.onNotificationTapped = { _ in taps += 1 }
+        let tap = makeRelevaTap(screenPush)
+
+        service.userNotificationCenter(center, didReceive: tap) {}
+        service.userNotificationCenter(center, didReceive: tap) {}
+
+        XCTAssertEqual(taps, 2)
     }
 
     /// The SDK forwards a Releva tap to the host's delegate, and a host that routes every tap

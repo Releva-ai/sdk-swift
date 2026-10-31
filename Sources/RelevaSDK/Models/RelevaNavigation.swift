@@ -40,6 +40,6 @@ extension RelevaNavigation {
 }
 
 // `[String: Any]` parameters aren't provably `Sendable`, exactly as in
-// `NotificationService.PendingNavigation`, which this is built from: every navigation is
-// constructed and delivered on the main thread.
+// `NotificationService.PendingNavigation`, which this is built from: the SDK only fills the
+// payload with `JSONSerialization` output, which is immutable Foundation values.
 extension RelevaNavigation: @unchecked Sendable {}

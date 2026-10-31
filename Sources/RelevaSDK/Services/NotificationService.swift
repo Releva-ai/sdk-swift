@@ -82,11 +82,11 @@ public class NotificationService: NSObject {
     var onNavigation: ((RelevaNavigation) -> Void)?
 
     /// Taps already handled, keyed by notification request and action identifier, with when they
-    /// were handled, oldest first. The SDK's delegate callback and
-    /// `RelevaClient.handleNotificationResponse(_:)` are two ways into the same handling, and a
-    /// host that keeps its own delegate may well use both for one tap; this is what makes the
-    /// second one a no-op. Only touched on the main thread, where taps arrive.
-    private var handledTaps: [(key: String, at: Date)] = []
+    /// were handled and whether the host's own call handled them, oldest first. The SDK's
+    /// delegate callback and `RelevaClient.handleNotificationResponse(_:)` are two ways into the
+    /// same handling, and a host that keeps its own delegate may well use both for one tap; this
+    /// is what makes the second one a no-op. Only touched on the main thread, where taps arrive.
+    private var handledTaps: [(key: String, at: Date, viaHost: Bool)] = []
 
     /// How long a handled tap is remembered — long enough to cover every way one tap reaches the
     /// SDK twice (a host forwarding it back, a cold-launch tap replayed when tracking is enabled),
@@ -99,11 +99,17 @@ public class NotificationService: NSObject {
     private static let handledTapsLimit = 16
 
     /// Records `key` and returns whether this tap is the first of its name in the window.
-    private func claimTap(_ key: String) -> Bool {
+    ///
+    /// The delegate callback is blocked only by a key the host's own call claimed, so an app that
+    /// never calls `handleNotificationResponse` sees every tap, as it did before that existed —
+    /// including two taps on one request identifier inside the window. A host call is blocked by
+    /// any key.
+    private func claimTap(_ key: String, viaHost: Bool) -> Bool {
         let now = Date()
         handledTaps.removeAll { now.timeIntervalSince($0.at) >= handledTapWindow }
-        guard !handledTaps.contains(where: { $0.key == key }) else { return false }
-        handledTaps.append((key: key, at: now))
+        guard !handledTaps.contains(where: { $0.key == key && (viaHost || $0.viaHost) }) else { return false }
+        handledTaps.removeAll { $0.key == key }
+        handledTaps.append((key: key, at: now, viaHost: viaHost))
         if handledTaps.count > Self.handledTapsLimit {
             handledTaps.removeFirst()
         }
@@ -125,6 +131,18 @@ public class NotificationService: NSObject {
     /// The most recent navigation request, kept until consumed. Overwritten by a newer tap.
     public private(set) var pendingNavigation: PendingNavigation?
 
+    /// Whether `pendingNavigation` has already been given to `onNavigation`, so that assigning
+    /// the callback again does not replay it.
+    private var pendingNavigationDelivered = false
+
+    /// For a newly assigned `onNavigation`: hands over the pending navigation, and consumes it,
+    /// unless the previous callback already received it.
+    func replayPendingNavigation(to handler: (RelevaNavigation) -> Void) {
+        guard !pendingNavigationDelivered, let pending = consumePendingNavigation(),
+              let navigation = RelevaNavigation(pending) else { return }
+        handler(navigation)
+    }
+
     /// Returns the most recent navigation request and clears it.
     @discardableResult
     public func consumePendingNavigation() -> PendingNavigation? {
@@ -139,8 +157,10 @@ public class NotificationService: NSObject {
     private func postNavigation(_ name: Notification.Name, userInfo: [String: Any]) {
         let pending = PendingNavigation(name: name, userInfo: userInfo, postedAt: Date())
         pendingNavigation = pending
+        pendingNavigationDelivered = false
         NotificationCenter.default.post(name: name, object: nil, userInfo: userInfo)
         if let onNavigation = onNavigation, let navigation = RelevaNavigation(pending) {
+            pendingNavigationDelivered = true
             onNavigation(navigation)
         }
     }
@@ -530,7 +550,7 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             relevaLog("\nRelevaSDK: 🏷️  Is Releva notification: \(isReleva)")
         }
 
-        handleTap(response)
+        handleTap(response, viaHost: false)
 
         if config.enableDebugLogging {
             relevaLog("=== RELEVA SDK: NOTIFICATION TAP COMPLETE ===")
@@ -561,13 +581,14 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     /// Two ways in reach it: the delegate callback above, and
     /// `RelevaClient.handleNotificationResponse(_:)` for a host that keeps its own delegate or
     /// starts the SDK after the tap was delivered. Whichever sees the tap first does the work;
-    /// the other finds the key already claimed and returns.
-    func handleTap(_ response: UNNotificationResponse) {
+    /// the other finds the key already claimed and returns — except that the delegate callback
+    /// yields only to a tap the host handed over (see `claimTap`).
+    func handleTap(_ response: UNNotificationResponse, viaHost: Bool = true) {
         let userInfo = response.notification.request.content.userInfo
         let actionIdentifier = response.actionIdentifier
         let enableDebugLogging = config.enableDebugLogging
 
-        guard claimTap(response.notification.request.identifier + "|" + actionIdentifier) else {
+        guard claimTap(response.notification.request.identifier + "|" + actionIdentifier, viaHost: viaHost) else {
             if enableDebugLogging {
                 relevaLog("RelevaSDK: Tap already handled, ignoring this one")
             }

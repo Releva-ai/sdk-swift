@@ -93,7 +93,8 @@ public final class StoryPresenter {
     }
 
     /// Stop listening and take down a story that is on screen. The close is not tracked, matching
-    /// the SwiftUI modifier: the story was not closed, the screen went away.
+    /// the SwiftUI modifier: the story was not closed, the screen went away. The story stays the
+    /// active one, so the next `start()` shows it again from its first slide.
     ///
     /// This does not run on `deinit`, for the reason `BannerPresenter.stop()` documents: bracket
     /// `start()` / `stop()` with the host's appearance callbacks, or a viewer UIKit declined to
@@ -117,11 +118,14 @@ public final class StoryPresenter {
 
     // MARK: - Presentation
 
+    /// How long to wait before presenting again after UIKit declined a `present`.
+    static let presentRetryDelay: TimeInterval = 0.3
+
     /// Puts the story on screen, or takes the last one down, so that what is presented matches
-    /// the view model. Like `BannerPresenter.syncOverlay`, it keeps no state beyond
-    /// `viewerController` and reads every decision back from UIKit, so a `present` UIKit declined
-    /// — it only logs, it does not throw — is retried when the next story arrives rather than
-    /// treated as already on screen.
+    /// the view model. A `present` UIKit declined — it only logs, it does not throw — is read
+    /// back from `presentingViewController` and retried after `presentRetryDelay`: the view model
+    /// already handed the story over and holds it as the active one, so no later story would
+    /// ever reach this method to retry it.
     private func sync(_ story: IdentifiableStory?) {
         guard let story = story else {
             dismissViewer()
@@ -150,10 +154,25 @@ public final class StoryPresenter {
         // Present from whatever is frontmost, as `BannerPresenter` does, so a story is not lost
         // behind a modal the host already had up.
         host.topMostPresentedViewController.present(controller, animated: true)
+
+        if controller.presentingViewController == nil {
+            viewerController = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.presentRetryDelay) { [weak self] in
+                guard let self = self, self.cancellable != nil, self.viewerController == nil,
+                      self.viewModel.activeStory?.id == story.id else { return }
+                self.sync(story)
+            }
+        }
     }
 
     private func dismissViewer() {
-        guard let controller = viewerController else { return }
+        // No viewer at all: what `stop()` leaves when the story it took down was closed while its
+        // dismissal was still animating, so that no completion told the view model the cover is
+        // free. `start()` lands here, and the queue must not stay stuck behind it.
+        guard let controller = viewerController else {
+            viewModel.coverDidDisappear()
+            return
+        }
 
         // Nil when the presentation never took or something else already took the viewer down.
         guard let presenting = controller.presentingViewController else {
@@ -165,6 +184,9 @@ public final class StoryPresenter {
         presenting.dismiss(animated: true) { [weak self] in
             guard let self = self, self.viewerController === controller else { return }
             self.viewerController = nil
+            // A completion that lands after `stop()` must not count the next story while the
+            // host is off screen, as `BannerPresenter`'s matching completion does not.
+            guard self.cancellable != nil else { return }
             // What `onDisappear` tells the view model on the SwiftUI path: the screen is free,
             // play the next story. A dismissal UIKit declines never lands here, which is what
             // `StoryDisplayViewModel.dismissalFallback` covers.

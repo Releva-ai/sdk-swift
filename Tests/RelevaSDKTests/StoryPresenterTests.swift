@@ -90,6 +90,52 @@ final class StoryPresenterTests: XCTestCase {
         )
     }
 
+    /// A story closed just before the host goes off screen — a link tap, which closes the viewer
+    /// and then navigates away — must not count the next queued story while nothing can show it.
+    /// Both ways the queue moves on, the dismiss completion and the view model's fallback, are
+    /// held back by `stop()`; the fallback is the one this test host can wait for.
+    @MainActor
+    func testAStoryClosedBeforeStopDoesNotCountTheNextOneWhileStopped() async {
+        let fixture = makeFixture()
+        defer { takeDown(fixture) }
+
+        fixture.presenter.start()
+        StoryDisplayController.shared.showStory(story("first"))
+        StoryDisplayController.shared.showStory(story("second"))
+        drainMainQueue()
+        waitUntil("the viewer is presented") { fixture.host.presentedViewController != nil }
+
+        fixture.presenter.viewModel.storyClosed()
+        fixture.presenter.stop()
+        try? await Task.sleep(nanoseconds: UInt64((StoryDisplayViewModel.dismissalFallback + 0.5) * 1_000_000_000))
+
+        XCTAssertEqual(fixture.tracker.impressions, ["first"], "the queued story waits for the host to come back")
+    }
+
+    /// UIKit declines a present from a controller that is not in a window, and only logs. The
+    /// view model has already handed the story over, so nothing but the presenter's own retry
+    /// can put it up once the host is on screen.
+    @MainActor
+    func testAPresentUIKitDeclinedIsRetried() {
+        let window = makeVisibleWindow(rootViewController: UIViewController())
+        let host = UIViewController()
+        let tracker = StoryTrackerSpy()
+        let presenter = StoryPresenter(host: host, client: offlineClient(), tracker: tracker) { _ in }
+        defer {
+            presenter.stop()
+            window.isHidden = true
+        }
+
+        presenter.start()
+        StoryDisplayController.shared.showStory(story("first"))
+        drainMainQueue()
+        XCTAssertNil(presenter.viewerController, "a declined present is not treated as on screen")
+
+        window.rootViewController = host
+        waitUntil("the retry presents the viewer") { host.presentedViewController != nil }
+        XCTAssertEqual(tracker.impressions, ["first"], "retrying does not count the story again")
+    }
+
     // MARK: - Fixtures
 
     private func story(_ token: String) -> StoryResponse {

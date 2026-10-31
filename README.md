@@ -913,8 +913,8 @@ client.onNavigation = { navigation in
 The `RelevaNavigateToScreen` / `RelevaNavigateToURL` / `RelevaNavigateToInbox` posts above and
 `consumePendingNavigation()` are unchanged — the callback is in addition to them, so an app
 already observing them keeps working. Assigning a handler **replays the pending navigation once
-and consumes it**, so a handler installed after a cold-launch tap still receives it; assign it
-once, as you would a router.
+and consumes it**, so a handler installed after a cold-launch tap still receives it. A navigation
+a handler has already received is not replayed when you assign another.
 
 An http/https URL the SDK opens externally is not reported here, because it is not posted either,
 and neither is one `urlHandler` claims.

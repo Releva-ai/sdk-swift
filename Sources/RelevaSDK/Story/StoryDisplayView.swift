@@ -101,6 +101,9 @@ class StoryDisplayViewModel: ObservableObject {
     func stop() {
         cancellable?.cancel()
         cancellable = nil
+        // A fallback that fires after this would count the next queued story while off screen.
+        fallbackTask?.cancel()
+        fallbackTask = nil
     }
 
     /// The viewer asked to be taken off screen (close, or end behaviour "dismiss").
