@@ -121,15 +121,30 @@ public final class StoryPresenter {
     /// How long to wait before presenting again after UIKit declined a `present`.
     static let presentRetryDelay: TimeInterval = 0.3
 
+    /// How many times in a row a `present` for one story may be declined before giving up on it.
+    /// A host that calls `start()` from a controller that never reaches a window, and never calls
+    /// `stop()`, would otherwise retry for as long as the presenter is alive.
+    static let presentRetryLimit = 10
+
+    /// The story the last run of declined-`present` retries is counting against, and how many of
+    /// them have run. Reset whenever a different story becomes active.
+    private var retryingStoryID: UUID?
+    private var presentRetryCount = 0
+
     /// Puts the story on screen, or takes the last one down, so that what is presented matches
     /// the view model. A `present` UIKit declined — it only logs, it does not throw — is read
-    /// back from `presentingViewController` and retried after `presentRetryDelay`: the view model
-    /// already handed the story over and holds it as the active one, so no later story would
-    /// ever reach this method to retry it.
+    /// back from `presentingViewController` and retried after `presentRetryDelay`, up to
+    /// `presentRetryLimit` times: the view model already handed the story over and holds it as
+    /// the active one, so no later story would ever reach this method to retry it.
     private func sync(_ story: IdentifiableStory?) {
         guard let story = story else {
             dismissViewer()
             return
+        }
+
+        if retryingStoryID != story.id {
+            retryingStoryID = story.id
+            presentRetryCount = 0
         }
 
         if let existing = viewerController, existing.presentingViewController == nil {
@@ -138,17 +153,25 @@ public final class StoryPresenter {
         }
         guard viewerController == nil, let host = host else { return }
 
+        let viewerBox = ViewerBox()
         let controller = UIHostingController(
             rootView: StoryViewerView(
                 story: story.story,
                 client: client,
                 onLinkTap: onLinkTap
-            ) { [weak self] in
+            ) { [weak self, weak viewerBox] in
+                guard let self = self, self.cancellable != nil else {
+                    // Stopped, with a viewer `stop()` could not dismiss: nothing else will take
+                    // it down, and the queue must not move on while the host is off screen.
+                    viewerBox?.controller?.presentingViewController?.dismiss(animated: true)
+                    return
+                }
                 // The viewer never takes itself off screen; the view model's queue waits for the
                 // dismissal below before it hands over the next story.
-                self?.viewModel.storyClosed()
+                self.viewModel.storyClosed()
             }
         )
+        viewerBox.controller = controller
         controller.modalPresentationStyle = .overFullScreen
         viewerController = controller
         // Present from whatever is frontmost, as `BannerPresenter` does, so a story is not lost
@@ -157,12 +180,18 @@ public final class StoryPresenter {
 
         if controller.presentingViewController == nil {
             viewerController = nil
+            presentRetryCount += 1
+            guard presentRetryCount <= Self.presentRetryLimit else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.presentRetryDelay) { [weak self] in
                 guard let self = self, self.cancellable != nil, self.viewerController == nil,
                       self.viewModel.activeStory?.id == story.id else { return }
                 self.sync(story)
             }
         }
+    }
+
+    private final class ViewerBox {
+        weak var controller: UIViewController?
     }
 
     private func dismissViewer() {

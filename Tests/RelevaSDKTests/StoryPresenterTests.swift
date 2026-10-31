@@ -95,7 +95,7 @@ final class StoryPresenterTests: XCTestCase {
     /// Both ways the queue moves on, the dismiss completion and the view model's fallback, are
     /// held back by `stop()`; the fallback is the one this test host can wait for.
     @MainActor
-    func testAStoryClosedBeforeStopDoesNotCountTheNextOneWhileStopped() async {
+    func testAStoryClosedBeforeStopDoesNotCountTheNextOneWhileStopped() {
         let fixture = makeFixture()
         defer { takeDown(fixture) }
 
@@ -107,7 +107,11 @@ final class StoryPresenterTests: XCTestCase {
 
         fixture.presenter.viewModel.storyClosed()
         fixture.presenter.stop()
-        try? await Task.sleep(nanoseconds: UInt64((StoryDisplayViewModel.dismissalFallback + 0.5) * 1_000_000_000))
+        let elapsed = expectation(description: "the view model's fallback has had its chance")
+        DispatchQueue.main.asyncAfter(deadline: .now() + StoryDisplayViewModel.dismissalFallback + 0.5) {
+            elapsed.fulfill()
+        }
+        wait(for: [elapsed], timeout: StoryDisplayViewModel.dismissalFallback + 3)
 
         XCTAssertEqual(fixture.tracker.impressions, ["first"], "the queued story waits for the host to come back")
     }

@@ -86,12 +86,20 @@ public class NotificationService: NSObject {
     /// delegate callback and `RelevaClient.handleNotificationResponse(_:)` are two ways into the
     /// same handling, and a host that keeps its own delegate may well use both for one tap; this
     /// is what makes the second one a no-op. Only touched on the main thread, where taps arrive.
-    private var handledTaps: [(key: String, at: Date, viaHost: Bool)] = []
+    private struct HandledTap {
+        let key: String
+        let at: Date
+        let viaHost: Bool
+    }
+
+    private var handledTaps: [HandledTap] = []
 
     /// How long a handled tap is remembered — long enough to cover every way one tap reaches the
     /// SDK twice (a host forwarding it back, a cold-launch tap replayed when tracking is enabled),
     /// and short enough that two taps on a *repeating* local notification, whose deliveries share
-    /// one request identifier, are still two taps. Internal so tests can expire a key without
+    /// one request identifier, are still two taps on the delegate-only path: `claimTap` blocks a
+    /// `viaHost` call on any key in the window, so a second genuine host-routed tap sharing both
+    /// identifiers within the window is dropped too. Internal so tests can expire a key without
     /// waiting, as `forwardingTimeout` is.
     var handledTapWindow: TimeInterval = 60
 
@@ -109,7 +117,7 @@ public class NotificationService: NSObject {
         handledTaps.removeAll { now.timeIntervalSince($0.at) >= handledTapWindow }
         guard !handledTaps.contains(where: { $0.key == key && (viaHost || $0.viaHost) }) else { return false }
         handledTaps.removeAll { $0.key == key }
-        handledTaps.append((key: key, at: now, viaHost: viaHost))
+        handledTaps.append(HandledTap(key: key, at: now, viaHost: viaHost))
         if handledTaps.count > Self.handledTapsLimit {
             handledTaps.removeFirst()
         }
@@ -138,8 +146,9 @@ public class NotificationService: NSObject {
     /// For a newly assigned `onNavigation`: hands over the pending navigation, and consumes it,
     /// unless the previous callback already received it.
     func replayPendingNavigation(to handler: (RelevaNavigation) -> Void) {
-        guard !pendingNavigationDelivered, let pending = consumePendingNavigation(),
+        guard !pendingNavigationDelivered, let pending = pendingNavigation,
               let navigation = RelevaNavigation(pending) else { return }
+        consumePendingNavigation()
         handler(navigation)
     }
 
