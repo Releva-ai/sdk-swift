@@ -13,7 +13,7 @@ public class NotificationService: NSObject {
 
     /// Notification center. Lazy so that a service built in a test bundle, where there is no
     /// host app for `current()` to resolve, does not fail until something really needs it.
-    private lazy var notificationCenter = UNUserNotificationCenter.current()
+    private lazy var notificationCenter: UserNotificationCentering = UNUserNotificationCenter.current()
 
     /// Whatever delegate the host app (or another SDK) had installed before `initialize()`
     /// overwrote it. The SDK forwards every callback it does not own to it (see the
@@ -74,6 +74,56 @@ public class NotificationService: NSObject {
     /// Callback for notification taps
     public var onNotificationTapped: ((UNNotificationResponse) -> Void)?
 
+    /// `RelevaClient.urlHandler`, handed over by the client so that this service keeps knowing
+    /// nothing about it.
+    var urlHandler: ((URL) -> Bool)?
+
+    /// `RelevaClient.onNavigation`, handed over the same way as `urlHandler`.
+    var onNavigation: ((RelevaNavigation) -> Void)?
+
+    /// Taps already handled, keyed by notification request and action identifier, with when they
+    /// were handled and whether the host's own call handled them, oldest first. The SDK's
+    /// delegate callback and `RelevaClient.handleNotificationResponse(_:)` are two ways into the
+    /// same handling, and a host that keeps its own delegate may well use both for one tap; this
+    /// is what makes the second one a no-op. Only touched on the main thread, where taps arrive.
+    private struct HandledTap {
+        let key: String
+        let at: Date
+        let viaHost: Bool
+    }
+
+    private var handledTaps: [HandledTap] = []
+
+    /// How long a handled tap is remembered — long enough to cover every way one tap reaches the
+    /// SDK twice (a host forwarding it back, a cold-launch tap replayed when tracking is enabled),
+    /// and short enough that two taps on a *repeating* local notification, whose deliveries share
+    /// one request identifier, are still two taps on the delegate-only path: `claimTap` blocks a
+    /// `viaHost` call on any key in the window, so a second genuine host-routed tap sharing both
+    /// identifiers within the window is dropped too. Internal so tests can expire a key without
+    /// waiting, as `forwardingTimeout` is.
+    var handledTapWindow: TimeInterval = 60
+
+    /// How many keys are kept, so that nothing accumulates between expiries.
+    private static let handledTapsLimit = 16
+
+    /// Records `key` and returns whether this tap is the first of its name in the window.
+    ///
+    /// The delegate callback is blocked only by a key the host's own call claimed, so an app that
+    /// never calls `handleNotificationResponse` sees every tap, as it did before that existed —
+    /// including two taps on one request identifier inside the window. A host call is blocked by
+    /// any key.
+    private func claimTap(_ key: String, viaHost: Bool) -> Bool {
+        let now = Date()
+        handledTaps.removeAll { now.timeIntervalSince($0.at) >= handledTapWindow }
+        guard !handledTaps.contains(where: { $0.key == key && (viaHost || $0.viaHost) }) else { return false }
+        handledTaps.removeAll { $0.key == key }
+        handledTaps.append(HandledTap(key: key, at: now, viaHost: viaHost))
+        if handledTaps.count > Self.handledTapsLimit {
+            handledTaps.removeFirst()
+        }
+        return true
+    }
+
     /// A navigation request the SDK posted through NotificationCenter that the host app may not
     /// have observed yet. On a cold launch from a notification tap, iOS delivers the tap to the SDK
     /// before most apps have registered their observers, so the post would otherwise be lost.
@@ -89,6 +139,19 @@ public class NotificationService: NSObject {
     /// The most recent navigation request, kept until consumed. Overwritten by a newer tap.
     public private(set) var pendingNavigation: PendingNavigation?
 
+    /// Whether `pendingNavigation` has already been given to `onNavigation`, so that assigning
+    /// the callback again does not replay it.
+    private var pendingNavigationDelivered = false
+
+    /// For a newly assigned `onNavigation`: hands over the pending navigation, and consumes it,
+    /// unless the previous callback already received it.
+    func replayPendingNavigation(to handler: (RelevaNavigation) -> Void) {
+        guard !pendingNavigationDelivered, let pending = pendingNavigation,
+              let navigation = RelevaNavigation(pending) else { return }
+        consumePendingNavigation()
+        handler(navigation)
+    }
+
     /// Returns the most recent navigation request and clears it.
     @discardableResult
     public func consumePendingNavigation() -> PendingNavigation? {
@@ -97,10 +160,18 @@ public class NotificationService: NSObject {
         return pending
     }
 
-    /// Remember the request, then post it for observers that already exist.
+    /// Remember the request, post it for observers that already exist, then hand it to the
+    /// client's navigation callback. Every path here runs on the main thread, as
+    /// `PendingNavigation`'s `Sendable` note below records.
     private func postNavigation(_ name: Notification.Name, userInfo: [String: Any]) {
-        pendingNavigation = PendingNavigation(name: name, userInfo: userInfo, postedAt: Date())
+        let pending = PendingNavigation(name: name, userInfo: userInfo, postedAt: Date())
+        pendingNavigation = pending
+        pendingNavigationDelivered = false
         NotificationCenter.default.post(name: name, object: nil, userInfo: userInfo)
+        if let onNavigation = onNavigation, let navigation = RelevaNavigation(pending) {
+            pendingNavigationDelivered = true
+            onNavigation(navigation)
+        }
     }
 
     // MARK: - Initializers
@@ -110,6 +181,14 @@ public class NotificationService: NSObject {
     public init(config: RelevaConfig) {
         self.config = config
         super.init()
+    }
+
+    /// Builds a service against a stand-in for the notification centre, which
+    /// `UNUserNotificationCenter.current()` cannot resolve in a bundle with no host app.
+    init(config: RelevaConfig, center: UserNotificationCentering) {
+        self.config = config
+        super.init()
+        notificationCenter = center
     }
 
     // MARK: - Public Methods
@@ -139,12 +218,16 @@ public class NotificationService: NSObject {
             }
         }
 
-        // Request authorization if needed
-        notificationCenter.getNotificationSettings { settings in
-            guard settings.authorizationStatus == .notDetermined else { return }
-            Task {
-                await self.requestAuthorization()
+        // Request authorization if needed, unless the app asks for it itself
+        if config.requestsNotificationAuthorization {
+            notificationCenter.getNotificationSettings { settings in
+                guard settings.authorizationStatus == .notDetermined else { return }
+                Task {
+                    await self.requestAuthorization()
+                }
             }
+        } else if config.enableDebugLogging {
+            relevaLog("RelevaSDK: Not requesting notification authorization (the app asks for it)")
         }
 
         // Register default category
@@ -164,18 +247,17 @@ public class NotificationService: NSObject {
     }
 
     /// Request notification authorization
-    /// - Returns: Whether the user granted it. A thrown authorization error counts as denied,
+    /// - Parameter options: What to ask for. The default is what the SDK has always asked for.
+    /// - Returns: Whether the user granted it. An authorization error counts as denied,
     ///   which is how the 4.x completion handler reported it too.
     @discardableResult
-    public func requestAuthorization() async -> Bool {
-        let options: UNAuthorizationOptions = [.alert, .badge, .sound]
-
-        var granted = false
-        do {
-            granted = try await notificationCenter.requestAuthorization(options: options)
-        } catch {
-            if config.enableDebugLogging {
-                relevaLog("RelevaSDK: Authorization error: \(error)")
+    public func requestAuthorization(options: UNAuthorizationOptions = [.alert, .badge, .sound]) async -> Bool {
+        let granted: Bool = await withCheckedContinuation { continuation in
+            self.notificationCenter.requestAuthorization(options: options) { granted, error in
+                if let error = error, self.config.enableDebugLogging {
+                    relevaLog("RelevaSDK: Authorization error: \(error)")
+                }
+                continuation.resume(returning: granted)
             }
         }
 
@@ -477,10 +559,53 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             relevaLog("\nRelevaSDK: 🏷️  Is Releva notification: \(isReleva)")
         }
 
-        // Handle ALL notifications, not just Releva ones (for Firebase compatibility)
-        // Track engagement based on action
+        handleTap(response, viaHost: false)
+
+        if config.enableDebugLogging {
+            relevaLog("=== RELEVA SDK: NOTIFICATION TAP COMPLETE ===")
+        }
+
+        // Every tap is forwarded, Releva's included, so the host keeps one place to route taps
+        // from. Navigation has been posted by now, but tracking is dispatched to the main actor and
+        // may still be pending, so the host must not rely on it having been recorded. The host
+        // then owns the completion handler.
+        let forwarded = forwardToHost(
+            responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:)),
+            key: forwardKey
+        ) { host, release in
+            host.userNotificationCenter?(center, didReceive: response) {
+                release()
+                completionHandler()
+            }
+        }
+        if !forwarded {
+            completionHandler()
+        }
+    }
+
+    /// The SDK's own handling of a tap: engagement tracking, navigation routing and
+    /// `onNotificationTapped`, without any of the delegate bookkeeping around it — no forwarding
+    /// to the host, no completion handler.
+    ///
+    /// Two ways in reach it: the delegate callback above, and
+    /// `RelevaClient.handleNotificationResponse(_:)` for a host that keeps its own delegate or
+    /// starts the SDK after the tap was delivered. Whichever sees the tap first does the work;
+    /// the other finds the key already claimed and returns — except that the delegate callback
+    /// yields only to a tap the host handed over (see `claimTap`).
+    func handleTap(_ response: UNNotificationResponse, viaHost: Bool = true) {
+        let userInfo = response.notification.request.content.userInfo
         let actionIdentifier = response.actionIdentifier
         let enableDebugLogging = config.enableDebugLogging
+
+        guard claimTap(response.notification.request.identifier + "|" + actionIdentifier, viaHost: viaHost) else {
+            if enableDebugLogging {
+                relevaLog("RelevaSDK: Tap already handled, ignoring this one")
+            }
+            return
+        }
+
+        // Handle ALL notifications, not just Releva ones (for Firebase compatibility)
+        // Track engagement based on action
         Task { @MainActor in
             if let client = RelevaClient.shared {
                 if enableDebugLogging {
@@ -503,46 +628,25 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         }
 
         // Handle navigation for all notifications
-        if config.enableDebugLogging {
+        if enableDebugLogging {
             relevaLog("RelevaSDK: Attempting to handle navigation...")
         }
         handleNotificationNavigation(from: userInfo)
-        if config.enableDebugLogging {
+        if enableDebugLogging {
             relevaLog("RelevaSDK: ✓ Navigation handled")
         }
 
         // Call custom handler
         if let handler = onNotificationTapped {
-            if config.enableDebugLogging {
+            if enableDebugLogging {
                 relevaLog("RelevaSDK: Calling custom tap handler...")
             }
             handler(response)
-            if config.enableDebugLogging {
+            if enableDebugLogging {
                 relevaLog("RelevaSDK: ✓ Custom handler called")
             }
-        } else if config.enableDebugLogging {
+        } else if enableDebugLogging {
             relevaLog("RelevaSDK: No custom tap handler set")
-        }
-
-        if config.enableDebugLogging {
-            relevaLog("=== RELEVA SDK: NOTIFICATION TAP COMPLETE ===")
-        }
-
-        // Every tap is forwarded, Releva's included, so the host keeps one place to route taps
-        // from. Navigation has been posted by now, but tracking is dispatched to the main actor and
-        // may still be pending, so the host must not rely on it having been recorded. The host
-        // then owns the completion handler.
-        let forwarded = forwardToHost(
-            responding: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:)),
-            key: forwardKey
-        ) { host, release in
-            host.userNotificationCenter?(center, didReceive: response) {
-                release()
-                completionHandler()
-            }
-        }
-        if !forwarded {
-            completionHandler()
         }
     }
 
@@ -637,6 +741,16 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 guard let url = URL(string: urlString) else {
                     if config.enableDebugLogging {
                         relevaLog("RelevaSDK: ✗ Invalid URL format: \(urlString)")
+                    }
+                    return
+                }
+
+                // The app's own handler gets first refusal on every scheme, which is the only way
+                // a universal link can stay in the app: iOS hands an app's own universal link to
+                // Safari when that app is the one opening it.
+                if let urlHandler = urlHandler, urlHandler(url) {
+                    if config.enableDebugLogging {
+                        relevaLog("RelevaSDK: URL handled by the app")
                     }
                     return
                 }
@@ -820,3 +934,19 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 // `PendingNavigation` happens on the main thread (`postNavigation` runs there, and so does
 // every UIKit/push delivery path that constructs one), so `@unchecked` is safe in practice.
 extension NotificationService.PendingNavigation: @unchecked Sendable {}
+
+// MARK: - Notification centre
+
+/// The notification-centre calls `NotificationService` makes. `UNUserNotificationCenter.current()`
+/// needs a host app, which this package's test bundle has none of, so tests drive the service
+/// through a stand-in instead (`NotificationService.init(config:center:)`).
+protocol UserNotificationCentering: AnyObject {
+    var delegate: UNUserNotificationCenterDelegate? { get set }
+    func getNotificationSettings(completionHandler: @escaping (UNNotificationSettings) -> Void)
+    func getNotificationCategories(completionHandler: @escaping (Set<UNNotificationCategory>) -> Void)
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
+    func add(_ request: UNNotificationRequest, withCompletionHandler completionHandler: ((Error?) -> Void)?)
+    func requestAuthorization(options: UNAuthorizationOptions, completionHandler: @escaping (Bool, Error?) -> Void)
+}
+
+extension UNUserNotificationCenter: UserNotificationCentering {}

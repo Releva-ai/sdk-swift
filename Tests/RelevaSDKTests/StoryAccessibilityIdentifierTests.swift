@@ -22,18 +22,6 @@ final class StoryAccessibilityIdentifierTests: XCTestCase {
 
     // MARK: - Harness
 
-    /// A client that cannot reach a server: the viewer reports slide views as it plays.
-    @MainActor
-    private func offlineClient() -> RelevaClient {
-        let saved = RelevaClient.shared
-        defer { RelevaClient.shared = saved }
-        return RelevaClient(
-            realm: "test",
-            accessToken: "test-token",
-            config: RelevaConfig(enableTracking: false, enablePushNotifications: false, customEndpoint: "http://127.0.0.1:9")
-        )
-    }
-
     private func slideDesign() -> [String: JSONValue] {
         [
             "body": [

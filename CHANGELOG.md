@@ -2,6 +2,63 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.3.0] - 2026-11-01
+
+Everything in this release is additive and opt-in: an app that upgrades without touching its code
+compiles unchanged and behaves exactly as it did on 5.2.1.
+
+### Added
+
+- **`RelevaClient.handleNotificationResponse(_:)`**, the SDK's tap entry point for an app that
+  keeps its own `UNUserNotificationCenterDelegate`, or that calls
+  `enablePushEngagementTracking()` after `application(_:didFinishLaunchingWithOptions:)` has
+  returned. iOS delivers a tap that launched a terminated app to whichever delegate is installed
+  by the time that method returns, so an SDK started later — inside a `requestAuthorization`
+  completion, say — never saw the tap: it was not tracked and its navigation never happened.
+  Hand the response over and the SDK runs the same handling its own delegate does: engagement
+  tracking (`.opened`, or `.clicked` for the action button), navigation routing and
+  `onNotificationTapped`. It returns whether the notification was Releva's, so an app can route
+  its own pushes on `false`. A response handed over before tracking is enabled is kept and
+  processed by `enablePushEngagementTracking()` — a cold-launch tap is no longer lost. A tap is
+  tracked and routed **once**: the SDK forwards Releva taps to the host's delegate, and a host
+  that then hands the same tap back finds it already handled (the key is the notification
+  request's identifier and the action identifier).
+
+- **`RelevaConfig.requestsNotificationAuthorization`** (default `true`) and
+  **`RelevaClient.requestPushAuthorization(options:)`.** With the flag set to `false`,
+  `enablePushEngagementTracking()` no longer asks for notification permission, so an app can ask
+  itself — with options the SDK's own request does not include, such as
+  `.providesAppNotificationSettings`, or at a moment of its choosing — instead of racing the
+  SDK's prompt. Everything else about enabling tracking is unchanged: the SDK still takes the
+  delegate slot and registers its categories. `requestPushAuthorization(options:)` makes the
+  request and registers for remote notifications when it is granted, whether or not tracking is
+  enabled. Left at its default, the SDK asks exactly as it did on 5.2.1.
+
+- **`RelevaClient.urlHandler`**, called first for a push whose target is a URL, for every scheme
+  including http/https. Returning `true` means the app handled it and the SDK does nothing more.
+  This is what keeps a universal link inside the app: iOS routes an app's own universal link to
+  Safari when that app is the one opening it, so the https links the SDK opened itself left the
+  app. With no handler, or one that returns `false`, the 5.2.1 behaviour is unchanged — a custom
+  scheme posts `RelevaNavigateToURL`, an http/https URL is opened externally.
+
+- **`RelevaClient.onNavigation`** and the **`RelevaNavigation`** enum (`.screen(name:parameters:)`,
+  `.url(_:)`, `.inbox(messageId:)`): every push navigation, typed, on the main thread, in
+  addition to the `RelevaNavigateToScreen` / `RelevaNavigateToURL` / `RelevaNavigateToInbox`
+  posts and `consumePendingNavigation()`, which are all unchanged. Assigning a handler replays
+  the pending navigation and consumes it, so a handler installed after a cold-launch tap still
+  receives it; a navigation a handler already received is not replayed to the next one. An http/https URL the SDK opens externally is not reported, as it is not
+  posted either, and neither is one `urlHandler` claims. `.inbox(messageId:)` reads the id the
+  backend sends as a string (`"13"`) as well as a number.
+
+- **`StoryPresenter`**, the UIKit counterpart of the `.storyDisplay(client:onLinkTap:)` modifier,
+  alongside `BannerPresenter` and `NpsPresenter`. `StoryPresenter(host:client:onLinkTap:)`,
+  bracketed by `start()` / `stop()` in the host's appearance callbacks, presents the same
+  `StoryViewerView` full screen and queues stories one at a time through the same
+  `StoryDisplayViewModel`, so impressions, slide views, slide clicks, completion and close are
+  reported identically on both paths — a UIKit host no longer has to drive
+  `StoryDisplayController` and report impressions itself. As with `BannerPresenter`, `stop()` does
+  not run on `deinit`: bracket it with the host's appearance callbacks.
+
 ## [5.2.1] - 2026-10-21
 
 ### Fixed

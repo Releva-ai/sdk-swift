@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import UserNotifications
 
 /// Main SDK client for Releva integration
 @MainActor
@@ -69,7 +70,9 @@ public class RelevaClient {
     private var engagementService: EngagementTrackingService?
 
     /// Notification service
-    private var notificationService: NotificationService?
+    /// Internal (not private) so tests can install one without `enablePushEngagementTracking()`,
+    /// which needs a notification centre this package's test bundle cannot resolve.
+    var notificationService: NotificationService?
 
     /// Banner manager service
     private var bannerManager: BannerManagerService?
@@ -1014,7 +1017,10 @@ public class RelevaClient {
             notificationService = NotificationService(config: config)
         }
 
+        notificationService?.urlHandler = urlHandler
+        notificationService?.onNavigation = onNavigation
         notificationService?.initialize()
+        processBufferedNotificationResponses()
 
         if bannerManager == nil {
             bannerManager = BannerManagerService()
@@ -1040,6 +1046,114 @@ public class RelevaClient {
     @discardableResult
     public func consumePendingNavigation() -> NotificationService.PendingNavigation? {
         notificationService?.consumePendingNavigation()
+    }
+
+    /// Called for every navigation a push asks for, on the main thread, in addition to the
+    /// `RelevaNavigateToScreen` / `RelevaNavigateToURL` / `RelevaNavigateToInbox` posts, which
+    /// are unchanged.
+    ///
+    /// Assigning a handler replays the pending navigation — the one `consumePendingNavigation()`
+    /// would have returned — and consumes it, so a handler installed after a cold-launch tap still
+    /// receives it. A navigation a handler has already received is not replayed to the next one.
+    ///
+    /// An http/https URL the SDK opens externally is not reported here, as it is not posted
+    /// either, and neither is a URL `urlHandler` claims.
+    public var onNavigation: ((RelevaNavigation) -> Void)? {
+        didSet {
+            notificationService?.onNavigation = onNavigation
+            guard let handler = onNavigation else { return }
+            notificationService?.replayPendingNavigation(to: handler)
+        }
+    }
+
+    /// Called with the URL of a push whose target is a URL, for every scheme, before the SDK does
+    /// anything with it. Return `true` when the app has handled it and the SDK should stop there.
+    ///
+    /// This is what keeps a universal link in the app: iOS routes an app's own universal link to
+    /// Safari when that app is the one opening it, so an https link the SDK opens leaves the app.
+    /// Returning `false`, or setting no handler, keeps the 5.2.1 behaviour — a custom scheme is
+    /// posted as `RelevaNavigateToURL`, an http/https URL is opened externally.
+    public var urlHandler: ((URL) -> Bool)? {
+        didSet { notificationService?.urlHandler = urlHandler }
+    }
+
+    /// Hands a notification tap to the SDK: engagement tracking (`.opened`, or `.clicked` for the
+    /// action button), navigation routing and `NotificationService.onNotificationTapped`.
+    ///
+    /// For apps that keep their own `UNUserNotificationCenterDelegate`, and for apps that call
+    /// `enablePushEngagementTracking()` after `application(_:didFinishLaunchingWithOptions:)` has
+    /// returned — iOS delivers a cold-launch tap to whichever delegate is installed by then, so a
+    /// tap that launched the app is otherwise lost. A response handed over before tracking is
+    /// enabled is kept and processed by `enablePushEngagementTracking()`.
+    ///
+    /// Safe to call for a tap the SDK has already handled through its own delegate: a tap is
+    /// tracked and routed once, by whichever path sees it first.
+    ///
+    /// - Returns: Whether this is a Releva notification. A tap that is not one is still run
+    ///   through the same handling once tracking is enabled — `onNotificationTapped` still fires
+    ///   for it — but is not kept while it is not.
+    @discardableResult
+    public func handleNotificationResponse(_ response: UNNotificationResponse) -> Bool {
+        let content = response.notification.request.content
+        // The same test `willPresent` makes: the category is REQUIRE_INTERACTION on pushes the
+        // extension did not touch, so the category prefix alone under-reports.
+        let isReleva = content.categoryIdentifier.hasPrefix("RELEVA")
+            || isRelevaMessage(userInfo: content.userInfo)
+
+        if let notificationService = notificationService {
+            notificationService.handleTap(response)
+        } else if isReleva {
+            // Tracking is what the wait is for: `trackEngagement` drops the event while there is
+            // no engagement service, and that service is `enablePushEngagementTracking()`'s.
+            bufferedNotificationResponses.append(response)
+            if bufferedNotificationResponses.count > RelevaClient.bufferedNotificationResponseLimit {
+                bufferedNotificationResponses.removeFirst()
+            }
+            if config.enableDebugLogging {
+                relevaLog("RelevaSDK: Tap kept until push engagement tracking is enabled")
+            }
+        }
+
+        return isReleva
+    }
+
+    /// Taps handed to `handleNotificationResponse(_:)` before the services existed, oldest first.
+    private var bufferedNotificationResponses: [UNNotificationResponse] = []
+
+    /// How many of those are kept. A launch has one tap to replay; the rest of the bound is for
+    /// an app that never enables tracking at all.
+    private static let bufferedNotificationResponseLimit = 4
+
+    /// Hands the buffered taps to the service, oldest first, and empties the buffer. Called by
+    /// `enablePushEngagementTracking()`; internal so a test can drive it without a notification
+    /// centre.
+    func processBufferedNotificationResponses() {
+        guard let notificationService = notificationService, !bufferedNotificationResponses.isEmpty else { return }
+        let buffered = bufferedNotificationResponses
+        bufferedNotificationResponses = []
+        for response in buffered {
+            notificationService.handleTap(response)
+        }
+    }
+
+    /// Asks for notification authorization and, when it is granted, registers for remote
+    /// notifications.
+    ///
+    /// For apps that set `RelevaConfig.requestsNotificationAuthorization` to `false` so they can
+    /// ask themselves — with options the SDK's own request does not include, such as
+    /// `.providesAppNotificationSettings`, or at a moment of their choosing. Works whether or not
+    /// `enablePushEngagementTracking()` has run.
+    ///
+    /// - Parameter options: What to ask for. The default is what the SDK asks for itself.
+    /// - Returns: Whether the user granted it.
+    @discardableResult
+    public func requestPushAuthorization(
+        options: UNAuthorizationOptions = [.alert, .badge, .sound]
+    ) async -> Bool {
+        // A service only becomes the notification-centre delegate in
+        // `enablePushEngagementTracking()`, so one built here just to ask has no side effects.
+        let service = notificationService ?? NotificationService(config: config)
+        return await service.requestAuthorization(options: options)
     }
 
     /// Track engagement from push notification

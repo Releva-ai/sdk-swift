@@ -521,5 +521,5 @@ public class NetworkService {
 // MARK: - SDK Version
 
 struct SDKVersion {
-    static let current = "5.2.1"
+    static let current = "5.3.0"
 }

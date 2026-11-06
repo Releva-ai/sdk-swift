@@ -44,9 +44,34 @@ final class BannerTrackerSpy: BannerTracker {
     }
 }
 
-/// Shared by `BannerPresenterTests` and `NpsPresenterTests`: both drive a presenter through the
-/// display-controller singleton it subscribes to, then look at what the host has on screen.
+/// The story counterpart of `BannerTrackerSpy`, shared by `StoryDisplayViewModelTests` and
+/// `StoryPresenterTests` — the view model and the presenter that drives it.
+@MainActor
+final class StoryTrackerSpy: StoryTracker {
+    var impressions: [String] = []
+
+    func storyImpression(_ story: StoryResponse) {
+        impressions.append(story.token)
+    }
+}
+
+/// Shared by the presenter suites: each drives a presenter through the display-controller
+/// singleton it subscribes to, then looks at what the host has on screen.
 extension XCTestCase {
+    /// A client that cannot reach a server, for the views and presenters that need one: the story
+    /// viewer reports slide views as it plays, and `RelevaClient.shared` is left as it was found
+    /// so the client under test is only reachable through what the test hands it to.
+    @MainActor
+    func offlineClient() -> RelevaClient {
+        let saved = RelevaClient.shared
+        defer { RelevaClient.shared = saved }
+        return RelevaClient(
+            realm: "test",
+            accessToken: "test-token",
+            config: RelevaConfig(enableTracking: false, enablePushNotifications: false, customEndpoint: "http://127.0.0.1:9")
+        )
+    }
+
     /// A window holding `rootViewController`, made visible.
     ///
     /// Visible because a view controller in no on-screen hierarchy cannot reliably present.
