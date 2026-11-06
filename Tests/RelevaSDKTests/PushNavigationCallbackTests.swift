@@ -127,6 +127,31 @@ final class PushNavigationCallbackTests: XCTestCase {
         XCTAssertEqual(messageId, 456)
     }
 
+    /// The backend's own shape: `inboxMessageId` is a string inside `navigate_to_parameters`.
+    func testTheInboxMessageIdIsReadFromTheBackendsStringForm() {
+        let client = makeClient()
+        var received: [RelevaNavigation] = []
+        client.onNavigation = { received.append($0) }
+
+        client.handleNotificationResponse(makeRelevaTap([
+            "target": "inbox",
+            "navigate_to_parameters": "{\"inboxMessageId\":\"13\"}"
+        ]))
+
+        XCTAssertEqual(received.count, 1)
+        guard case .inbox(let messageId) = received.first else {
+            return XCTFail("expected the inbox, got \(String(describing: received.first))")
+        }
+        XCTAssertEqual(messageId, 13)
+    }
+
+    func testAnInboxMessageIdThatIsNotANumberIsNil() {
+        XCTAssertNil(RelevaNavigation.messageId("ccd654fd-b476"))
+        XCTAssertNil(RelevaNavigation.messageId(nil))
+        XCTAssertEqual(RelevaNavigation.messageId(NSNumber(value: 7)), 7)
+        XCTAssertEqual(RelevaNavigation.messageId(" 21 "), 21)
+    }
+
     /// The cold-launch case: the tap is routed before the app has a handler for it.
     func testAssigningTheCallbackReplaysThePendingNavigationOnce() {
         let client = makeClient()

@@ -32,10 +32,19 @@ extension RelevaNavigation {
             guard let url = userInfo["url"] as? URL else { return nil }
             self = .url(url)
         case Notification.Name("RelevaNavigateToInbox"):
-            self = .inbox(messageId: (parameters?["inboxMessageId"] as? NSNumber)?.intValue)
+            self = .inbox(messageId: Self.messageId(parameters?["inboxMessageId"]))
         default:
             return nil
         }
+    }
+}
+
+extension RelevaNavigation {
+    /// The backend sends `inboxMessageId` as a string (`"13"`); a number is accepted too.
+    static func messageId(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber { return number.intValue }
+        if let string = value as? String { return Int(string.trimmingCharacters(in: .whitespaces)) }
+        return nil
     }
 }
 

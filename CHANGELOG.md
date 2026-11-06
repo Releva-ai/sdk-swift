@@ -47,7 +47,8 @@ compiles unchanged and behaves exactly as it did on 5.2.1.
   posts and `consumePendingNavigation()`, which are all unchanged. Assigning a handler replays
   the pending navigation and consumes it, so a handler installed after a cold-launch tap still
   receives it; a navigation a handler already received is not replayed to the next one. An http/https URL the SDK opens externally is not reported, as it is not
-  posted either, and neither is one `urlHandler` claims.
+  posted either, and neither is one `urlHandler` claims. `.inbox(messageId:)` reads the id the
+  backend sends as a string (`"13"`) as well as a number.
 
 - **`StoryPresenter`**, the UIKit counterpart of the `.storyDisplay(client:onLinkTap:)` modifier,
   alongside `BannerPresenter` and `NpsPresenter`. `StoryPresenter(host:client:onLinkTap:)`,
