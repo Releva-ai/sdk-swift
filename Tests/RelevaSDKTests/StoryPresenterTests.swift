@@ -140,6 +140,13 @@ final class StoryPresenterTests: XCTestCase {
         XCTAssertEqual(tracker.impressions, ["first"], "retrying does not count the story again")
     }
 
+    /// A banner popup presented in the same response is still animating in when the story
+    /// arrives; the presenter waits for that instead of building a viewer UIKit will decline.
+    @MainActor
+    func testAControllerAtRestCanBePresentedOn() {
+        XCTAssertTrue(StoryPresenter.canPresent(on: UIViewController()))
+    }
+
     // MARK: - Fixtures
 
     private func story(_ token: String) -> StoryResponse {

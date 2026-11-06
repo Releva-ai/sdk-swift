@@ -85,6 +85,7 @@ public final class StoryPresenter {
         // whole retry budget while `stop()`-ed gets a fresh budget for this new on-screen run.
         retryingStoryID = nil
         presentRetryCount = 0
+        transitionWaitCount = 0
 
         viewModel.start(tracker: tracker)
 
@@ -135,6 +136,7 @@ public final class StoryPresenter {
     /// them have run. Reset whenever a different story becomes active.
     private var retryingStoryID: UUID?
     private var presentRetryCount = 0
+    private var transitionWaitCount = 0
 
     /// Puts the story on screen, or takes the last one down, so that what is presented matches
     /// the view model. A `present` UIKit declined — it only logs, it does not throw — is read
@@ -150,6 +152,7 @@ public final class StoryPresenter {
         if retryingStoryID != story.id {
             retryingStoryID = story.id
             presentRetryCount = 0
+            transitionWaitCount = 0
         }
 
         if let existing = viewerController, existing.presentingViewController == nil {
@@ -157,6 +160,16 @@ public final class StoryPresenter {
             viewerController = nil
         }
         guard viewerController == nil, let host = host else { return }
+
+        // A controller still animating in or out declines `present`. That is the case when a
+        // banner popup arrives in the same response and is presented a moment earlier. Waiting
+        // here, before a viewer is built, keeps one viewer per story: a declined viewer's view
+        // still runs its slides and tracks them.
+        let top = host.topMostPresentedViewController
+        guard Self.canPresent(on: top) else {
+            retryPresent(story, waitingForTransition: true)
+            return
+        }
 
         let controller = UIHostingController(
             rootView: StoryViewerView(
@@ -182,17 +195,38 @@ public final class StoryPresenter {
         viewerController = controller
         // Present from whatever is frontmost, as `BannerPresenter` does, so a story is not lost
         // behind a modal the host already had up.
-        host.topMostPresentedViewController.present(controller, animated: true)
+        top.present(controller, animated: true)
 
         if controller.presentingViewController == nil {
             viewerController = nil
+            retryPresent(story)
+        }
+    }
+
+    /// Whether `present` on `controller` can take now: not while it is being presented, being
+    /// dismissed, or in any other transition.
+    static func canPresent(on controller: UIViewController) -> Bool {
+        !controller.isBeingPresented && !controller.isBeingDismissed && controller.transitionCoordinator == nil
+    }
+
+    /// How many times in a row one story may wait for the frontmost controller to finish a
+    /// transition. Transitions end on their own, so this only bounds a controller stuck in one.
+    static let transitionWaitLimit = 100
+
+    /// Tries `sync(story)` again after `presentRetryDelay`. A declined `present` counts against
+    /// `presentRetryLimit`; waiting for a transition counts against `transitionWaitLimit`.
+    private func retryPresent(_ story: IdentifiableStory, waitingForTransition: Bool = false) {
+        if waitingForTransition {
+            transitionWaitCount += 1
+            guard transitionWaitCount <= Self.transitionWaitLimit else { return }
+        } else {
             presentRetryCount += 1
             guard presentRetryCount <= Self.presentRetryLimit else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.presentRetryDelay) { [weak self] in
-                guard let self = self, self.cancellable != nil, self.viewerController == nil,
-                      self.viewModel.activeStory?.id == story.id else { return }
-                self.sync(story)
-            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.presentRetryDelay) { [weak self] in
+            guard let self = self, self.cancellable != nil, self.viewerController == nil,
+                  self.viewModel.activeStory?.id == story.id else { return }
+            self.sync(story)
         }
     }
 
